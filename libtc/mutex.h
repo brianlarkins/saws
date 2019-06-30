@@ -1,13 +1,13 @@
-#ifndef _mutex_h
-#define _mutex_h
+/*
+ * Copyright (c) 2019. See COPYRIGHT in top-level directory.
+ */
 
-//#define SYNCH_RMW_OP ARMCI_SWAP_LONG
-//typedef long synch_mutex_t;
+#pragma once
 
-#define SYNCH_RMW_OP ARMCI_SWAP
-typedef int synch_mutex_t;
-
-extern long *lock;
+struct synch_mutex_s {
+  long *locks;
+};
+typedef struct synch_mutex_s synch_mutex_t;
 
 // Statistics measuring lock contention
 extern double        synch_mutex_lock_nattempts_squares;
@@ -18,9 +18,7 @@ extern unsigned long synch_mutex_lock_nattempts_min;
 extern unsigned long synch_mutex_lock_ncalls_contention;
 extern unsigned long synch_mutex_lock_ncalls;
 
-void synch_mutex_init(long *lock, int proc);
-void synch_mutex_lock(long *lock, int proc);
-int  synch_mutex_trylock(long *lock, int proc);
-void synch_mutex_unlock(long *lock, int proc);
-
-#endif /* _mutex_h */
+void synch_mutex_init(synch_mutex_t *lock);
+void synch_mutex_lock(synch_mutex_t *lock, int proc);
+int  synch_mutex_trylock(synch_mutex_t *lock, int proc);
+void synch_mutex_unlock(synch_mutex_t *lock, int proc);

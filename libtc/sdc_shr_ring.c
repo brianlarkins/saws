@@ -6,7 +6,7 @@
 
 #include <mutex.h>
 
-#include "debug.h"
+#include "tc.h"
 #include "sdc_shr_ring.h"
 // #include "tc-internals.h"
 
