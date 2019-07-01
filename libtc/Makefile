@@ -14,7 +14,9 @@ HDRS =  mutex.h       \
 				# line eater
 
 
-OBJS = mutex.o              \
+OBJS = init.o               \
+       mutex.o              \
+			 util.o               \
 			 # line eater
 
 .PHONY: all
@@ -28,7 +30,7 @@ libtc.a: headers $(OBJS)
 $(OBJS): $(HDRS)
 
 .PHONY: headers
-headers: 
+headers:
 	mkdir -p ../include
 	cp $(HDRS) ../include/.
 

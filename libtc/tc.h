@@ -252,6 +252,7 @@ struct tc_s {
 
   // STATISTICS:
   tc_timers_t         *timers;                    // timers used for internal performance monitoring
+  tc_tsctimers_t      *tsctimers;                 // TSC timers used for internal performance monitoring
   tc_counter_t         passive_count;             // Number of transitions to passive state
   tc_counter_t         tasks_spawned;             // Number of tasks spawned by this thread
   tc_counter_t         tasks_completed;           // Number of tasks processed by this thread

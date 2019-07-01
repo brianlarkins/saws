@@ -101,7 +101,7 @@ int main(int argc, char **argv)
 
   gtc_print_stats(gtc);
 
-  gtc_barrier();
+  shmem_barrier_all();
 
   // Find the ideal execution time
   //MPI_Reduce(&sleep_time, &ideal_time, 1, MPI_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
