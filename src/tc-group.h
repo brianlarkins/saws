@@ -1,7 +1,7 @@
 #ifndef _TC_GROUP_H_
 #define _TC_GROUP_H_
 
-#include <ga.h>
+// #include <ga.h>
 #include <tc.h>
 
 

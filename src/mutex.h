@@ -5,7 +5,7 @@
 //typedef long synch_mutex_t;
 
 #define SYNCH_RMW_OP ARMCI_SWAP
-typedef int synch_mutex_t;
+typedef long synch_mutex_t;
 
 extern long *lock;
 
