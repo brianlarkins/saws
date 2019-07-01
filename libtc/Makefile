@@ -16,6 +16,7 @@ HDRS =  mutex.h       \
 
 OBJS = init.o               \
        mutex.o              \
+			 sdc_shr_ring.o       \
 			 util.o               \
 			 # line eater
 
