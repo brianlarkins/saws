@@ -14,7 +14,7 @@ struct sdc_shrb_s {
   int             vtail;     // Index of the virtual tail
   int             split;     // index of split between local-only and local-shared elements
 
-  // long            *lock;      // lock for shared portion of this queue
+  synch_mutex_t   lock;      // lock for shared portion of this queue
   int             waiting;   // Am I currently waiting for transactions to complete?
   
   int             procid;
@@ -39,8 +39,8 @@ sdc_shrb_t *sdc_shrb_create(int elem_size, int max_size);
 void        sdc_shrb_destroy(sdc_shrb_t *rb);
 void        sdc_shrb_reset(sdc_shrb_t *rb);
 
-void        sdc_shrb_lock(long *lock, int proc);
-void        sdc_shrb_unlock(long *lock, int proc);
+void        sdc_shrb_lock(synch_mutex_t *lock, int proc);
+void        sdc_shrb_unlock(synch_mutex_t *lock, int proc);
 
 int         sdc_shrb_head(sdc_shrb_t *rb);
 int         sdc_shrb_local_isempty(sdc_shrb_t *rb);

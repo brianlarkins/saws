@@ -6,7 +6,7 @@
 
 #include <mutex.h>
 
-#include "debug.h"
+#include "tc.h"
 #include "sdc_shr_ring.h"
 // #include "tc-internals.h"
 
@@ -67,7 +67,7 @@ sdc_shrb_t *sdc_shrb_create(int elem_size, int max_size) {
   procid = shmem_my_pe();
   nproc = shmem_n_pes();
 
-  DEBUG(DBGSHRB, printf("  Thread %d: sdc_shrb_create()\n", procid));
+  gtc_lprintf(DBGSHRB, "  Thread %d: sdc_shrb_create()\n", procid);
 
   // Allocate the struct and the buffer contiguously in shared space
   rbs = malloc(sizeof(sdc_shrb_t*) * nproc);
@@ -84,7 +84,7 @@ sdc_shrb_t *sdc_shrb_create(int elem_size, int max_size) {
   sdc_shrb_reset(rb);
 
   // Initialize the lock
-  synch_mutex_init(lock, procid);
+  synch_mutex_init(&rb->lock);
 
   shmem_barrier_all();
 
@@ -192,17 +192,17 @@ int sdc_shrb_size(sdc_shrb_t *rb) {
 /*==================== SYNCHRONIZATION ====================*/
 
 
-void sdc_shrb_lock(long *lock, int proc) {
+void sdc_shrb_lock(synch_mutex_t *lock, int proc) {
   synch_mutex_lock(lock, proc);
 }
 
 
-int sdc_shrb_trylock(long *lock, int proc) {
+int sdc_shrb_trylock(synch_mutex_t *lock, int proc) {
   return synch_mutex_trylock(lock, proc);
 }
 
 
-void sdc_shrb_unlock(long *lock, int proc) {
+void sdc_shrb_unlock(synch_mutex_t *lock, int proc) {
   synch_mutex_unlock(lock, proc);
 }
 
@@ -235,7 +235,7 @@ void sdc_shrb_ensure_space(sdc_shrb_t *rb, int n) {
   // Ensure that there is enough free space in the queue.  If there isn't
   // wait until others finish their deferred copies so we can reclaim space.
   if (rb->max_size - (sdc_shrb_local_size(rb) + sdc_shrb_public_size(rb)) < n) {
-    sdc_shrb_lock(lock, rb->procid);
+    sdc_shrb_lock(&rb->lock, rb->procid);
     {
       if (rb->max_size - sdc_shrb_size(rb) < n) {
         // Error: amount of reclaimable space is less than what we need.
@@ -249,7 +249,7 @@ void sdc_shrb_ensure_space(sdc_shrb_t *rb, int n) {
       rb->waiting = 0;
       rb->nwaited++;
     }
-    sdc_shrb_unlock(lock, rb->procid);
+    sdc_shrb_unlock(&rb->lock, rb->procid);
   }
 }
 
@@ -279,7 +279,7 @@ int sdc_shrb_reacquire(sdc_shrb_t *rb) {
 
   // Favor placing work in the local portion -- if there is only one task
   // available this scheme will put it in the local portion.
-  sdc_shrb_lock(lock, rb->procid);
+  sdc_shrb_lock(&rb->lock, rb->procid);
   {
     if (sdc_shrb_shared_size(rb) > sdc_shrb_local_size(rb)) {
       int diff    = sdc_shrb_shared_size(rb) - sdc_shrb_local_size(rb);
@@ -294,7 +294,7 @@ int sdc_shrb_reacquire(sdc_shrb_t *rb) {
     // Assertion: sdc_shrb_local_isempty(rb) => sdc_shrb_isempty(rb)
     assert(!sdc_shrb_local_isempty(rb) || (sdc_shrb_isempty(rb) && sdc_shrb_local_isempty(rb)));
   }
-  sdc_shrb_unlock(lock, rb->procid);
+  sdc_shrb_unlock(&rb->lock, rb->procid);
 
   return amount;
 }
