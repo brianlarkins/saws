@@ -74,7 +74,7 @@ void        sdc_shrb_print(sdc_shrb_t *rb);
 #define sdc_shrb_buff_elem_addr(RB, E, IDX) ((u_int8_t*)(E) + (IDX)*(RB)->elem_size)
 
 // ARMCI allocated buffers should be faster/pinned
-// #define sdc_shrb_malloc ARMCI_Malloc_local
-// #define sdc_shrb_free   ARMCI_Free_local
+#define sdc_shrb_malloc shmem_calloc
+#define sdc_shrb_free   shmem_free
 
 #endif /* __SDC_SHR_RING_H__ */

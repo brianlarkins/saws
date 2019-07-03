@@ -14,6 +14,7 @@ TARGETS=test-hello          \
 				test-tasktree       \
 				test-tasktree-twotc \
 				test-termination    \
+				test_sdc_shrb		\
         # line eater
 
 TEST_DIRS=clod microbenchmarks shrb synch
@@ -53,6 +54,9 @@ test-tasktree-twotc: tclibs test-tasktree-twotc.o
 
 test-termination: tclibs test-termination.o
 	$(CC) $(CFLAGS) -o $@ test-termination.o $(TC_LIBS)
+
+test-sdc-shrb: tclibs test_sdc_shrb.o
+	$(CC) $(CFLAGS) -o $@ test_sdc_shrb.o $(TC_LIBS)
 
 clean: tcclean
 	for dir in $(TEST_DIRS); do \

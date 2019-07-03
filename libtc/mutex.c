@@ -32,7 +32,6 @@ unsigned long synch_mutex_lock_ncalls            = 0;
 /** Initialize a local mutex.
   *
   *  @param[in] lock Array that holds current lock state for every processor.
-  *  @param[in] proc Processor id to index into lock array.
   *  NOTE: This must be a collective call
   */
 void synch_mutex_init(synch_mutex_t *m) {

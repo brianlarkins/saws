@@ -16,8 +16,6 @@
 #define TAILTARGET  (rb->procid + 1) % rb->nproc /* round robin */
 #define HEADTARGET  rb->procid               /* local only */
 
-long *lock;     // Global lock for synchronization
-
 typedef struct {
   int    id;
   char   junk[100];
@@ -27,18 +25,14 @@ typedef struct {
 void print_queue(sdc_shrb_t *rb) {  
   elem_t *ela = (elem_t *) rb->q;   
  	
-  int rank = shmem_my_pe();
-
   sdc_shrb_print(rb);  
   for (int i = 0; i < QSIZE; i++)    
-    printf("%d: q[%d] = %d :: %d\n", rank, i, ela[i].id, ela[i].check);	// Line fix (_c->rank)
+    printf("%d: q[%d] = %d :: %d\n", _c->rank, i, ela[i].id, ela[i].check);
 }
 
 void print_buf(elem_t *a) {
-  int rank = shmem_my_pe();
-    
   for (int i = 0; i < NUM; i++)
-    printf("%d: q[%d] = %d :: %d\n", rank, i, a[i].id, a[i].check);			// Line fix
+    printf("%d: q[%d] = %d :: %d\n", _c->rank, i, a[i].id, a[i].check);			
 }
 
 int main(int argc, char **argv, char **envp) {
@@ -53,15 +47,8 @@ int main(int argc, char **argv, char **envp) {
 
   setbuf(stdout, NULL);
 
-  shmem_init();			// Initialize OpenSHMEM
+  _c = gtc_init();			// Initialize environment
 
-  int my_pe = shmem_my_pe();
-  int npes = shmem_n_pes();
-
-  lock = (long *)shmem_malloc(sizeof(long) * npes);
-  if (lock == NULL)
-    printf("Allocation Error\n");
-  
   shmem_barrier_all();
 
   rb = sdc_shrb_create(sizeof(elem_t), QSIZE);
@@ -77,8 +64,7 @@ int main(int argc, char **argv, char **envp) {
       printf("\n");
     }
       
-    if (rb->procid == 0) 
-      printf(" TEST: push_head() -> pop_head()\n");
+    if (rb->procid == 0) printf(" TEST: push_head() -> pop_head()\n");
       
       for (i = 1; i <= NUM; i++) {
         y[0].id = y[0].check = i;
@@ -101,15 +87,104 @@ int main(int argc, char **argv, char **envp) {
 
       shmem_barrier_all();
 
+      // if (DEBUG) sdc_shrb_print(rb);
+    if (rb->procid == 0) printf(" TEST: push_n_head() -> pop_head()\n");
+
+        for (i = 0; i < NUM; i++)
+            y[i].id = y[i].check = i;
+
+        sdc_shrb_push_n_head(rb, HEADTARGET, y, NUM);
+
+        shmem_barrier_all();
+
+        for (i=NUM-1,cnt=0; sdc_shrb_pop_head(rb, HEADTARGET, &x) > 0; i--,cnt++) {
+            if (x.id != i && x.check != i) {
+                printf("  -- %d: Error, got <%d, %d> expected <%d, %d>\n", rb->procid, x.id, x.check, i, i);
+                ++errors;
+            }
+        }
+
+        if (cnt < NUM) {
+          printf("  -- %d: Error, got %d elements, expected %d\n", rb->procid, cnt, NUM);
+          ++errors;
+        }
+
+    shmem_barrier_all();
+    
+    // if (DEBUG) sdc_shrb_print(rb);
+    if (rb->procid == 0) printf(" TEST: push_n_head() -> pop_tail()\n");
+
+        for (i = 0; i < NUM; i++)
+            y[i].id = y[i].check = NUM-i;
+
+        sdc_shrb_push_n_head(rb, HEADTARGET, y, NUM);
+        sdc_shrb_release_all(rb);
+
+        shmem_barrier_all();
+
+        for (i=NUM,cnt=0; sdc_shrb_pop_tail(rb, TAILTARGET, &x); i--,cnt++) {
+            if (x.id != i && x.check != i) {
+                printf("  -- %d: Error, got <%d, %d> expected <%d, %d>\n", rb->procid, x.id, x.check, i, i);
+                ++errors;
+            }
+            sdc_shrb_release(rb);
+        }
+
+        if (cnt < NUM) {
+          printf("  -- %d: Error, got %d elements, expected %d\n", rb->procid, cnt, NUM);
+          ++errors;
+        }
+
+    shmem_barrier_all();
+
+#if 0
+      // if (DEBUG) sdc_shrb_print(rb);
+      if (rb->procid == 0) printf(" TEST: push_head() -> pop_n_tail()\n");
+
+          e = sdc_shrb_malloc(sizeof(elem_t)*NUM);
+          
+          for (i = 1; i <= NUM; i++) {
+              y[0].id = y[0].check = i;
+              sdc_shrb_push_head(rb, HEADTARGET, &y[0], sizeof(elem_t));
+          }
+
+          sdc_shrb_release_all(rb);
+          shmem_barrier_all();
+
+          total = 0;
+          while ((cnt = sdc_shrb_pop_n_tail(rb, TAILTARGET, NUM, e, STEAL_HALF))) {
+            //printf("  + pop_n_tail() got %d, total %d\n", cnt, total+cnt);
+            for (i=0, j=total; i < cnt; i++, j++) {
+              if (e[i].id != j+1 && e[i].check != j+1) {
+                printf("  -- %d: Error, got <%d, %d> expected <%d, %d>\n", rb->procid, e[i].id, e[i].check, i, i);
+                ++errors;
+              }
+            }
+            total += cnt;
+            sdc_shrb_release(rb);
+            shmem_barrier_all();
+          }
+
+          sdc_shrb_free(e);
+
+          if (total < NUM) {
+            printf("  -- %d: Error, got %d elements, expected %d\n", rb->procid, total, NUM);
+            ++errors;
+          }
+
+					shmem_barrier_all()
+#endif					
   }
 
   shmem_barrier_all();
 
   sdc_shrb_destroy(rb);
-  if (lock)
-    shmem_free(lock);
+  // if (lock)
+  //  shmem_free(lock);
 
-  shmem_finalize();         // Finalize OpenSHMEM
+  // shmem_finalize();         // Finalize OpenSHMEM
+  gtc_fini();
 
   return 0;
 }
+
