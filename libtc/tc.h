@@ -68,6 +68,8 @@ extern "C" {
  #define GTC_DEFAULT_DEBUGLEVEL  0
 #endif
 
+#define UNUSED(expr) do { (void)(expr); } while (0)
+
 #define gtc_lookup(_GTCLKUP) _c->tcs[_GTCLKUP]
 
 #define SCIOTO_DEBUG

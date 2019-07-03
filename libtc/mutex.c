@@ -9,8 +9,7 @@
 
 #define LINEAR_BACKOFF
 
-#define USE_SHMEM_LOCKS
-
+//#define USING_SHMEM_LOCKS
 
 #ifdef LINEAR_BACKOFF
 #define SPINCOUNT 1000
@@ -46,13 +45,38 @@ void synch_mutex_init(synch_mutex_t *m) {
   *  @param[in] proc Processor id to index into lock array.
   */
 void synch_mutex_lock(synch_mutex_t *m, int proc) {
+  int nattempts = 0, backoff;
+  volatile long lock_val = SYNCH_MUTEX_UNLOCKED;
+
+  gtc_lprintf(DBGSYNCH, "synch_mutex_lock (%p, %d)\n", m, proc);
 
 #ifdef USING_SHMEM_LOCKS
-  printf("processor %d in array before set lock is %ld at %p\n", proc, lock[proc], &lock[proc]);
-  shmem_set_lock(&m->locks[proc]);
-  printf("processor %d in array after set lock is %ld at %p\n", proc, lock[proc], &lock[proc]);
-#endif /* USING_SHMEM_LOCKS */
 
+  UNUSED(lock_val);
+  UNUSED(nattempts);
+  UNUSED(backoff);
+
+  shmem_set_lock(&m->locks[proc]);
+
+#else /* !USING_SHMEM_LOCKS */
+
+  do {
+
+    lock_val = shmem_atomic_swap(&m->locks[proc], SYNCH_MUTEX_LOCKED, proc);
+
+#ifdef LINEAR_BACKOFF
+    // Linear backoff to avoid flooding the network and bogging down the
+    // remote data server.
+    backoff = _c->rank == proc ?  0 : MIN(SPINCOUNT*nattempts, MAXSPIN);
+    for (int i = 0; i < backoff; i++) { 
+      synch_mutex_dummy_work += 1.0;
+    }
+#endif /* LINEAR_BACKOFF */
+    nattempts++;
+
+  } while (lock_val != SYNCH_MUTEX_UNLOCKED);
+
+#endif /* USING_SHMEM_LOCKS */
 }
 
 
@@ -65,12 +89,21 @@ void synch_mutex_lock(synch_mutex_t *m, int proc) {
   */
 int synch_mutex_trylock(synch_mutex_t *m, int proc) {
   int ret = -1;
+  long lock_val;
+
+  gtc_lprintf(DBGSYNCH, "synch_mutex_trylock (%p, %d)\n", m, proc);
 
 #ifdef USING_SHMEM_LOCKS
+  UNUSED(lock_val);
   ret = shmem_test_lock(&m->locks[proc]);
+#else  /* !USING_SHMEM_LOCKS */
+
+    lock_val = shmem_atomic_swap(&m->locks[proc], SYNCH_MUTEX_LOCKED, proc);
+    ret = (lock_val == SYNCH_MUTEX_UNLOCKED);  
+
 #endif /*  USING_SHMEM_LOCKS */
 
-  return ret;  
+  return ret;
 }
 
 
@@ -80,11 +113,16 @@ int synch_mutex_trylock(synch_mutex_t *m, int proc) {
   * @param[in] proc Processor id to index into lock array.
   */
 void synch_mutex_unlock(synch_mutex_t *m, int proc) {
+  gtc_lprintf(DBGSYNCH, "synch_mutex_unlock (%p, %d)\n", m, proc);
 
 #ifdef USING_SHMEM_LOCKS
-  printf("processor %d in array before clear lock is %ld at %p\n", proc, lock[proc], &lock[proc]);
+
   shmem_clear_lock(&m->locks[proc]);
-  printf("processor %d in array after clear lock is %ld at %p\n", proc, lock[proc], &lock[proc]);
+
+#else  /* !USING_SHMEM_LOCKS */
+
+  shmem_atomic_set(&m->locks[proc], SYNCH_MUTEX_UNLOCKED, proc);
+
 #endif /* USING_SHMEM_LOCKS */
 
 }
