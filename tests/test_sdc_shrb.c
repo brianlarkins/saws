@@ -11,7 +11,7 @@
 // #define NUM     203
 // #define NUMREPS 100
 #define QSIZE   50
-#define NUM     21
+#define NUM     10
 #define NUMREPS 1
 #define TAILTARGET  (rb->procid + 1) % rb->nproc /* round robin */
 #define HEADTARGET  rb->procid               /* local only */
@@ -127,6 +127,8 @@ int main(int argc, char **argv, char **envp) {
                 printf("  -- %d: Error, got <%d, %d> expected <%d, %d>\n", rb->procid, x.id, x.check, i, i);
                 ++errors;
             }
+            //else
+            //    printf("(%d) got <%d, %d>, expected <%d, %d>\n", rb->procid, x.id, x.check, i, i);
             sdc_shrb_release(rb);
         }
 
@@ -137,43 +139,43 @@ int main(int argc, char **argv, char **envp) {
 
     shmem_barrier_all();
 
-#if 0
-      // if (DEBUG) sdc_shrb_print(rb);
-      if (rb->procid == 0) printf(" TEST: push_head() -> pop_n_tail()\n");
+    // if (DEBUG) sdc_shrb_print(rb);
+    if (rb->procid == 0) printf(" TEST: push_head() -> pop_n_tail()\n");
 
-          e = sdc_shrb_malloc(sizeof(elem_t)*NUM);
-          
-          for (i = 1; i <= NUM; i++) {
-              y[0].id = y[0].check = i;
-              sdc_shrb_push_head(rb, HEADTARGET, &y[0], sizeof(elem_t));
-          }
+        e = malloc(sizeof(elem_t) * NUM);
+        
+        for (i = 1; i <= NUM; i++) {
+            y[0].id = y[0].check = i;
+            sdc_shrb_push_head(rb, HEADTARGET, &y[0], sizeof(elem_t));
+        }
 
-          sdc_shrb_release_all(rb);
-          shmem_barrier_all();
+        sdc_shrb_release_all(rb);
+        shmem_barrier_all();
 
-          total = 0;
-          while ((cnt = sdc_shrb_pop_n_tail(rb, TAILTARGET, NUM, e, STEAL_HALF))) {
-            //printf("  + pop_n_tail() got %d, total %d\n", cnt, total+cnt);
-            for (i=0, j=total; i < cnt; i++, j++) {
-              if (e[i].id != j+1 && e[i].check != j+1) {
-                printf("  -- %d: Error, got <%d, %d> expected <%d, %d>\n", rb->procid, e[i].id, e[i].check, i, i);
-                ++errors;
-              }
+        total = 0;
+        while ((cnt = sdc_shrb_pop_n_tail(rb, TAILTARGET, NUM, e, STEAL_HALF))) {
+          // printf("  + pop_n_tail() got %d, total %d\n", cnt, total+cnt);
+          for (i=0, j=total; i < cnt; i++, j++) {
+            if (e[i].id != j+1 && e[i].check != j+1) {
+              printf("  -- %d: Error, got <%d, %d> expected <%d, %d>\n", rb->procid, e[i].id, e[i].check, i, i);
+              ++errors;
             }
-            total += cnt;
-            sdc_shrb_release(rb);
-            shmem_barrier_all();
+            // else
+              // printf("(%d) got <%d, %d>, expected <%d, %d>, j: %d\n", rb->procid, e[i].id, e[i].check, i, i, j);
           }
+          total += cnt;
+          sdc_shrb_release(rb);
+          shmem_barrier_all();
+        }
 
-          sdc_shrb_free(e);
+        free(e);
 
-          if (total < NUM) {
-            printf("  -- %d: Error, got %d elements, expected %d\n", rb->procid, total, NUM);
-            ++errors;
-          }
+        if (total < NUM) {
+          printf("  -- %d: Error, got %d elements, expected %d\n", rb->procid, total, NUM);
+          ++errors;
+        }
 
-					shmem_barrier_all()
-#endif					
+        shmem_barrier_all();
   }
 
   shmem_barrier_all();

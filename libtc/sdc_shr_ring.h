@@ -70,7 +70,7 @@ int         sdc_shrb_empty(sdc_shrb_t *rb);
 
 void        sdc_shrb_print(sdc_shrb_t *rb);
 
-#define sdc_shrb_elem_addr(MYRB, PROC, IDX) ((MYRB)->rbs[PROC]->q + (IDX)*(MYRB)->elem_size)
+#define sdc_shrb_elem_addr(MYRB, PROC, IDX) ((MYRB)->q + (IDX)*(MYRB)->elem_size)
 #define sdc_shrb_buff_elem_addr(RB, E, IDX) ((u_int8_t*)(E) + (IDX)*(RB)->elem_size)
 
 // ARMCI allocated buffers should be faster/pinned

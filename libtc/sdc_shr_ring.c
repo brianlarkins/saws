@@ -425,7 +425,6 @@ static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, vo
   // Attempt to get the lock
   if (trylock) {
     if (!sdc_shrb_trylock(&myrb->lock, proc)) {
-      // sdc_shrb_free(trb);
       return -1;
     }
   } else {
@@ -459,22 +458,10 @@ static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, vo
     int  xfer_size;
     int *loc_addr, *rem_addr;
     
-    // metadata = (int*) malloc(2*sizeof(int));
-    // assert(metadata != NULL);
-
     new_tail    = ((&trb)->tail + n) % (&trb)->max_size;
     // metadata[0] = new_tail; // itail field
     // metadata[1] = new_tail; // tail field in rb struct
 
-#ifdef SDC_NODC
-    // Don't do a deferred copy, update all the metadata now
-    // loc_addr    = &metadata[0];
-    // rem_addr    = &myrb->itail;
-    // xfer_size   = 2*sizeof(int);
-    // ARMCI_NbPut(loc_addr, rem_addr, xfer_size, proc, &md_hdl);
-    // shmem_put_nbi(rem_addr, loc_addr, xfer_size, proc);
-#else
-    // loc_addr    = &metadata[1];
     loc_addr    = &new_tail;
     rem_addr    = &myrb->tail;
     xfer_size   = 1*sizeof(int);
@@ -482,35 +469,30 @@ static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, vo
     shmem_putmem(rem_addr, loc_addr, xfer_size, proc);
 
     sdc_shrb_unlock(&myrb->lock, proc); // Deferred copy unlocks early
-#endif
-
+    
     // Transfer work into the local buffer
     if ((&trb)->tail + (n-1) < (&trb)->max_size) {    // No need to wrap around
-      // ARMCI_NbGet(sdc_shrb_elem_addr(myrb, proc, &(&trb)->tail), e, n*&trb->elem_size, proc, &task_hdl_1);
+   
       shmem_getmem_nbi(e, sdc_shrb_elem_addr(myrb, proc, (&trb)->tail), n * (&trb)->elem_size, proc);    // Store n elems, starting at remote tail, in e
-      // ARMCI_Wait(&task_hdl_1);
       shmem_quiet();
-
+    
     } else {    // Need to wrap around
       int part_size  = (&trb)->max_size - (&trb)->tail;
-
-      // ARMCI_NbGet(sdc_shrb_elem_addr(myrb, proc, &(&trb)->tail), sdc_shrb_buff_elem_addr(&trb, e, 0), part_size*&trb->elem_size, proc, &task_hdl_1);
+     
       shmem_getmem_nbi(sdc_shrb_buff_elem_addr(&trb, e, 0), sdc_shrb_elem_addr(myrb, proc, (&trb)->tail), part_size * (&trb)->elem_size, proc);
-      // ARMCI_NbGet(sdc_shrb_elem_addr(myrb, proc, 0), sdc_shrb_buff_elem_addr(&(&trb), e, part_size), (n-part_size)*&trb->elem_size, proc, &task_hdl_2);
+      
       shmem_getmem_nbi(sdc_shrb_buff_elem_addr(&trb, e, part_size), sdc_shrb_elem_addr(myrb, proc, 0), (n - part_size) * (&trb)->elem_size, proc);
 
-      // ARMCI_Wait(&task_hdl_1);
       shmem_quiet();
-      // ARMCI_Wait(&task_hdl_2);
+
+      shmem_quiet();
     }
 
-// #ifndef SDC_NODC
-#if 0
+#ifndef SDC_NODC
     // Accumulate itail_inc onto the victim's intermediate tail
     {
-      int itail_inc, err;
-      int scale = 1;
-      int stride= 0;
+      int itail_inc;
+      long int stride = 1;
       int count = sizeof(int);
 
       // How much should we add to the itail?  If we caused a wraparound, we need to also wrap itail.
@@ -518,31 +500,30 @@ static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, vo
         itail_inc = n;
       else
         itail_inc = n - (&trb)->max_size;
-
+      // printf("n: %d, itail_inc: %d, max_size: %d\n", n, itail_inc, (&trb)->max_size);
       // err = ARMCI_AccS(ARMCI_ACC_INT, &scale, /* src */ &itail_inc, &stride, 
       //                 /* dst */ &myrb->rbs[proc]->itail, &stride, &count, 0, proc);
+      // shmem_iput(&(myrb->itail), &itail_inc, stride, stride, count, proc);
 
       int oldval;
-      //err = ARMCI_Rmw(ARMCI_FETCH_AND_ADD, &oldval, &myrb->rbs[proc]->itail, itail_inc, proc);
-
-      //int newval = (&trb)->itail + itail_inc;
-      //err = ARMCI_Put(&newval, &myrb->rbs[proc]->itail, sizeof(int), proc);
-      assert(err == 0);
+      // err = ARMCI_Rmw(ARMCI_FETCH_AND_ADD, &oldval, &myrb->rbs[proc]->itail, itail_inc, proc);
+      oldval = shmem_atomic_fetch_add(&(myrb->itail), itail_inc, proc);
+      
+      // int newval = (&trb)->itail + itail_inc;
+      // err = ARMCI_Put(&newval, &myrb->rbs[proc]->itail, sizeof(int), proc);
+      // shmem_putmem(&(myrb->itail), &newval, sizeof(int), proc);
+      shmem_quiet();
     }
-#endif
-    // ARMCI_Wait(&md_hdl);
-    shmem_quiet(); 
+#else
+    shmem_quiet();    
     sdc_shrb_unlock(&myrb->lock, proc);
-// #endif
-    // sdc_shrb_free(metadata);
+#endif
 
     } else /* (n <= 0) */ {
        sdc_shrb_unlock(&myrb->lock, proc);
-      }
+    }
   
-  // sdc_shrb_free(trb);
-
-  return n;
+    return n;
 }
 
 int sdc_shrb_pop_n_tail(sdc_shrb_t *myrb, int proc, int n, void *e, int steal_vol) {
