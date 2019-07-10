@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <tc.h>
+#include <termination.h>
 
 int main(int argc, char **argv) {
   int i;
@@ -13,18 +14,20 @@ int main(int argc, char **argv) {
     printf("Termination detection tree test starting with %d threads\n", _c->size);
 
   fflush(stdout);
-  gtc_barrier();
+  shmem_barrier_all();
 
   for (i = 0; !td_attempt_vote(td); i++) {
     if (rand() > ((i/100 < 32) ? 2>>(i/100) : RAND_MAX))
-        td->token.state = ACTIVE;
+        td->my_token.state = ACTIVE;
   }
-  gtc_barrier();
+  shmem_barrier_all();
   
   if (_c->rank == 0)
     printf("Termination: SUCCESS\n");
 
   td_destroy(td);
+
+  gtc_fini();
   
   return 0;
 }

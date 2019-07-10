@@ -8,17 +8,19 @@ CFLAGS=$(GCFLAGS) -I. -I../include
 
 RANLIB = /usr/bin/ranlib
 
-HDRS =  mutex.h       \
-				sdc_shr_ring.h\
-				tc.h          \
+HDRS =  mutex.h        			 \
+				sdc_shr_ring.h 			 \
+				tc.h           			 \
+				termination.h  			 \
 				# line eater
 
 
-OBJS = init.o               \
-       mutex.o              \
-			 sdc_shr_ring.o       \
-			 util.o               \
-			 # line eater
+OBJS =  init.o               \
+        mutex.o              \
+			  sdc_shr_ring.o       \
+			  util.o               \
+			 	termination.o
+			 	# line eater
 
 .PHONY: all
 all: libtc.a
