@@ -11,7 +11,7 @@
 // #include "tc-internals.h"
 
 
-/** 
+/**
  * Split Deferred-Copy Shared Ring Buffer Semantics:
  * ================================================
  *
@@ -77,7 +77,7 @@ sdc_shrb_t *sdc_shrb_create(int elem_size, int max_size) {
   rb = rbs[procid];
 
   rb->procid  = procid;
-  rb->nproc  = nproc; 
+  rb->nproc  = nproc;
   rb->elem_size = elem_size;
   rb->max_size  = max_size;
   rb->rbs       = rbs;
@@ -184,7 +184,8 @@ int sdc_shrb_public_size(sdc_shrb_t *rb) {
 }
 
 
-int sdc_shrb_size(sdc_shrb_t *rb) {
+int sdc_shrb_size(void *b) {
+  sdc_shrb_t *rb = (sdc_shrb_t *)b;
   return sdc_shrb_local_size(rb) + sdc_shrb_shared_size(rb);
 }
 
@@ -192,18 +193,18 @@ int sdc_shrb_size(sdc_shrb_t *rb) {
 /*==================== SYNCHRONIZATION ====================*/
 
 
-void sdc_shrb_lock(synch_mutex_t *lock, int proc) {
-  synch_mutex_lock(lock, proc);
+void sdc_shrb_lock(sdc_shrb_t *rb, int proc) {
+  synch_mutex_lock(&rb->lock, proc);
 }
 
 
-int sdc_shrb_trylock(synch_mutex_t *lock, int proc) {
-  return synch_mutex_trylock(lock, proc);
+int sdc_shrb_trylock(sdc_shrb_t *rb, int proc) {
+  return synch_mutex_trylock(&rb->lock, proc);
 }
 
 
-void sdc_shrb_unlock(synch_mutex_t *lock, int proc) {
-  synch_mutex_unlock(lock, proc);
+void sdc_shrb_unlock(sdc_shrb_t *rb, int proc) {
+  synch_mutex_unlock(&rb->lock, proc);
 }
 
 
@@ -215,7 +216,7 @@ int sdc_shrb_reclaim_space(sdc_shrb_t *rb) {
   int vtail = rb->vtail;
   int itail = rb->itail; // Capture these values since we are doing this
   int tail  = rb->tail;  // without a lock
-  
+
   if (vtail != tail && itail == tail) {
     rb->vtail = tail;
     if (tail > vtail)
@@ -229,13 +230,14 @@ int sdc_shrb_reclaim_space(sdc_shrb_t *rb) {
 
   return reclaimed;
 }
-  
+
+
 
 void sdc_shrb_ensure_space(sdc_shrb_t *rb, int n) {
   // Ensure that there is enough free space in the queue.  If there isn't
   // wait until others finish their deferred copies so we can reclaim space.
   if (rb->max_size - (sdc_shrb_local_size(rb) + sdc_shrb_public_size(rb)) < n) {
-    sdc_shrb_lock(&rb->lock, rb->procid);
+    sdc_shrb_lock(rb, rb->procid);
     {
       if (rb->max_size - sdc_shrb_size(rb) < n) {
         // Error: amount of reclaimable space is less than what we need.
@@ -249,11 +251,11 @@ void sdc_shrb_ensure_space(sdc_shrb_t *rb, int n) {
       rb->waiting = 0;
       rb->nwaited++;
     }
-    sdc_shrb_unlock(&rb->lock, rb->procid);
+    sdc_shrb_unlock(rb, rb->procid);
   }
 }
 
-      
+
 void sdc_shrb_release(sdc_shrb_t *rb) {
   // Favor placing work in the shared portion -- if there is only one task
   // available this scheme will put it in the shared portion.
@@ -279,7 +281,7 @@ int sdc_shrb_reacquire(sdc_shrb_t *rb) {
 
   // Favor placing work in the local portion -- if there is only one task
   // available this scheme will put it in the local portion.
-  sdc_shrb_lock(&rb->lock, rb->procid);
+  sdc_shrb_lock(rb, rb->procid);
   {
     if (sdc_shrb_shared_size(rb) > sdc_shrb_local_size(rb)) {
       int diff    = sdc_shrb_shared_size(rb) - sdc_shrb_local_size(rb);
@@ -294,7 +296,7 @@ int sdc_shrb_reacquire(sdc_shrb_t *rb) {
     // Assertion: sdc_shrb_local_isempty(rb) => sdc_shrb_isempty(rb)
     assert(!sdc_shrb_local_isempty(rb) || (sdc_shrb_isempty(rb) && sdc_shrb_local_isempty(rb)));
   }
-  sdc_shrb_unlock(&rb->lock, rb->procid);
+  sdc_shrb_unlock(rb, rb->procid);
 
   return amount;
 }
@@ -312,7 +314,7 @@ static inline void sdc_shrb_push_n_head_impl(sdc_shrb_t *rb, int proc, void *e, 
 
   // Make sure there is enough space for n elements
   sdc_shrb_ensure_space(rb, n);
-  
+
   // Proceed with the push
   old_head    = sdc_shrb_head(rb);
   rb->nlocal += n;
@@ -340,7 +342,7 @@ void sdc_shrb_push_head(sdc_shrb_t *rb, int proc, void *e, int size) {
 
   // Make sure there is enough space for n elements
   sdc_shrb_ensure_space(rb, 1);
-  
+
   // Proceed with the push
   old_head    = sdc_shrb_head(rb);
   rb->nlocal += 1;
@@ -350,7 +352,8 @@ void sdc_shrb_push_head(sdc_shrb_t *rb, int proc, void *e, int size) {
   // printf("(%d) pushed head\n", rb->procid);
 }
 
-void sdc_shrb_push_n_head(sdc_shrb_t *rb, int proc, void *e, int n) {
+void sdc_shrb_push_n_head(void *b, int proc, void *e, int n) {
+  sdc_shrb_t *rb = (sdc_shrb_t *)b;
   sdc_shrb_push_n_head_impl(rb, proc, e, n, rb->elem_size);
 }
 
@@ -358,16 +361,17 @@ void sdc_shrb_push_n_head(sdc_shrb_t *rb, int proc, void *e, int n) {
 void *sdc_shrb_alloc_head(sdc_shrb_t *rb) {
   // Make sure there is enough space for 1 element
   sdc_shrb_ensure_space(rb, 1);
-  
+
   rb->nlocal += 1;
-  
+
   return sdc_shrb_elem_addr(rb, rb->procid, sdc_shrb_head(rb));
 }
 
 /*==================== POP OPERATIONS ====================*/
 
 
-int sdc_shrb_pop_head(sdc_shrb_t *rb, int proc, void *buf) {
+int sdc_shrb_pop_head(void *b, int proc, void *buf) {
+  sdc_shrb_t *rb = (sdc_shrb_t *)b;
   int   old_head;
   int   buf_valid = 0;
 
@@ -388,7 +392,7 @@ int sdc_shrb_pop_head(sdc_shrb_t *rb, int proc, void *buf) {
 
   // Assertion: !buf_valid => sdc_shrb_isempty(rb)
   assert(buf_valid || (!buf_valid && sdc_shrb_isempty(rb)));
-  
+
   // printf("(%d) popped head\n", rb->procid);
 
   return buf_valid;
@@ -421,14 +425,14 @@ static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, vo
   sdc_shrb_t trb;
 
   // assert(trb != NULL);
-  
+
   // Attempt to get the lock
   if (trylock) {
-    if (!sdc_shrb_trylock(&myrb->lock, proc)) {
+    if (!sdc_shrb_trylock(myrb, proc)) {
       return -1;
     }
   } else {
-     sdc_shrb_lock(&myrb->lock, proc);
+     sdc_shrb_lock(myrb, proc);
   }
 
   // Copy the remote RB's metadata
@@ -457,7 +461,7 @@ static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, vo
     // int  metadata;
     int  xfer_size;
     int *loc_addr, *rem_addr;
-    
+
     new_tail    = ((&trb)->tail + n) % (&trb)->max_size;
     // metadata[0] = new_tail; // itail field
     // metadata[1] = new_tail; // tail field in rb struct
@@ -468,19 +472,19 @@ static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, vo
     // ARMCI_Put(loc_addr, rem_addr, xfer_size, proc);
     shmem_putmem(rem_addr, loc_addr, xfer_size, proc);
 
-    sdc_shrb_unlock(&myrb->lock, proc); // Deferred copy unlocks early
-    
+    sdc_shrb_unlock(myrb, proc); // Deferred copy unlocks early
+
     // Transfer work into the local buffer
     if ((&trb)->tail + (n-1) < (&trb)->max_size) {    // No need to wrap around
-   
+
       shmem_getmem_nbi(e, sdc_shrb_elem_addr(myrb, proc, (&trb)->tail), n * (&trb)->elem_size, proc);    // Store n elems, starting at remote tail, in e
       shmem_quiet();
-    
+
     } else {    // Need to wrap around
       int part_size  = (&trb)->max_size - (&trb)->tail;
-     
+
       shmem_getmem_nbi(sdc_shrb_buff_elem_addr(&trb, e, 0), sdc_shrb_elem_addr(myrb, proc, (&trb)->tail), part_size * (&trb)->elem_size, proc);
-      
+
       shmem_getmem_nbi(sdc_shrb_buff_elem_addr(&trb, e, part_size), sdc_shrb_elem_addr(myrb, proc, 0), (n - part_size) * (&trb)->elem_size, proc);
 
       shmem_quiet();
@@ -492,8 +496,8 @@ static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, vo
     // Accumulate itail_inc onto the victim's intermediate tail
     {
       int itail_inc;
-      long int stride = 1;
-      int count = sizeof(int);
+      //long int stride = 1;
+      //int count = sizeof(int);
 
       // How much should we add to the itail?  If we caused a wraparound, we need to also wrap itail.
       if (new_tail > (&trb)->tail)
@@ -501,37 +505,37 @@ static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, vo
       else
         itail_inc = n - (&trb)->max_size;
       // printf("n: %d, itail_inc: %d, max_size: %d\n", n, itail_inc, (&trb)->max_size);
-      // err = ARMCI_AccS(ARMCI_ACC_INT, &scale, /* src */ &itail_inc, &stride, 
+      // err = ARMCI_AccS(ARMCI_ACC_INT, &scale, /* src */ &itail_inc, &stride,
       //                 /* dst */ &myrb->rbs[proc]->itail, &stride, &count, 0, proc);
       // shmem_iput(&(myrb->itail), &itail_inc, stride, stride, count, proc);
 
-      int oldval;
-      // err = ARMCI_Rmw(ARMCI_FETCH_AND_ADD, &oldval, &myrb->rbs[proc]->itail, itail_inc, proc);
-      oldval = shmem_atomic_fetch_add(&(myrb->itail), itail_inc, proc);
       
+      // err = ARMCI_Rmw(ARMCI_FETCH_AND_ADD, &oldval, &myrb->rbs[proc]->itail, itail_inc, proc);
+      shmem_atomic_fetch_add(&(myrb->itail), itail_inc, proc);
+
       // int newval = (&trb)->itail + itail_inc;
       // err = ARMCI_Put(&newval, &myrb->rbs[proc]->itail, sizeof(int), proc);
       // shmem_putmem(&(myrb->itail), &newval, sizeof(int), proc);
       shmem_quiet();
     }
 #else
-    shmem_quiet();    
-    sdc_shrb_unlock(&myrb->lock, proc);
+    shmem_quiet();
+    sdc_shrb_unlock(myrb, proc);
 #endif
 
     } else /* (n <= 0) */ {
-       sdc_shrb_unlock(&myrb->lock, proc);
+       sdc_shrb_unlock(myrb, proc);
     }
-  
+
     return n;
 }
 
-int sdc_shrb_pop_n_tail(sdc_shrb_t *myrb, int proc, int n, void *e, int steal_vol) {
+int sdc_shrb_pop_n_tail(void *b, int proc, int n, void *e, int steal_vol) {
+  sdc_shrb_t *myrb = (sdc_shrb_t *)b;
   return sdc_shrb_pop_n_tail_impl(myrb, proc, n, e, steal_vol, 0);
 }
-  
-int sdc_shrb_try_pop_n_tail(sdc_shrb_t *myrb, int proc, int n, void *e, int steal_vol) {
+
+int sdc_shrb_try_pop_n_tail(void *b, int proc, int n, void *e, int steal_vol) {
+  sdc_shrb_t *myrb = (sdc_shrb_t *)b;
   return sdc_shrb_pop_n_tail_impl(myrb, proc, n, e, steal_vol, 1);
 }
-
-

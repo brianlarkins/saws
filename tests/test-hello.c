@@ -66,7 +66,7 @@ int main(int argc, char **argv)
   printf("starting run\n"); fflush(stdout);
 
   gtc = gtc_create(sizeof(mytask_t), 3, NUM_TASKS, NULL, GtcQueueSDC);
-  gtc_barrier();
+  shmem_barrier_all();
 
   printf("created\n"); fflush(stdout);
   mythread = gtc_mythread();
@@ -76,9 +76,9 @@ int main(int argc, char **argv)
     if (mythread == i) {
       printf("hello from %d\n", i);
     }
-    gtc_barrier();
+    shmem_barrier_all();
   }
-  gtc_barrier();
+  shmem_barrier_all();
 
   task_class = gtc_task_class_register(sizeof(mytask_t), task_fcn);
 

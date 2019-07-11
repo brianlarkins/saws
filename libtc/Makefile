@@ -15,11 +15,16 @@ HDRS =  mutex.h        			 \
 				# line eater
 
 
-OBJS =  init.o               \
+OBJS =  collection-sdc.o     \
+				common.o             \
+        handle.o             \
+        init.o               \
         mutex.o              \
+				reduce.o             \
 			  sdc_shr_ring.o       \
+				task.o               \
+			 	termination.o        \
 			  util.o               \
-			 	termination.o
 			 	# line eater
 
 .PHONY: all

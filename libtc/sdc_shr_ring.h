@@ -21,11 +21,18 @@ struct sdc_shrb_s {
   int             nproc;
   int             max_size;  // Max size in number of elements
   int             elem_size; // Size of an element in bytes
- 
-  unsigned long   nwaited;   // How many times did I have to wait
-  unsigned long   nreclaimed;// How many times did I reclaim space from the public portion of the queue
-  unsigned long   nrelease;  // Number of times work was released from local->public
-  unsigned long   nreacquire;// Number of times work was reacquired from public->local
+
+  tc_counter_t    nwaited;   // How many times did I have to wait
+  tc_counter_t    nreclaimed;// How many times did I reclaim space from the public portion of the queue
+  tc_counter_t    nreccalls; // How many times did I even try to reclaim
+  tc_counter_t    nrelease;  // Number of times work was released from local->public
+  tc_counter_t    nprogress; // Number of otimes we called the progress routine
+  tc_counter_t    nreacquire;// Number of times work was reacquired from public->local
+  tc_counter_t    ngets;     // Number of times we attempted a steal
+  tc_counter_t    nensure;   // Number of times we call reclaim space
+  tc_counter_t    nxfer;     // xferred bytes
+  tc_counter_t    nsteals;   // number of successful steals
+  tc_counter_t    nmeta;     // number of successful steals
 
   struct sdc_shrb_s **rbs;   // (private) array of base addrs for all rbs
   u_int8_t        q[0];      // (shared)  ring buffer data.  This will be allocated
@@ -39,8 +46,8 @@ sdc_shrb_t *sdc_shrb_create(int elem_size, int max_size);
 void        sdc_shrb_destroy(sdc_shrb_t *rb);
 void        sdc_shrb_reset(sdc_shrb_t *rb);
 
-void        sdc_shrb_lock(synch_mutex_t *lock, int proc);
-void        sdc_shrb_unlock(synch_mutex_t *lock, int proc);
+void        sdc_shrb_lock(sdc_shrb_t *rb, int proc);
+void        sdc_shrb_unlock(sdc_shrb_t *rb, int proc);
 
 int         sdc_shrb_head(sdc_shrb_t *rb);
 int         sdc_shrb_local_isempty(sdc_shrb_t *rb);
@@ -56,15 +63,15 @@ int         sdc_shrb_reacquire(sdc_shrb_t *rb);
 int         sdc_shrb_reclaim_space(sdc_shrb_t *rb);
 
 void        sdc_shrb_push_head(sdc_shrb_t *rb, int proc, void *e, int size);
-void        sdc_shrb_push_n_head(sdc_shrb_t *rb, int proc, void *e, int n);
+void        sdc_shrb_push_n_head(void *b, int proc, void *e, int n);
 void       *sdc_shrb_alloc_head(sdc_shrb_t *rb);
 
-int         sdc_shrb_pop_head(sdc_shrb_t *rb, int proc, void *buf);
+int         sdc_shrb_pop_head(void *b, int proc, void *buf);
 int         sdc_shrb_pop_tail(sdc_shrb_t *rb, int proc, void *buf);
-int         sdc_shrb_pop_n_tail(sdc_shrb_t *rb, int proc, int n, void *buf, int steal_vol);
-int         sdc_shrb_try_pop_n_tail(sdc_shrb_t *rb, int proc, int n, void *buf, int steal_vol);
+int         sdc_shrb_pop_n_tail(void *b, int proc, int n, void *buf, int steal_vol);
+int         sdc_shrb_try_pop_n_tail(void *b, int proc, int n, void *buf, int steal_vol);
 
-int         sdc_shrb_size(sdc_shrb_t *rb);
+int         sdc_shrb_size(void *b);
 int         sdc_shrb_full(sdc_shrb_t *rb);
 int         sdc_shrb_empty(sdc_shrb_t *rb);
 
