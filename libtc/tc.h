@@ -39,6 +39,9 @@ extern "C" {
 // compiler intrinsics for TSC timing, should be okay on clang, gcc, and icc
 #include <x86intrin.h>
 
+#include "mutex.h"
+#include "termination.h"
+
 #define GTC_MAX_TC              10
 #define GTC_MAX_TASK_CLASSES    10
 #define GTC_MAX_COUNTERS        10
@@ -86,6 +89,8 @@ extern "C" {
 #ifndef offsetof
 #define offsetof(type, member)  __builtin_offsetof (type, member)
 #endif // offsetof
+
+#define __GTC_MAX_STEAL_SIZE                 500000  // max # of tasks to steal when doing work sp
 
 // forward refs
 struct task_s;
@@ -247,7 +252,7 @@ struct tc_s {
 
   gtc_ldbal_cfg_t     ldbal_cfg;                  // load balancer configuration
 
-  //td_t               *td;                         // termination detection data
+  td_t               *td;                         // termination detection data
 
   struct sdc_shrb_s  *shared_rb;                  // split, deferred copy task queue
   struct shrb_s      *inbox;                      // task inbox
@@ -304,6 +309,23 @@ enum gtc_status_e {
   GtcStatusError
 };
 typedef enum gtc_status_e gtc_status_t;
+
+enum gtc_datatype_e {
+  IntType,
+  LongType,
+  UnsignedLongType,
+  DoubleType,
+  CharType,
+  BoolType
+};
+typedef enum gtc_datatype_e gtc_datatype_t;
+
+enum gtc_reduceop_e {
+  GtcReduceOpSum,
+  GtcReduceOpMin,
+  GtcReduceOpMax
+};
+typedef enum gtc_reduceop_e gtc_reduceop_t;
 
 // Global variables
 extern gtc_context_t *_c;
@@ -374,6 +396,9 @@ task_class_desc_t *gtc_task_class_lookup(task_class_t tclass);
 #define            gtc_task_body_size(TSK) gtc_task_class_lookup((TSK)->task_class)->body_size
 void               gtc_task_execute(gtc_t gtc, task_t *task);
 #define            gtc_task_body(TSK) (&((TSK)->body))
+
+// reduce.c
+gtc_status_t       gtc_reduce(void *in, void *out, gtc_reduceop_t op, gtc_datatype_t type, int elems);
 
 //util.c
 static struct timespec gtc_get_wtime(void);
@@ -511,9 +536,9 @@ static inline uint64_t gtc_get_tsctime() {
                                       TMR.temp = gtc_get_tsctime();\
                                       TMR.total += TMR.temp - TMR.last;\
                                 } while (0)
-#define TC_INIT_TSCTIMER(TMR)   TC_INIT_ATSCTIMER(tsctimers->TMR)
-#define TC_START_TSCTIMER(TMR)  TC_START_ATSCTIMER(tsctimers->TMR)
-#define TC_STOP_TSCTIMER(TMR)   TC_STOP_ATSCTIMER(tsctimers->TMR)
+#define TC_INIT_TSCTIMER(TC,TMR)   TC_INIT_ATSCTIMER(TC->tsctimers->TMR)
+#define TC_START_TSCTIMER(TC,TMR)  TC_START_ATSCTIMER(TC->tsctimers->TMR)
+#define TC_STOP_TSCTIMER(TC,TMR)   TC_STOP_ATSCTIMER(TC->tsctimers->TMR)
 
 #define TC_READ_ATSCTIMER(TMR)        TMR.total
 #define TC_READ_ATSCTIMER_M(TMR)     (TMR.total/1000000)
@@ -522,12 +547,12 @@ static inline uint64_t gtc_get_tsctime() {
 #define TC_READ_ATSCTIMER_MSEC(TMR)  (double)(TC_READ_ATSCTIMER(TMR)/(TC_CPU_HZ)) * (double)1000.0
 #define TC_READ_ATSCTIMER_SEC(TMR)   (double)TC_READ_ATSCTIMER(TMR)/(TC_CPU_HZ)
 
-#define TC_READ_TSCTIMER(TMR)        TC_READ_ATSCTIMER(tsctimers->TMR)
-#define TC_READ_TSCTIMER_M(TMR)      TC_READ_ATSCTIMER_M(tsctimers->TMR)
-#define TC_READ_TSCTIMER_NSEC(TMR)   TC_READ_ATSCTIMER_NSEC(tsctimers->TMR)
-#define TC_READ_TSCTIMER_USEC(TMR)   TC_READ_ATSCTIMER_USEC(tsctimers->TMR)
-#define TC_READ_TSCTIMER_MSEC(TMR)   TC_READ_ATSCTIMER_MSEC(tsctimers->TMR)
-#define TC_READ_TSCTIMER_SEC(TMR)    TC_READ_ATSCTIMER_SEC(tsctimers->TMR)
+#define TC_READ_TSCTIMER(TC,TMR)        TC_READ_ATSCTIMER(TC->tsctimers->TMR)
+#define TC_READ_TSCTIMER_M(TC,TMR)      TC_READ_ATSCTIMER_M(TC->tsctimers->TMR)
+#define TC_READ_TSCTIMER_NSEC(TC,TMR)   TC_READ_ATSCTIMER_NSEC(TC->tsctimers->TMR)
+#define TC_READ_TSCTIMER_USEC(TC,TMR)   TC_READ_ATSCTIMER_USEC(TC->tsctimers->TMR)
+#define TC_READ_TSCTIMER_MSEC(TC,TMR)   TC_READ_ATSCTIMER_MSEC(TC->tsctimers->TMR)
+#define TC_READ_TSCTIMER_SEC(TC,TMR)    TC_READ_ATSCTIMER_SEC(TC->tsctimers->TMR)
 
 #ifdef __cplusplus
 }
