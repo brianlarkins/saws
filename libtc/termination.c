@@ -49,6 +49,7 @@ int td_get_counter2(td_t *td) {
 
 static void token_reset(td_token_t *t) {
   t->state    = ACTIVE;
+  t->valid    = 0;
   t->counter1 = 0;
   t->counter2 = 0;
 }
@@ -84,32 +85,44 @@ static int have_children(td_t *td) {
 
 static void pass_token_up(td_t *td, td_token_t *token) {
   if (td->procid > 0) {
+
+    td->temp_token = *token;
+    td->temp_token.valid = 1;
+
     if (get_parent_id(td) * 2 + 1 == td->procid) { // Left child
-      shmem_putmem(&td->left_child_token, token, sizeof(td_token_t), get_parent_id(td));
+      printf("(%d) left child passing up\n", td->procid);
+      shmem_putmem(&td->left_child_token, &td->temp_token, sizeof(td_token_t), get_parent_id(td));
     }
     else {                                     // Right child
-      shmem_putmem(&td->right_child_token, token, sizeof(td_token_t), get_parent_id(td));
+      printf("(%d) right child passing up\n", td->procid);
+      shmem_putmem(&td->right_child_token, &td->temp_token, sizeof(td_token_t), get_parent_id(td));
     }
   }
 }
 
 static void pass_token_down(td_t *td, td_token_t *token) {
+  printf("(%d) passing token down\n", td->procid);
+
+  td->temp_token = *token;
+  td->temp_token.valid = 1;
+
 #ifdef TD_NONBLOCKING
- 
+
   // It should be faster to send both messages concurrently:
   if (get_left_child_id(td) >= 0)
-    shmem_putmem_nbi(&td->parent_token, token, sizeof(td_token_t), get_left_child_id(td));
+    shmem_putmem_nbi(&td->parent_token, &td->temp_token, sizeof(td_token_t), get_left_child_id(td));
 
   if (get_right_child_id(td) >= 0)
-    shmem_putmem_nbi(&td->parent_token, token, sizeof(td_token_t), get_right_child_id(td));
+    shmem_putmem_nbi(&td->parent_token, &td->temp_token, sizeof(td_token_t), get_right_child_id(td));
 
   shmem_quiet();
+
 #else
   if (get_left_child_id(td) >= 0)
-    shmem_putmem(&td->parent_token, token, sizeof(td_token_t), get_left_child_id(td));
+    shmem_putmem(&td->parent_token, &td->temp_token, sizeof(td_token_t), get_left_child_id(td));
 
   if (get_right_child_id(td) >= 0)
-    shmem_putmem(&td->parent_token, token, sizeof(td_token_t), get_right_child_id(td));
+    shmem_putmem(&td->parent_token, &td->temp_token, sizeof(td_token_t), get_right_child_id(td));
 
 #endif /* TD_NONBLOCKING */
 }
@@ -122,25 +135,22 @@ static void pass_token_down(td_t *td, td_token_t *token) {
   * @param[in] td Termination detection context.
   */
 void td_reset(td_t *td) {
-  // MPI_Barrier(td->comm);
   shmem_barrier_all();
   
   token_reset(&td->my_token);
   token_reset(&td->left_child_token);
   token_reset(&td->right_child_token);
   token_reset(&td->parent_token);
+  token_reset(&td->temp_token);
 
   td->num_cycles = 0;
   td->token_direction = UP;
   td->have_voted = 0;
 
-  // cancel_parent_listener(td);                      // Call to function that needs to be fixed
-  // cancel_child_listeners(td);
-
   // Initially, give phantom "tokens" to all the leaf nodes
   if (!have_children(td)) {
-    // td->parent_req = MPI_REQUEST_NULL;
     td->token_direction = DOWN;
+    td->parent_token.valid = 1;
   } 
 
   td->last_counter1 = 0;
@@ -204,10 +214,10 @@ int td_attempt_vote(td_t *td) {
   else if (td->token_direction == DOWN) {
     int        flag = 1;
  
-    // MPI_Test(&td->parent_req, &flag, &status);
-    // shmem_test(&flag, );                               // Fix - shmem_test()
+    flag = shmem_test(&td->parent_token.valid, SHMEM_CMP_NE, 0);                    // Evaluates to 1 if true  
+    // printf("(%d) down flag: %d\n", td->procid, flag);
 
-    if (flag == 1) {
+    if (flag == 1) {    // If parent has sent its token
       // CASE 1.1: Leaf Node
       if (!have_children(td)) {
         if (td->parent_token.state == TERMINATED) {
@@ -220,6 +230,8 @@ int td_attempt_vote(td_t *td) {
           td->have_voted      = 1;
         }
 
+        td->parent_token.valid = 0;
+      
       // CASE 1.2: Interior Node
       } 
       else {
@@ -227,11 +239,12 @@ int td_attempt_vote(td_t *td) {
           td->my_token.state = TERMINATED;
         }
         pass_token_down(td, &td->parent_token);
+        // shmem_getmem(&td->temp_token, &td->parent_token, sizeof(td_token_t), get_left_child_id(td));
+        // printf("(%d) valid: %d\n", td->procid, td->temp_token.valid); 
         td->have_voted      = 0;
         td->token_direction = UP;
+        td->parent_token.valid = 0;
       }
-
-      // if (td->parent_token.state != TERMINATED) listen_parent(td);
     }
    
   // Case 2: Token is moving up the tree  
@@ -243,10 +256,12 @@ int td_attempt_vote(td_t *td) {
 
     token_reset(&new_token);
   
-    // MPI_Test(&td->left_child_req, &flag_left, &status_left);         // Fix - shmem_test()
-    // MPI_Test(&td->right_child_req, &flag_right, &status_right);
-    
-    if (flag_left == 1 && flag_right == 1) {
+    flag_left = shmem_test(&td->left_child_token.valid, SHMEM_CMP_NE, 0);
+    if (get_right_child_id(td) != -1)   // If right child exists
+      flag_right = shmem_test(&td->right_child_token.valid, SHMEM_CMP_NE, 0);
+    // printf("(%d) up flag_left = %d, up flag_right = %d\n", td->procid, flag_left, flag_right);
+
+    if (flag_left == 1 && flag_right == 1) {    // If left and right child have sent tokens
       // CASE 2.1: Root Node
       if (td->procid == 0) {
         int counter1 = td->my_token.counter1 + td->left_child_token.counter1 + td->right_child_token.counter1;
@@ -262,35 +277,35 @@ int td_attempt_vote(td_t *td) {
         new_token.state    = td->my_token.state;
         new_token.counter1 = td->my_token.counter1 + td->left_child_token.counter1 + td->right_child_token.counter1;
         new_token.counter2 = td->my_token.counter2 + td->left_child_token.counter2 + td->right_child_token.counter2;
-#if 0       
-	DEBUG(DBGTD, 
-          if (new_token.state == TERMINATED)
-            printf("Termination after %d cycles, counter1=%d counter2=%d\n", td->num_cycles, new_token.counter1, new_token.counter2);
-        );
-#endif
+        new_token.valid = 0;
+ 
+        if (new_token.state == TERMINATED)
+          printf("Termination after %d cycles, counter1=%d counter2=%d\n", td->num_cycles, new_token.counter1, new_token.counter2);
+
         pass_token_down(td, &new_token);
         td->token_direction = UP;
         td->have_voted      = 0;
+        td->left_child_token.valid = 0;
+        td->right_child_token.valid = 0;
 
       // CASE 2.2: Interior Node -- merge tokens and pass the result on to my parent
       } 
       else {
         new_token.counter1 = td->my_token.counter1 + td->left_child_token.counter1 + td->right_child_token.counter1;
         new_token.counter2 = td->my_token.counter2 + td->left_child_token.counter2 + td->right_child_token.counter2;
-
+        new_token.valid = 0;
+        
         pass_token_up(td, &new_token);
         td->token_direction = DOWN;
         td->have_voted      = 1;
+        td->left_child_token.valid = 0;
+        td->right_child_token.valid = 0;
       }
 
-      /* if (td->my_token.state != TERMINATED) {
-        listen_left_child(td);
-        listen_right_child(td);
-      } */
     }
   }
 
-  // DEBUG(DBGTD, if (td->my_token.state == TERMINATED) printf("  Thread %d: Detected Termination\n", td->procid));
+  if (td->my_token.state == TERMINATED) printf("  Thread %d: Detected Termination\n", td->procid);
   
   return td->my_token.state == TERMINATED ? 1 : 0;
 }

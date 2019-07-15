@@ -420,11 +420,7 @@ int sdc_shrb_pop_tail(sdc_shrb_t *rb, int proc, void *buf) {
  */
 
 static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, void *e, int steal_vol, int trylock) {
-  // sdc_shrb_t *trb = malloc(sizeof(sdc_shrb_t));
-
   sdc_shrb_t trb;
-
-  // assert(trb != NULL);
 
   // Attempt to get the lock
   if (trylock) {

@@ -8,6 +8,7 @@ enum token_directions { UP, DOWN };
 
 typedef struct {
   int  state;
+  int  valid;
   int  counter1;
   int  counter2;
 } td_token_t;
@@ -22,6 +23,7 @@ struct td_s {
   td_token_t parent_token;
   td_token_t left_child_token;
   td_token_t right_child_token;
+  td_token_t temp_token;
 
   int last_counter1;
   int last_counter2;

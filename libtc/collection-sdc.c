@@ -220,7 +220,8 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
       victim_rb = rb_buf;
 
       TC_START_TSCTIMER(tc,poptail); // this counts as attempting to steal
-      sdc_shrb_fetch_remote_trb(tc->shared_rb, victim_rb, v);
+      // sdc_shrb_fetch_remote_trb(tc->shared_rb, victim_rb, v);
+      shmem_getmem(victim_rb, tc->shared_rb, sizeof(sdc_shrb_t), v);
       TC_STOP_TSCTIMER(tc,poptail);
 
       // Poll the victim for work.  In between polls, maintain progress on termination detection.

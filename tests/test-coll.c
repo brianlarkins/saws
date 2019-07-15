@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <malloc.h>
+#include <shmem.h>
 
 #include <tc.h>
 
@@ -27,7 +28,8 @@ int main(int argc, char **argv)
   for (int i=0; i < _c->size; i++) {
     if (i == _c->rank) 
       printf("%d ",_c->rank); fflush(stdout);
-    gtc_barrier();
+    // gtc_barrier();
+    shmem_barrier_all();
   }
   eprintf("\n"); fflush(stdout);
 
@@ -38,23 +40,26 @@ int main(int argc, char **argv)
       fails++;
   }
   eprintf("reduction tests: %s\n", (fails == 0) ? "passed" : "failed");
-  gtc_barrier();
-
+  // gtc_barrier();
+  shmem_barrier_all();
+#if 0  
   for (int i=0; i<NITER; i++) {
     x = 42;
     gtc_broadcast(&x, UnsignedLongType, 1);
     if (x != 42) fails++;
   }
-
+#endif
   gtc_reduce(&fails, &y, GtcReduceOpSum, UnsignedLongType, 1);
-  eprintf("broadcast tests: %s\n", (y == 0) ? "passed" : "failed");
-  gtc_barrier();
+  // eprintf("broadcast tests: %s\n", (y == 0) ? "passed" : "failed");
+  // gtc_barrier();
+  shmem_barrier_all();
 
   // time barriers
   TC_INIT_ATIMER(timer);
   TC_START_ATIMER(timer);
   for (int i=0; i < NITER; i++) {
-    gtc_barrier();
+    // gtc_barrier();
+    shmem_barrier_all();
   }
   TC_STOP_ATIMER(timer);
   double max, min, avg, usec;
