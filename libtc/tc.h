@@ -246,7 +246,7 @@ struct tc_s {
   size_t              qsize;                      // used for common allocations, clears
   int                 valid;                      // in use flag
   void               *steal_buf;                  // buffer for performing steals (allocation not on crit path)
-  int                 chunk_size;                 //  number of tasks we can steal at a time
+  int                 chunk_size;                 // number of tasks we can steal at a time
   int                 max_body_size;
   int                 last_victim;                // Global round robin -- remember our last victim
 

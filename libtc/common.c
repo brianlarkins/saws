@@ -28,7 +28,6 @@ static int gtc_is_seeded = 0;
  *                      inserted must be of this size.  For tasks with descriptors smaller
  *                      than task_size they should be placed in buffers of task_size in length.
  * @param chunk_size IN Number of tasks to be transferred as the result of a steal operation.
- * @param comm       IN MPI communicator
  *
  * @return           pointer to task collection handle
  */
@@ -74,6 +73,25 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
   TC_INIT_TIMER(tc,imbalance);
   for (int i=0; i<5; i++)
     TC_INIT_TIMER(tc,t[i]);
+
+/* TEST CODE */
+  tc->tsctimers = calloc(1, sizeof(tc_tsctimers_t));
+  TC_INIT_TSCTIMER(tc, getbuf);
+  TC_INIT_TSCTIMER(tc, add);
+  TC_INIT_TSCTIMER(tc, addinplace);
+  TC_INIT_TSCTIMER(tc, addfinish);
+  TC_INIT_TSCTIMER(tc, progress);
+  TC_INIT_TSCTIMER(tc, reclaim);
+  TC_INIT_TSCTIMER(tc, ensure);
+  TC_INIT_TSCTIMER(tc, release);
+  TC_INIT_TSCTIMER(tc, reacquire);
+  TC_INIT_TSCTIMER(tc, pushhead);
+  TC_INIT_TSCTIMER(tc, poptail);
+  TC_INIT_TSCTIMER(tc, getsteal);
+  TC_INIT_TSCTIMER(tc, getfail);
+  TC_INIT_TSCTIMER(tc, getmeta);
+  TC_INIT_TSCTIMER(tc, sanity);
+/* TEST CODE */
 
   if (!ldbal_cfg) {
     ldbal_cfg = alloca(sizeof(gtc_ldbal_cfg_t));
@@ -147,6 +165,8 @@ void gtc_destroy(gtc_t gtc) {
     free(tc->steal_buf);
   if (tc->timers)
     free(tc->timers);
+  if (tc->tsctimers) 
+    free(tc->tsctimers);
 
   free(tc);
 
@@ -255,15 +275,14 @@ void gtc_print_config(gtc_t gtc) {
  * @param proc     IN Process # whose task collection this task is to be added
  *                    to. Common case is tc->procid
  * @param task  INOUT Task to be added. user manages buffer when call
- *                    returns. Preferably allocated in ARMCI local allocated memory when
- *                    proc != tc->procid for improved RDMA performance.  This call fills
- *                    in task field and the contents of task will match what is in the queue
+ *                    returns. This call fills in task field and the contents 
+ *                    of task will match what is in the queue
  *                    when the call returns.
  * @return 0 on success.
  */
 int gtc_add(gtc_t gtc, task_t *task, int proc) {
   tc_t *tc = gtc_lookup(gtc);
-  return tc->cb.add(gtc,task, proc);
+  return tc->cb.add(gtc, task, proc);
 }
 
 

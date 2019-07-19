@@ -162,6 +162,7 @@ int gtc_tasks_avail_sdc(gtc_t gtc) {
  *                 has occurred.  Returned buffer should be deleted by the user.
  */
 double gtc_get_dummy_work = 0.0;
+
 int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
   tc_t   *tc = gtc_lookup(gtc);
   int     got_task = 0;
@@ -172,7 +173,7 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
   void *rb_buf;
 
   tc->getcalls++;
-  TC_START_TSCTIMER(tc,getbuf);
+  TC_START_TSCTIMER(tc, getbuf);
 
   // Invoke the progress engine
   gtc_progress(gtc);

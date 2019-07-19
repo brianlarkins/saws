@@ -90,18 +90,18 @@ static void pass_token_up(td_t *td, td_token_t *token) {
     td->temp_token.valid = 1;
 
     if (get_parent_id(td) * 2 + 1 == td->procid) { // Left child
-      printf("(%d) left child passing up\n", td->procid);
+      // printf("(%d) left child passing up\n", td->procid);
       shmem_putmem(&td->left_child_token, &td->temp_token, sizeof(td_token_t), get_parent_id(td));
     }
     else {                                     // Right child
-      printf("(%d) right child passing up\n", td->procid);
+      // printf("(%d) right child passing up\n", td->procid);
       shmem_putmem(&td->right_child_token, &td->temp_token, sizeof(td_token_t), get_parent_id(td));
     }
   }
 }
 
 static void pass_token_down(td_t *td, td_token_t *token) {
-  printf("(%d) passing token down\n", td->procid);
+  // printf("(%d) passing token down\n", td->procid);
 
   td->temp_token = *token;
   td->temp_token.valid = 1;

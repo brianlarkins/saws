@@ -3,11 +3,12 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <malloc.h>
+#include <shmem.h>
 
 #include <tc.h>
 
-#define NUM_TASKS 1000
-//#define NUM_TASKS 100
+// #define NUM_TASKS 1000
+#define NUM_TASKS 100
 
 typedef struct {
   int parent_id;
@@ -37,7 +38,7 @@ void task_fcn(gtc_t gtc, task_t *task) {
   timeout = (gtimeout > 0) ? gtimeout : rand() % 1000000;
   usleep(timeout);
   sleep_time += timeout;
-  //printf("  Task (%2d, %3d) processed by worker %d\n", t->parent_id, t->task_num, mythread);
+  printf("  Task (%2d, %3d) processed by worker %d\n", t->parent_id, t->task_num, mythread);
   __gtc_marker[4]++; // completed
 }
 
@@ -71,6 +72,9 @@ int main(int argc, char **argv)
   gtc_qtype_t qtype = GtcQueueSDC;
   int num_tasks = NUM_TASKS;
 
+  gtc_init();
+  // printf("(%d) _c->size: %d\n", _c->rank, _c->size);
+
   while ((arg = getopt(argc, argv, "BHNn:t:")) != -1) {
     switch (arg) {
       case 'B':
@@ -92,6 +96,7 @@ int main(int argc, char **argv)
   }
 
   gtc = gtc_create(sizeof(mytask_t), 10, num_tasks, NULL, qtype);
+  // gtc = gtc_create_sdc(gtc, sizeof(mytask_t), num_tasks, NULL);
 
   mythread = _c->rank;
   nthreads = _c->size;
@@ -115,11 +120,11 @@ int main(int argc, char **argv)
 
   gtc_process(gtc);
 
-  gtc_barrier();
+  shmem_barrier_all();
 
   gtc_print_stats(gtc);
 
-  gtc_barrier();
+  shmem_barrier_all();
 
   // Find the ideal execution time
   gtc_reduce(&sleep_time, &ideal_time, GtcReduceOpSum, LongType, 1);
@@ -128,6 +133,8 @@ int main(int argc, char **argv)
         ideal_time/1e6, ideal_time/1e6/nthreads);
 
   gtc_destroy(gtc);
+
+  gtc_fini();
 
   return 0;
 }
