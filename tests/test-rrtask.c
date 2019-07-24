@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <malloc.h>
+#include <shmem.h>
 
 #include <tc.h>
 
@@ -88,7 +89,7 @@ int main(int argc, char **argv)
   if (mythread == 0) printf("Round robin scheduled test starting ...\n");
 #endif
 
-  gtc_barrier();
+  shmem_barrier_all();
   gtc_process(gtc);
 
   // Check if the correct number of tasks were processed
@@ -99,7 +100,7 @@ int main(int argc, char **argv)
     printf("Total tasks processed = %d, expected = %d: %s\n", sum, NUM_TASKS,
         (sum == NUM_TASKS) ? "SUCCESS" : "FAILURE");
 
-  gtc_barrier();
+  shmem_barrier_all();
 
   gtc_print_stats(gtc);
   gtc_destroy(gtc);

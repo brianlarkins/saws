@@ -96,7 +96,6 @@ int main(int argc, char **argv)
   }
 
   gtc = gtc_create(sizeof(mytask_t), 10, num_tasks, NULL, qtype);
-  // gtc = gtc_create_sdc(gtc, sizeof(mytask_t), num_tasks, NULL);
 
   mythread = _c->rank;
   nthreads = _c->size;

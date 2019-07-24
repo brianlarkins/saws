@@ -12,6 +12,7 @@ HDRS =  mutex.h        			 \
 				sdc_shr_ring.h 			 \
 				tc.h           			 \
 				termination.h  			 \
+				clod.h							 \
 				# line eater
 
 
@@ -25,6 +26,8 @@ OBJS =  collection-sdc.o     \
 				task.o               \
 			 	termination.o        \
 			  util.o               \
+				clod.o							 \
+				tc-clod.o
 			 	# line eater
 
 .PHONY: all

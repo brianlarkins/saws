@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <malloc.h>
+#include <shmem.h>
 
 #include <tc.h>
 
@@ -109,7 +110,7 @@ int main(int argc, char **argv)
 
   gtc_print_stats(gtc);
 
-  gtc_barrier();
+  shmem_barrier_all();
 
   // Find the ideal execution time
   gtc_reduce(&sleep_time, &ideal_time, GtcReduceOpSum, LongType, 1);

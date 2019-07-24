@@ -7,7 +7,7 @@
  * begins with a single root task, this task spawns NCHILDREN tasks, each child
  * spawns NCHILDREN tasks, and so on until the MAXDEPTH is reached.  We keep
  * track of the total number of tasks that were executed in a replicated local
- * object, counter.  Upon completion we perform an MPI reduction on the counter
+ * object, counter.  Upon completion we perform a reduction on the counter
  * to check that the correct number of tasks were executed.
  *
  */
@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <shmem.h>
 
 #include <tc.h>
 
@@ -99,6 +100,8 @@ int main(int argc, char **argv) {
   gtc_qtype_t   qtype = GtcQueueSDC; // default is to use baseline queue
   int arg;
 
+  gtc_init();
+
   while ((arg  = getopt(argc, argv, "BHN")) != -1) {
     switch (arg) {
       case 'B':
@@ -146,10 +149,11 @@ int main(int argc, char **argv) {
       SLEEP_TIME*(float)sum/1e6/nthreads);
   }
 
-  gtc_barrier();
+  shmem_barrier_all();
 
   gtc_print_stats(gtc);
   gtc_destroy(gtc);
+  gtc_fini();
 
   return 0;
 }

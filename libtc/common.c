@@ -126,7 +126,7 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
 
   tc->qtype = qtype;
 
-  //tc->clod = clod_create(GTC_MAX_CLOD_CLOS);
+  tc->clod = clod_create(GTC_MAX_CLOD_CLOS);
 
   tc->td = td_create();
 
@@ -160,7 +160,7 @@ void gtc_destroy(gtc_t gtc) {
   tc->cb.destroy(gtc);
 
   td_destroy(tc->td);
-  //clod_destroy(tc->clod);
+  clod_destroy(tc->clod);
   if (tc->steal_buf)
     free(tc->steal_buf);
   if (tc->timers)

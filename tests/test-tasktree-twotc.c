@@ -70,6 +70,8 @@ int main(int argc, char **argv) {
   gtc_t gtc1;
   gtc_t gtc2;
 
+  gtc_init();
+
   gtc1 = gtc_create(sizeof(treetask_t), 10, 10000, NULL, GtcQueueSDC);
   gtc2 = gtc_create(sizeof(treetask_t), 10, 10000, NULL, GtcQueueSDC);
 
@@ -129,6 +131,7 @@ int main(int argc, char **argv) {
 
   gtc_destroy(gtc1);
   gtc_destroy(gtc2);
+  gtc_fini();
 
   return 0;
 }
