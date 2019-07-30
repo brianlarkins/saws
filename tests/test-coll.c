@@ -7,52 +7,114 @@
 
 #include <tc.h>
 
-#define NITER 10000
+#define NITER 100
 
 int main(int argc, char **argv)
 {
-  unsigned long x, y, answer, fails = 0;
+  unsigned long ulx, uly, ulanswer;
+  long lx, ly, lanswer;
+  double dx, dy, danswer;
+  int ix, iy, ianswer;
+  int fails = 0;
   tc_timer_t timer;
 
   printf("starting run\n"); fflush(stdout);
   gtc_init();
 
-  x = _c->rank;
-  y = 0;
-  answer = 0;
+  ulx = _c->rank;
+  lx = _c->rank;
+  dx = _c->rank;
+  ix = _c->rank;
+
+  uly = 0;
+  ly = 0;
+  dy = 0;
+  iy = 0;
+
+  ulanswer = 0;
+  lanswer = 0;
+  danswer = 0;
+  ianswer = 0;
 
   // correct answer
-  for (int i=0; i < _c->size; i++)
-    answer += i;
-
   for (int i=0; i < _c->size; i++) {
-    if (i == _c->rank) 
-      printf("%d ",_c->rank); fflush(stdout);
-    // gtc_barrier();
-    shmem_barrier_all();
+    ulanswer += i;
+    lanswer += i;
+    danswer += i;
+    ianswer += i;
   }
-  eprintf("\n"); fflush(stdout);
 
-  // test reductions
+  // test unsigned long reductions
   for (int i=0; i<NITER; i++) {
-    gtc_reduce(&x, &y, GtcReduceOpSum, UnsignedLongType, 1);
-    if ((_c->rank == 0) && (y != answer)) 
+    gtc_reduce(&ulx, &uly, GtcReduceOpSum, UnsignedLongType, 1);
+    if ((_c->rank == 0) && (uly != ulanswer)) 
       fails++;
   }
-  eprintf("reduction tests: %s\n", (fails == 0) ? "passed" : "failed");
-  // gtc_barrier();
+
+  eprintf("unsigned long sum reduction tests: %s\n", (fails == 0) ? "passed" : "failed");
   shmem_barrier_all();
-#if 0  
+  fails = 0;
+
+  // test long reductions
   for (int i=0; i<NITER; i++) {
-    x = 42;
-    gtc_broadcast(&x, UnsignedLongType, 1);
-    if (x != 42) fails++;
+    gtc_reduce(&lx, &ly, GtcReduceOpSum, LongType, 1);
+    if ((_c->rank == 0) && (ly != lanswer)) 
+      fails++;
   }
-#endif
-  gtc_reduce(&fails, &y, GtcReduceOpSum, UnsignedLongType, 1);
-  // eprintf("broadcast tests: %s\n", (y == 0) ? "passed" : "failed");
-  // gtc_barrier();
+
+  eprintf("long sum reduction tests: %s\n", (fails == 0) ? "passed" : "failed");
   shmem_barrier_all();
+  fails = 0;
+
+  // test double reductions
+  for (int i=0; i<NITER; i++) {
+    gtc_reduce(&dx, &dy, GtcReduceOpSum, DoubleType, 1);
+    if ((_c->rank == 0) && (dy != danswer)) 
+      fails++;
+  }
+
+  eprintf("double sum reduction tests: %s\n", (fails == 0) ? "passed" : "failed");
+  shmem_barrier_all();
+  fails = 0;
+
+  // test int reductions
+  for (int i=0; i<NITER; i++) {
+    gtc_reduce(&ix, &iy, GtcReduceOpSum, IntType, 1);
+    if ((_c->rank == 0) && (iy != ianswer)) 
+      fails++;
+  }
+
+  eprintf("integer sum reduction tests: %s\n", (fails == 0) ? "passed" : "failed");
+  shmem_barrier_all();
+  fails = 0;
+
+  // test int max
+  for (int i=0; i<NITER; i++) {
+    gtc_reduce(&ix, &iy, GtcReduceOpMax, IntType, 1);
+    if ((_c->rank == 0) && (iy != (_c->size - 1))) 
+      fails++;
+  }
+
+  eprintf("integer max reduction tests: %s\n", (fails == 0) ? "passed" : "failed");
+  shmem_barrier_all();
+  fails = 0;
+
+  // test int max
+  for (int i=0; i<NITER; i++) {
+    gtc_reduce(&ix, &iy, GtcReduceOpMin, IntType, 1);
+    printf("iy: %d\n", iy);
+    if ((_c->rank == 0) && (iy != 0)) 
+      fails++;
+  }
+
+
+  eprintf("integer min reduction tests: %s\n", (fails == 0) ? "passed" : "failed");
+  shmem_barrier_all();
+  fails = 0;
+
+  shmem_barrier_all();
+  gtc_fini();
+  return 0;
 
   // time barriers
   TC_INIT_ATIMER(timer);

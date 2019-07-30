@@ -56,6 +56,7 @@ gtc_status_t gtc_reduce(void *in, void *out, gtc_reduceop_t op, gtc_datatype_t t
           gtc_dprintf("gtc_reduce: unsupported reduction datatype\n");
           exit(1);
       }
+      break;
     case GtcReduceOpMin:
       switch(type) {
         case IntType:
@@ -74,6 +75,7 @@ gtc_status_t gtc_reduce(void *in, void *out, gtc_reduceop_t op, gtc_datatype_t t
           gtc_dprintf("gtc_reduce: unsupported reduction datatype\n");
           exit(1);
       }
+      break;
     case GtcReduceOpMax:
       switch(type) {
         case IntType:

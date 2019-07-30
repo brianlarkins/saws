@@ -101,12 +101,10 @@ int gtc_lvl_dbg_eprintf(int lvl, const char *format, ...) {
  * @param avg     reduced average value
  */
 void gtc_get_mmad(double *counter, double *tot, double *min, double *max, double *avg) {
-#if 0
   gtc_reduce(counter, max, GtcReduceOpMax, DoubleType, 1);
   gtc_reduce(counter, min, GtcReduceOpMin, DoubleType, 1);
   gtc_reduce(counter, tot, GtcReduceOpSum, DoubleType, 1);
   *avg = *tot/((double)_c->size);
-#endif 
 }
 
 
@@ -120,12 +118,10 @@ void gtc_get_mmad(double *counter, double *tot, double *min, double *max, double
  * @param avg     reduced average value
  */
 void gtc_get_mmau(tc_counter_t *counter, tc_counter_t *tot, tc_counter_t *min, tc_counter_t *max, double *avg) {
-#if 0
   gtc_reduce(counter, max, GtcReduceOpMax, UnsignedLongType, 1);
   gtc_reduce(counter, min, GtcReduceOpMin, UnsignedLongType, 1);
   gtc_reduce(counter, tot, GtcReduceOpSum, UnsignedLongType, 1);
   *avg = *tot/((double)_c->size);
-#endif 
 }
 
 
@@ -139,12 +135,10 @@ void gtc_get_mmau(tc_counter_t *counter, tc_counter_t *tot, tc_counter_t *min, t
  * @param avg     reduced average value
  */
 void gtc_get_mmal(long *counter, long *tot, long *min, long *max, double *avg) {
-#if 0
   gtc_reduce(counter, max, GtcReduceOpMax, LongType, 1);
   gtc_reduce(counter, min, GtcReduceOpMin, LongType, 1);
   gtc_reduce(counter, tot, GtcReduceOpSum, LongType, 1);
   *avg = *tot/((double)_c->size);
-#endif
 }
 
 
