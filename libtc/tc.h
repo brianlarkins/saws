@@ -9,6 +9,8 @@
 #pragma once
 #define _XOPEN_SOURCE 700
 
+#include <shmem.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -26,7 +28,6 @@ extern "C" {
 #include <sys/time.h>
 #include <sys/types.h>
 
-#include <shmem.h>
 #include <pthread.h>
 
 #ifndef NO_SEATBELTS
@@ -141,7 +142,7 @@ struct task_s{
   uint32_t      count;      // used by steal-half to determine chunk size
   task_class_t  task_class;
   int           created_by;
-  int           affinity;
+//  int           affinity;
   int           priority;
   char          body[0];
 };

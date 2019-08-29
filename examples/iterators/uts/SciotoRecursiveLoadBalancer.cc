@@ -7,9 +7,7 @@ using namespace std;
 #include <string.h>
 #include <math.h>
 
-extern "C" {
 #include <tc.h>
-}
 
 #include "uts.h"
 

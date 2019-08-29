@@ -99,7 +99,7 @@ task_t *gtc_task_create(task_class_t tclass) {
     task = gtc_task_alloc(tdesc->body_size);
   }
 
-  task->affinity = 0; // Default values for header fields
+  //task->affinity = 0; // Default values for header fields
   task->priority = 0;
 
   gtc_task_set_class(task, tclass);
