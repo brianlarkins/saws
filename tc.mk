@@ -8,7 +8,8 @@ CC    = oshcc
 CXX   = oshc++
 MPICC = mpicc
 #GCFLAGS = -fsanitize=address -fsanitize=undefined -Wall --std=c99 -g3 -rdynamic -O3 -D_POSIX_C_SOURCE=200112L -msse4.2 # development
-GCFLAGS = -fsanitize=address -fsanitize=undefined -g3 -Wall -rdynamic -D_POSIX_C_SOURCE=200112L -msse4.2
+#GCFLAGS = -fsanitize=address -fsanitize=undefined -g3 -Wall -rdynamic -D_POSIX_C_SOURCE=200112L -msse4.2
+GCFLAGS = -g3 -Wall -rdynamic -D_POSIX_C_SOURCE=200112L -msse4.2
 #GCFLAGS = -g3 -Wall
 #GCFLAGS = -g3 -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast
 #GCFLAGS = --std=c99 -g -pg -O3 -D_POSIX_C_SOURCE=200112L -msse4.2 # profiling

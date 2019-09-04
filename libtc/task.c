@@ -75,8 +75,9 @@ int gtc_task_class_largest_body_size(void) {
  */
 task_t *gtc_task_alloc(int body_size) {
   task_t *task;
-
-  task = malloc(sizeof(task_t) + body_size);
+  
+  // printf("size of task_t + body_size: %ld\n", sizeof(task_t) + body_size);
+  task = calloc(1, sizeof(task_t) + body_size);
   assert(task != NULL);
 
   return task;
