@@ -15,6 +15,8 @@ RNG_DEF = -DBRG_RNG
 CFLAGS   += $(RNG_DEF)
 CXXFLAGS += $(RNG_DEF) 
 
+CXXFLAGS   += -DLDBAL_SCIOTO
+
 # Number of initial work sources for Initial-BFS scheme
 INITIAL_WORK_SOURCES = 1
 
@@ -39,7 +41,7 @@ uts-iter-sequential: tclibs uts_iter_driver.cc UTSIterator.o uts.o $(RNG_SRC:%.c
 	$(CXX) $(CXXFLAGS) -o $@ $(filter-out tclibs, $+) -DLDBAL_SEQUENTIAL $(TC_LIBS)
 
 #uts-scioto: uts_iter_driver.cc SciotoRecursiveLoadBalancer.cc UTSIterator.o uts.o $(RNG_SRC:%.c=%.o)
-uts-scioto: tclibs uts_iter_driver.cc SciotoRecursiveLoadBalancer.cc UTSIterator.cc uts.c $(RNG_SRC)
+uts-scioto: tclibs uts_iter_driver.o SciotoRecursiveLoadBalancer.o UTSIterator.o uts.o $(RNG_SRC:%.c=%.o)
 	$(CXX) $(CXXFLAGS) -o $@ $(filter-out tclibs, $+) -DLDBAL_SCIOTO $(TC_LIBS)
 
 uts-scioto-strict-dfs: tclibs uts_iter_driver.cc SciotoRecursiveLoadBalancer.cc UTSIterator.o uts.o $(RNG_SRC:%.c=%.o)

@@ -399,7 +399,7 @@ task_t *gtc_task_inplace_create_and_add_sdc(gtc_t gtc, task_class_t tclass) {
   gtc_task_set_class(t, tclass);
 
   t->created_by = _c->rank;
-  t->affinity   = 0;
+  //t->affinity   = 0;
   t->priority   = 0;
 
   ++tc->tasks_spawned;
