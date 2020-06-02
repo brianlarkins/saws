@@ -63,7 +63,8 @@ void task_fcn(gtc_t gtc, task_t *descriptor) {
 
 
 int main(int argc, char **argv) {
-  int sum, expected, this_iter, counter;
+  int sum, expected;
+  static int this_iter, counter;
   task_class_t task_class;
   int        counter_key1;
   int        counter_key2;
@@ -117,7 +118,14 @@ int main(int argc, char **argv) {
     gtc_process(gtc2);
     gtc_reset(gtc2);
 
-    gtc_allreduce(&counter, &this_iter, GtcReduceOpSum, IntType, 1);
+
+    // this is a workaround for terrible collectives in openshmem
+    //gtc_allreduce(&counter, &this_iter, GtcReduceOpSum, IntType, 1);
+    static int rcounter;
+    static long pSync[SHMEM_BCAST_SYNC_SIZE];
+    gtc_reduce(&rcounter, &this_iter, GtcReduceOpSum, IntType, 1);
+    shmem_broadcast64(&counter, &rcounter, 1, 0, 0, 0, shmem_n_pes(), pSync);
+
     sum += this_iter;
     
     if (mythread == 0) printf(" - this round = %4d, total = %4d\n", this_iter, sum);

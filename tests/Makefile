@@ -15,7 +15,6 @@ TARGETS=test-hello          \
 				test-tasktree-twotc \
 				test-termination    \
 				test-sdc-shrb				\
-				test-timer					\
 				# line eater
 
 TEST_DIRS=clod microbenchmarks shrb synch
