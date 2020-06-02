@@ -432,7 +432,6 @@ static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, vo
   }
 
   // Copy the remote RB's metadata
-  // ARMCI_Get(myrb->rbs[proc], trb, sizeof(sdc_shrb_t), proc);
   shmem_getmem(&trb, myrb, sizeof(sdc_shrb_t), proc);
 
   switch (steal_vol) {
@@ -459,13 +458,10 @@ static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, vo
     int *loc_addr, *rem_addr;
 
     new_tail    = ((&trb)->tail + n) % (&trb)->max_size;
-    // metadata[0] = new_tail; // itail field
-    // metadata[1] = new_tail; // tail field in rb struct
 
     loc_addr    = &new_tail;
     rem_addr    = &myrb->tail;
     xfer_size   = 1*sizeof(int);
-    // ARMCI_Put(loc_addr, rem_addr, xfer_size, proc);
     shmem_putmem(rem_addr, loc_addr, xfer_size, proc);
 
     sdc_shrb_unlock(myrb, proc); // Deferred copy unlocks early

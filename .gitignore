@@ -12,3 +12,13 @@ examples/iterators/uts/uts-scioto-strict-dfs
 examples/iterators/uts/uts-iter-sequential
 examples/madness/mad3d
 tests/util/busy_wait
+tests/core
+tests/test-coll
+tests/test-hello
+tests/test-rrtask
+tests/test-simple
+tests/test-task
+tests/test-tasktree
+tests/test-termination
+tests/test-timer
+include/

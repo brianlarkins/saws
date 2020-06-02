@@ -139,7 +139,7 @@ typedef struct task_class_desc_s task_class_desc_t;
  *
 */
 struct task_s{
-  uint32_t      count;      // used by steal-half to determine chunk size
+  // uint32_t      count;      // used by steal-half to determine chunk size
   task_class_t  task_class;
   int           created_by;
 //  int           affinity;
