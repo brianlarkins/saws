@@ -429,8 +429,6 @@ int saws_shrb_pop_head(void *b, int proc, void *buf) {
   // Assertion: !buf_valid => saws_shrb_isempty(rb)
   assert(buf_valid || (!buf_valid && saws_shrb_isempty(rb)));
 
-  // printf("(%d) popped head\n", rb->procid);
-
   return buf_valid;
 }
 

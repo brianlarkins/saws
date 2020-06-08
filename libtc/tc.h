@@ -158,6 +158,7 @@ typedef struct {
 /** queue implementation type */
 enum gtc_qtype_e {
   GtcQueueSDC,
+  GtcQueueSAWS,
   GtcQueuePortalsN,
   GtcQueuePortalsHalf
 };

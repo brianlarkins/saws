@@ -8,7 +8,6 @@
 
 #include "tc.h"
 #include "sdc_shr_ring.h"
-// #include "tc-internals.h"
 
 
 /**
@@ -400,7 +399,7 @@ int sdc_shrb_pop_head(void *b, int proc, void *buf) {
 
 
 int sdc_shrb_pop_tail(sdc_shrb_t *rb, int proc, void *buf) {
-  return sdc_shrb_pop_n_tail(rb, proc, 1, buf, STEAL_CHUNK);
+  return sdc_shrb_pop_n_tail(rb, proc, 1, buf, STEAL_HALF);
 }
 
 /* Pop up to N elements off the tail of the queue, putting the result into the user-
@@ -481,7 +480,6 @@ static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, vo
 
       shmem_quiet();
 
-      shmem_quiet();
     }
 
 #ifndef SDC_NODC

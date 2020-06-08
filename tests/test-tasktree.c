@@ -21,7 +21,7 @@
 #include <tc.h>
 
 #define NCHILDREN  2
-#define MAXDEPTH   14
+#define MAXDEPTH   4
 #define SLEEP_TIME 100
 #define VERBOSE    0
 
@@ -132,12 +132,12 @@ int main(int argc, char **argv) {
                 
     create_task(gtc, task_class, 0, 0, counter_key);
 
-    printf("Tree test starting...\n");
+    printf("Tree test starting...\n"); 
   }
 
   // Process the task collection
   gtc_process(gtc);
-
+    printf("thread %d after gtc_process\n", _c->rank);
   // Check if the correct number of tasks were processed
   gtc_reduce(&counter, &sum, GtcReduceOpSum, IntType, 1);
   expected = (1 << (MAXDEPTH+1)) - 1; // == 2^(MAXDEPTH + 1) - 1
@@ -148,9 +148,8 @@ int main(int argc, char **argv) {
     printf("Total task time = %f sec, ideal walltime = %f sec\n", SLEEP_TIME*(float)sum/1e6,
       SLEEP_TIME*(float)sum/1e6/nthreads);
   }
-
   shmem_barrier_all();
-
+  
   gtc_print_stats(gtc);
   gtc_destroy(gtc);
   gtc_fini();

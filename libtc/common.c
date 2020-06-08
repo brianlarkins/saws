@@ -43,7 +43,7 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
     gtc_init();
   }
 
-  _c->total_tcs++;
+  //_c->total_tcs++; //why was this being called here and in gtc_handle_register
 
   if (!gtc_is_seeded) {
     struct timespec t = gtc_get_wtime();
@@ -101,6 +101,8 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
   switch (qtype) {
     case GtcQueueSDC:
       break;
+    case GtcQueueSAWS:
+      break;
     case GtcQueuePortalsN:
       ldbal_cfg->chunk_size = chunk_size;
       ldbal_cfg->steal_method = STEAL_CHUNK;
@@ -139,6 +141,10 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
     case GtcQueueSDC:
       gtc_create_sdc(gtc, max_body_size, shrb_size, ldbal_cfg);
       break;
+    //case GtcQueueSAWS:
+      //still unimplemented
+      //gtc_create_saws(gtc, max_body_size, shrb_size, ldbal_cfg);
+      //break;
     default:
       gtc_eprintf(DBGERR, "gtc_create: unsupported queue type\n");
       exit(1);
@@ -579,9 +585,7 @@ void gtc_process(gtc_t gtc) {
   trace_file = fopen(buf, "w");
   gtc_trace_start(gtc, 10000, -1, trace_file);
 #endif
-
   shmem_barrier_all();
-
   TC_START_TIMER(tc, process);
   tc->state = STATE_SEARCHING;
 
@@ -589,7 +593,6 @@ void gtc_process(gtc_t gtc) {
     // Run the task we just got
     gtc_task_execute(gtc, &xtask->task);
   }
-
   free(xtask);
   tc->state = STATE_TERMINATED;
   TC_STOP_TIMER(tc, process);
@@ -607,6 +610,7 @@ void gtc_process(gtc_t gtc) {
 
     grp_processed = tc->tasks_completed;
 
+  printf("\nprocess %d reached barrier\n", _c->rank);
     gtc_reduce(&grp_processed, &processed, GtcReduceOpSum, LongType, 1);
     gtc_reduce(&tc->tasks_spawned, &spawned, GtcReduceOpSum, LongType, 1);
     //MPI_Reduce(&grp_processed, &processed, 1, MPI_UNSIGNED_LONG, MPI_SUM, 0, tc->comm);
@@ -733,16 +737,16 @@ void gtc_print_stats(gtc_t gtc) {
     if (unordered_stats) {
       gtc_print_my_stats(gtc);
     } else {
-      for (int i=0; i< _c->size; i++) {
+      for (int i=0; i<= _c->size; i++) {
         if (i == _c->rank)
           gtc_print_my_stats(gtc);
+        printf("thread %d reached problematic barrier\n", _c->rank);
         shmem_barrier_all();
       }
     }
   }
   fflush(NULL);
   shmem_barrier_all();
-
 
   process_loc = TC_READ_TIMER_SEC(tc, process);
   passive_loc = TC_READ_TIMER_SEC(tc, passive);

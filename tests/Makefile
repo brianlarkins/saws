@@ -14,7 +14,8 @@ TARGETS=test-hello          \
 				test-tasktree       \
 				test-tasktree-twotc \
 				test-termination    \
-				test-sdc-shrb				\
+				test-sdc-shrb		\
+				test-saws-shrb		\
 				# line eater
 
 TEST_DIRS=clod microbenchmarks shrb synch
@@ -57,6 +58,9 @@ test-termination: tclibs test-termination.o
 
 test-sdc-shrb: tclibs test_sdc_shrb.o
 	$(CC) $(CFLAGS) -o $@ test_sdc_shrb.o $(TC_LIBS)
+
+test-saws-shrb: tclibs test_saws_shrb.o
+	$(CC) $(CFLAGS) -o $@ test_saws_shrb.o $(TC_LIBS)
 
 test-timer: tclibs test-timer.o
 	$(CC) $(CFLAGS) -o $@ test-timer.o $(TC_LIBS)
