@@ -11,7 +11,6 @@
 #include <mutex.h>
 
 #include "tc.h"
-//#include "sdc_shr_ring.h"
 #include "saws_shrb.h"
 
 /**
@@ -136,16 +135,28 @@ void saws_shrb_print(saws_shrb_t *rb) {
   printf("   shared_size= %d\n", saws_shrb_shared_size(rb));
   printf("   public_size= %d\n", saws_shrb_public_size(rb));
   printf("   size       = %d\n", saws_shrb_size(rb));
+  printf("   a_steals   = %ld\n", (rb->steal_val >> 24));
+  printf("   i_steals   = %ld\n", ((rb->steal_val >> 5))); //isteals is wrong
   printf("}\n");
 }
 
 int log_base2(long val) {
-  int newval = -1;
-  
-  newval = log10(val) / log10(2);
-
+   
+  int newval = log10(val) / log10(2);
   return newval;
+
 }
+
+//prints binary representation of an integer
+void itobin(int v)
+{
+    unsigned int mask=1<<((sizeof(int)<<3)-1);
+    while(mask) {
+        printf("%d", (v&mask ? 1 : 0));
+        mask >>= 1;
+    }
+}
+
 
 /*==================== STATE QUERIES ====================*/
 
@@ -282,45 +293,61 @@ void saws_shrb_ensure_space(saws_shrb_t *rb, int n) {
   }
 }
 
-
+//this works.
 void saws_shrb_release(saws_shrb_t *rb) {
 
   // Favor placing work in the shared portion -- if there is only one task
   // available this scheme will put it in the shared portion.
-  if (saws_shrb_local_size(rb) > 0 && saws_shrb_shared_size(rb) == 0) {
+  if (saws_shrb_local_size(rb) > 0 && (saws_shrb_shared_size(rb) == 0)) {
     int nshared  = saws_shrb_local_size(rb)/2 + saws_shrb_local_size(rb) % 2;
     rb->nlocal  -= nshared;
     rb->split    = (rb->split + nshared) % rb->max_size;
-    int nsteals  = log_base2(nshared);
-    long val     = nsteals << 24;
-    val         |= nsteals << 19;
+    int asteals  = log_base2(nshared); 
+    long val     = asteals << 24;
+    val         |= asteals << 19;
     val         |= rb->tail;          // CHECK
-    // rb->nrelease++;
-    shmem_atomic_set(&rb->steal_val, val, rb->procid);
+    itobin(val);
+    printf(" steal_val value\n");
+    rb->nrelease++;
+
+    //this was a shmem_atomic_set() but that didn't work...this does.
+    shmem_atomic_swap(&rb->steal_val, val, rb->procid);
+    //itobin(rb->steal_val); printf("\n sv: %ld \n", rb->steal_val);
   }
 }
 
-
+//this occasionally has an indexing issue.
 void saws_shrb_release_all(saws_shrb_t *rb) {
   int amount  = saws_shrb_local_size(rb);
   rb->nlocal -= amount;
   rb->split   = (rb->split + amount) % rb->max_size;
+    
+  int asteals = log_base2(amount + saws_shrb_shared_size(rb));
+  
+  long val = asteals << 24;
+  val |= asteals << 19;
+  val |= rb->tail;
+  itobin(val); printf(" steal_val value release_all()\n");
+
+  shmem_atomic_swap(&rb->steal_val, val, rb->procid);
   rb->nrelease++;
 }
 
 
 void saws_shrb_reacquire(saws_shrb_t *rb) {
-  int nlocal = 0;
 
   // Favor placing work in the local portion -- if there is only one task
   // available this scheme will put it in the local portion.
   // saws_shrb_lock(rb, rb->procid);
   
+  int nlocal = 0;
   static long mytail = -1;
   shmem_atomic_swap(&rb->steal_val, mytail, rb->procid);  // Disable steals
 
   if (saws_shrb_shared_size(rb) > saws_shrb_local_size(rb)) {
+      //this isnt working
       mytail &= 0x00000000007FFFF; // Low 19 bits of val
+      printf("mutail %ld \n", mytail);
       nlocal  = saws_shrb_shared_size(rb) / 2 + saws_shrb_shared_size(rb) % 2; 
       rb->nlocal += nlocal;
       rb->split = rb->split - nlocal;
@@ -330,7 +357,7 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
       val           |= nsteals << 19;
       val           |= mytail;
 
-      shmem_atomic_set(&rb->steal_val, val, rb->procid);
+      shmem_atomic_swap(&rb->steal_val, val, rb->procid);
   }
     
   // Assertion: saws_shrb_local_isempty(rb) => saws_shrb_isempty(rb)

@@ -7,8 +7,8 @@
 #include <saws_shrb.h>
 
 #define GTC_TEST_DEBUG   0
-#define QSIZE   10
-#define NUM     1
+#define QSIZE   2049
+#define NUM     2048
 #define NUMREPS 1
 #define TAILTARGET  (rb->procid + 1) % rb->nproc /* round robin */
 #define HEADTARGET  rb->procid               /* local only */
@@ -23,14 +23,25 @@ void print_queue(saws_shrb_t *rb) {
   elem_t *ela = (elem_t *) rb->q;   
  	
   saws_shrb_print(rb);  
-  for (int i = 0; i < QSIZE; i++)    
-    printf("%d: q[%d] = %d :: %d\n", _c->rank, i, ela[i].id, ela[i].check);
+  //for (int i = 0; i < QSIZE; i++)    
+   // printf("%d: q[%d] = %d :: %d\n", _c->rank, i, ela[i].id, ela[i].check);
 }
 
 void print_buf(elem_t *a) {
   for (int i = 0; i < NUM; i++)
     printf("%d: q[%d] = %d :: %d\n", _c->rank, i, a[i].id, a[i].check);			
 }
+ //prints binary representation of an integer
+ void itob(long v)
+ {
+     unsigned int mask=1<<((sizeof(int)<<3)-1);
+     while(mask) {
+     printf("%d", (v&mask ? 1 : 0));
+         mask >>= 1;
+     }
+ }
+
+
 
 int main(int argc, char **argv, char **envp) {
   int errors = 0;
@@ -66,7 +77,7 @@ int main(int argc, char **argv, char **envp) {
     }
     */
 
-    if (rb->procid == 0) printf(" TEST: push_head() -> pop_head()\n");
+    if (rb->procid == 0) printf(" TEST: release & aquire\n");
       
       for (i = 1; i <= NUM; i++) {
         y[0].id = y[0].check = i;
@@ -75,7 +86,7 @@ int main(int argc, char **argv, char **envp) {
 
       shmem_barrier_all();
       print_queue(rb);
-
+/*
       for (i=NUM,cnt=0; saws_shrb_pop_head(rb, HEADTARGET, &x) > 0; i--,cnt++) {
         if (x.id != i && x.check != i) {
           printf("  -- %d: Error, got <%d, %d> expected <%d, %d>\n", rb->procid, x.id, x.check, i, i);
@@ -90,6 +101,15 @@ int main(int argc, char **argv, char **envp) {
 
       shmem_barrier_all();
       printf("\n after pop_head\n");
+      print_queue(rb);*/
+      saws_shrb_release(rb);
+      itob(rb->steal_val);
+      printf("\n");
+      print_queue(rb);
+      saws_shrb_release_all(rb);
+      print_queue(rb);
+      printf("\n testing reaquire\n");
+      saws_shrb_reacquire(rb);
       print_queue(rb);
 /*
       // if (DEBUG) sdc_shrb_print(rb);
