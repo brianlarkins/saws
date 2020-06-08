@@ -2,7 +2,7 @@
 #include <unistd.h>
 
 #include <tc.h>
-#include <sn_ring.h>
+//#include <sn_ring.h>
 
 #define GTC_TEST_DEBUG   1
 #define CHUNKSIZE 5
@@ -18,6 +18,7 @@ typedef struct {
   int    check;
 } elem_t;
 
+#if 0
 
 void print_queue(sn_ring_t *rb) {
   elem_t *ela = (elem_t *)rb->q;
@@ -33,9 +34,11 @@ void print_buf(elem_t *a) {
     printf("%d: q[%d] = %d :: %d\n", _c->rank, i, a[i].id, a[i].check);
 }
 
+#endif
 
 
 int main(int argc, char **argv, char **envp) {
+#if 0
   int errors = 0;
   int i, dest;
   int arg, niter, ntasks, tasksize;
@@ -117,5 +120,6 @@ int main(int argc, char **argv, char **envp) {
   sn_destroy(rb);
 
   if (errors) return 1;
+#endif
   return 0;
 }

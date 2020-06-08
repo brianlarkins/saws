@@ -109,6 +109,32 @@ gtc_status_t gtc_reduce(void *in, void *out, gtc_reduceop_t op, gtc_datatype_t t
 }
 
 
+#if 0
+/**
+ * gtc_allreduce - performs a reduce followed by a broadcast operation
+ * @param in buffer containing this processes source data
+ * @param out buffer containing the final reduction value (only valid on root process)
+ * @param op operation to perform
+ * @param type type data type of elements
+ * @param elems number of elements
+ * @returns status of operation
+ */
+gtc_status_t gtc_allreduce(void *in, void *out, gtc_reduceop_t op, gtc_datatype_t type, int elems) {
+   gtc_status_t ret;
+
+   // this is a lazy implementation. i get it.
+
+   ret = gtc_reduce(in, out, op, type, elems);
+
+   if (ret != GtcStatusOK)
+      return ret;
+   gtc_barrier();
+   ret = gtc_broadcast(out, type, elems);
+   return ret;
+}
+#endif
+
+
 
 /**
  * gtc_collective_size - helper function to return data type size for collective ops

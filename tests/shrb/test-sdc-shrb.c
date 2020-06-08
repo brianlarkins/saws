@@ -71,7 +71,7 @@ int main(int argc, char **argv, char **envp) {
       sdc_shrb_push_head(rb, HEADTARGET, &y[0], sizeof(elem_t));
     }
 
-    gtc_barrier();
+    shmem_barrier_all();
 
     for (i=NUM,cnt=0; sdc_shrb_pop_head(rb, HEADTARGET, &x) > 0; i--,cnt++) {
       if (x.id != i && x.check != i) {
@@ -85,7 +85,7 @@ int main(int argc, char **argv, char **envp) {
       ++errors;
     }
 
-    gtc_barrier();
+    shmem_barrier_all();
     if (GTC_TEST_DEBUG) sdc_shrb_print(rb);
     if (rb->procid == 0) printf(" TEST: push_n_head() -> pop_head()\n");
 
@@ -94,7 +94,7 @@ int main(int argc, char **argv, char **envp) {
 
     sdc_shrb_push_n_head(rb, HEADTARGET, y, NUM);
 
-    gtc_barrier();
+    shmem_barrier_all();
 
     for (i=NUM-1,cnt=0; sdc_shrb_pop_head(rb, HEADTARGET, &x) > 0; i--,cnt++) {
       if (x.id != i && x.check != i) {
@@ -108,7 +108,7 @@ int main(int argc, char **argv, char **envp) {
       ++errors;
     }
 
-    gtc_barrier();
+    shmem_barrier_all();
 
     if (GTC_TEST_DEBUG) sdc_shrb_print(rb);
     if (rb->procid == 0) printf(" TEST: push_n_head() -> pop_tail()\n");
@@ -119,7 +119,7 @@ int main(int argc, char **argv, char **envp) {
     sdc_shrb_push_n_head(rb, HEADTARGET, y, NUM);
     sdc_shrb_release_all(rb);
 
-    gtc_barrier();
+    shmem_barrier_all();
 
     for (i=NUM,cnt=0; sdc_shrb_pop_tail(rb, TAILTARGET, &x); i--,cnt++) {
       if (x.id != i && x.check != i) {
@@ -135,7 +135,7 @@ int main(int argc, char **argv, char **envp) {
       ++errors;
     }
 
-    gtc_barrier();
+    shmem_barrier_all();
 
     if (GTC_TEST_DEBUG) sdc_shrb_print(rb);
     if (rb->procid == 0) printf(" TEST: push_head() -> pop_n_tail()\n");
@@ -148,7 +148,7 @@ int main(int argc, char **argv, char **envp) {
     }
 
     sdc_shrb_release_all(rb);
-    gtc_barrier();
+    shmem_barrier_all();
 
     total = 0;
     while ((cnt = sdc_shrb_pop_n_tail(rb, TAILTARGET, NUM, e, STEAL_HALF))) {
@@ -161,7 +161,7 @@ int main(int argc, char **argv, char **envp) {
       }
       total += cnt;
       sdc_shrb_release(rb);
-      gtc_barrier();
+      shmem_barrier_all();
     }
 
     free(e);
@@ -171,7 +171,7 @@ int main(int argc, char **argv, char **envp) {
       ++errors;
     }
 
-    gtc_barrier();
+    shmem_barrier_all();
   }
 
   sdc_shrb_destroy(rb);

@@ -20,7 +20,7 @@ typedef struct {
 } elem_t;
 
 void print_queue(saws_shrb_t *rb) {  
-  elem_t *ela = (elem_t *) rb->q;   
+  //elem_t *ela = (elem_t *) rb->q;   
  	
   saws_shrb_print(rb);  
   //for (int i = 0; i < QSIZE; i++)    
@@ -44,13 +44,13 @@ void print_buf(elem_t *a) {
 
 
 int main(int argc, char **argv, char **envp) {
-  int errors = 0;
-  int i, j, rep;
-  int cnt, total;		
+  //int errors = 0;
+  int i; //, j, rep;
+  //int cnt, total;		
   saws_shrb_t *rb;		// Ring buffer
 
-  elem_t *e;
-  elem_t x;
+  //elem_t *e;
+  //elem_t x;
   elem_t y[NUM];
 
   setbuf(stdout, NULL);

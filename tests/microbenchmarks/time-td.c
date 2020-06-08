@@ -48,14 +48,14 @@ int main(int argc, char **argv)
   tds = calloc(NITER, sizeof(td_t));
   for (int i=0; i<NITER; i++) 
     tds[i] = td_create();
-  gtc_barrier();
+  shmem_barrier_all();
 
   //t_td = MPI_Wtime();
   TC_START_ATIMER(tdtime);
   for (i = 0; i < NITER; i++) {
     while (!td_attempt_vote(tds[i]));
     // MPI_Barrier(MPI_COMM_WORLD); // Prevent from overlapping
-    gtc_barrier();
+    shmem_barrier_all();
   }
   //t_td = MPI_Wtime() - t_td;
   TC_STOP_ATIMER(tdtime);
@@ -64,14 +64,14 @@ int main(int argc, char **argv)
   free(tds);
 
 
-  if (comm_rank == 0) printf("Performing gtc_barrier() timing...\n");
+  if (comm_rank == 0) printf("Performing shmem_barrier_all() timing...\n");
   fflush(NULL);
-  gtc_barrier();
+  shmem_barrier_all();
 
   //t_armci_barrier = MPI_Wtime();
   TC_START_ATIMER(barriertime);
   for (i = 0; i < NBARRIER; i++) {
-    gtc_barrier();
+    shmem_barrier_all();
   }
   //t_armci_barrier = MPI_Wtime() - t_armci_barrier;
   TC_STOP_ATIMER(barriertime);

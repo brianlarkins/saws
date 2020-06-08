@@ -7,7 +7,6 @@
 /* ******************************************************/
 
 #pragma once
-#define _XOPEN_SOURCE 700
 
 #include <shmem.h>
 

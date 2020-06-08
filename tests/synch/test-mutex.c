@@ -19,8 +19,10 @@ int main(int argc, char **argv) {
   
   synch_mutex_init(&mutex);
 
-  if (shmem_my_pe() == 0)
-    printf("Mutex test starting on %d processes\n", shmem_n_pes());fflush(stdout);
+  if (shmem_my_pe() == 0) {
+    printf("Mutex test starting on %d processes\n", shmem_n_pes());
+    fflush(stdout);
+  }
 
   shmem_barrier_all();
 

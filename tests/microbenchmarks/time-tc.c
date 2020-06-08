@@ -53,7 +53,7 @@ int main(int argc, char **argv)
 
   /**** LOCAL TASK INSERTION ****/
 
-  gtc_barrier();
+  shmem_barrier_all();
 
   if (mythread == 0)
     printf("Timing: Local task insertion (%d tasks)\n", NITER);
@@ -72,7 +72,7 @@ int main(int argc, char **argv)
                                                        TC_READ_ATIMER_USEC(addtimer)/NITER);
   //MPI_Reduce(&t_add_l, &avg_t_add, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
   gtc_reduce(&t_add_l, &avg_t_add, GtcReduceOpSum, DoubleType, 1);
-  gtc_barrier();
+  shmem_barrier_all();
 
   /**** LOCAL TASK DRAIN ****/
 
@@ -92,7 +92,7 @@ int main(int argc, char **argv)
                                                        TC_READ_ATIMER_SEC(draintimer)/NITER);
   //MPI_Reduce(&t_drain_l, &avg_t_drain, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
   gtc_reduce(&t_drain_l, &avg_t_drain, GtcReduceOpSum, DoubleType, 1);
-  gtc_barrier();
+  shmem_barrier_all();
   //gtc_print_stats(tc);
   if (mythread == 0) {
     printf("AVG ADD  : %f sec (%f tasks/sec, %e sec/task)\n", avg_t_add/nthreads,
@@ -100,13 +100,13 @@ int main(int argc, char **argv)
     printf("AVG DRAIN: %f sec (%f tasks/sec, %e sec/task)\n", avg_t_drain/nthreads,
         NITER/(avg_t_drain/nthreads), (avg_t_drain/nthreads)/NITER);
   }
-  gtc_barrier();
+  shmem_barrier_all();
 
 #if 0
   gtc_reset(gtc);
   /**** REMOTE TASK INSERTION ****/
 
-  gtc_barrier();
+  shmem_barrier_all();
 
   if (mythread == 0)
     printf("\nTiming: Remote task insertion (%d tasks)\n", NITER);
@@ -124,7 +124,7 @@ int main(int argc, char **argv)
 #ifndef TC_LOCKED
   split_shrb_release_everything(tc->shared_rb);
 #endif
-  gtc_barrier();
+  shmem_barrier_all();
 
   /**** STEALING PERFORMANCE ****/
 
@@ -139,7 +139,7 @@ int main(int argc, char **argv)
 
   printf("  %d: %f sec (%f steals/sec, %e sec/steal)\n", mythread, t_steal, nsteals/t_steal, t_steal/nsteals);
   MPI_Reduce(&t_steal, &avg_t_drain, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-  gtc_barrier();
+  shmem_barrier_all();
   //gtc_print_stats(tc);
   if (mythread == 0) {
     printf("AVG ADD_R: %f sec (%f tasks/sec, %e sec/task)\n", avg_t_add/nthreads,
@@ -147,13 +147,13 @@ int main(int argc, char **argv)
     printf("AVG STEAL: %f sec (%f steals/sec, %e sec/steal, %d total steals)\n", avg_t_drain/nthreads,
         nsteals/(avg_t_drain/nthreads), (avg_t_drain/nthreads)/nsteals, nsteals);
   }
-  gtc_barrier();
+  shmem_barrier_all();
 
   //#if 0
   /**** UNLOCKED TASK INSERTION ****/
   gtc_reset(tc);
   gtc_begin_single(tc, tc->mythread);
-  gtc_barrier();
+  shmem_barrier_all();
 
   if (tc->mythread == 0)
     printf("\nTiming: Unlocked task insertion (%d tasks)\n", NITER);
@@ -165,7 +165,7 @@ int main(int argc, char **argv)
   t_add_u = gtc_wctime() - t_add_u;
 
   printf("  %d: %f sec (%f tasks/sec, %e sec/task)\n", tc->mythread, t_add_u, NITER/t_add_u, t_add_u/NITER);
-  gtc_barrier();
+  shmem_barrier_all();
 
   /**** UNLOCKED TASK DRAIN ****/
 
@@ -177,9 +177,9 @@ int main(int argc, char **argv)
   t_drain_u = gtc_wctime() - t_drain_u;
 
   printf("  %d: %f sec (%f tasks/sec, %e sec/task)\n", tc->mythread, t_drain_u, NITER/t_drain_u, t_drain_u/NITER);
-  gtc_barrier();
+  shmem_barrier_all();
   gtc_print_stats(tc);
-  gtc_barrier();
+  shmem_barrier_all();
 
   /**** DONE ****/
 #endif

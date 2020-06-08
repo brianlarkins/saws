@@ -12,7 +12,6 @@
  *
  */
 
-#define _BSD_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -149,6 +148,10 @@ int main(int argc, char **argv) {
       SLEEP_TIME*(float)sum/1e6/nthreads);
   }
   shmem_barrier_all();
+
+  int *foo = NULL;
+
+  if (mythread == 0) *foo = 10;
   
   gtc_print_stats(gtc);
   gtc_destroy(gtc);

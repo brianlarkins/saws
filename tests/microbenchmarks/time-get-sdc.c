@@ -75,20 +75,20 @@ int main(int argc, char **argv, char **envp) {
 
   sdc_shrb_release_all(rb);
 
-  gtc_barrier();
+  shmem_barrier_all();
 
   if (_c->rank == 0) {
     TC_START_ATIMER(time);
     TC_START_ATSCTIMER(tsctime);
     for (i = 0; i < niter; i++) {
       dest = (i % (_c->size - 1)) + 1; // never ourselves
-      int ret = sdc_shrb_pop_n_tail(rb, dest, ntasks, tasks, STEAL_CHUNK);
+      sdc_shrb_pop_n_tail(rb, dest, ntasks, tasks, STEAL_CHUNK);
     }
     TC_STOP_ATSCTIMER(tsctime);
     TC_STOP_ATIMER(time);
   }
 
-  gtc_barrier();
+  shmem_barrier_all();
 
   eprintf("%d tasks/steal %d size %.3f usec/get (tsc: %.3f)\n", ntasks, tasksize, 
       TC_READ_ATIMER_USEC(time)/(double)niter, TC_READ_ATSCTIMER_USEC(tsctime)/(double)niter);

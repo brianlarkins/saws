@@ -260,7 +260,7 @@ void saws_shrb_reclaim_space(saws_shrb_t *rb) {
   shmem_atomic_swap(&rb->steal_val, rb->tail, rb->procid); // Disable steals
 
   long rtail   = val & 0x000000000007FFF; // Low 19 bits of val
-  long isteals = (val >> 19) & 0x1F;      // 5 bits, shifted
+  //long isteals = (val >> 19) & 0x1F;      // 5 bits, shifted
   long asteals = (val >> 40);
 
   while (asteals != shmem_atomic_fetch(&rb->completed, rb->procid)) {

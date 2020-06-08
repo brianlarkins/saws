@@ -6,7 +6,6 @@
 /********************************************************/
 
 #define _GNU_SOURCE 1
-#define _XOPEN_SOURCE 700
 #include <alloca.h>
 #include <assert.h>
 #include <execinfo.h>
