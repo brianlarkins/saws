@@ -287,6 +287,7 @@ void saws_shrb_release(saws_shrb_t *rb) {
         rb->nlocal  -= nshared;
         rb->split    = (rb->split + nshared) % rb->max_size;
         int asteals  = log_base2(nshared); 
+        if (nshared % 2 != 0 || (ceil(log2(nshared) != floor(log2(nshared))))) asteals++;
         long val     = asteals << 24;
         val         |= asteals << 19;
         val         |= rb->tail;         
@@ -484,8 +485,6 @@ static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, 
     if (n > 0) {//runs as long as there are tasks to steal
         static long val = -1 << 24;
         long oldval = shmem_atomic_fetch_add(&myrb->steal_val, val, proc); 
-        //printf("new: "); itobin(myrb->steal_val); printf("\n");
-        //printf("old: "); itobin(oldval); printf("\n"); 
         int rtail = oldval & 0x000000000007FFFF; // Low 19 bits of val
         int isteals = ((oldval >> 19) & 0x1F);     // 5 bits, shifted  
         int asteals = (oldval >> 24);
@@ -494,7 +493,8 @@ static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, 
             return 0;
 
         ntasks = pow(2, asteals - 1) / 2; // Compute steal volume
-
+        if (saws_shrb_shared_size(&trb) % 2 != 0) ntasks = ntasks / 2;
+        //else if (ceil(log2(saws_shrb_shared_size(&trb)) != floor(log2(saws_shrb_shared_size(&trb))))) ntasks = ntasks / 2;
         //needed to steal last task. may cause a race condition.
         if (ntasks == 0 && trb.completed != isteals) ntasks = 1;
         
@@ -503,7 +503,6 @@ static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, 
         for (int i = isteals; i > asteals; i--) {
             start += pow(2, (i - 1)) / 2; 
         }
-        //printf("first task should be at index %d\n", start);
         if ((&trb)->tail + (ntasks-1) < (&trb)->max_size) { // No need to wrap around
             void* rptr = myrb->q + (rtail + (start * trb.elem_size));
             shmem_getmem_nbi(e, rptr/*saws_shrb_elem_addr(myrb, proc, (&trb)->tail)*/, ntasks * (&trb)->elem_size, proc);   
