@@ -106,7 +106,7 @@ char *gtc_queue_name_sdc() {
 void gtc_progress_sdc(gtc_t gtc) {
   tc_t *tc = gtc_lookup(gtc);
   //TC_START_TIMER(tc, t[0]);
-  TC_START_TSCTIMER(tc,progress);
+  TC_START_TIMER(tc,progress);
 
 #if 0 /* no task pushing */
   // Check the inbox for new work
@@ -132,7 +132,7 @@ void gtc_progress_sdc(gtc_t gtc) {
   sdc_shrb_reclaim_space(tc->shared_rb);
   tc->shared_rb->nprogress++;
   //TC_STOP_TIMER(tc,t[0]);
-  TC_STOP_TSCTIMER(tc,progress);
+  TC_STOP_TIMER(tc,progress);
 }
 
 
@@ -172,14 +172,14 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
   gtc_vs_state_t vs_state = {0};
   void *rb_buf;
 
-  tc->getcalls++;
-  TC_START_TSCTIMER(tc, getbuf);
+  tc->ct.getcalls++;
+  TC_START_TIMER(tc, getbuf);
 
   // Invoke the progress engine
   gtc_progress(gtc);
 
   // Try to take my own work first.  We take from the head of our own queue.
-  // When we steal, we take work off of the tail of the victim's queue.
+  // When we steal, we take work off of the tail of the target's queue.
   got_task = gtc_get_local_buf(gtc, priority, buf);
 
   // Time dispersion.  If I had work to start this should be ~0.
@@ -194,18 +194,18 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
     TC_INIT_TIMER(tc, imbalance);
     TC_START_TIMER(tc, imbalance);
     passive = 1;
-    tc->passive_count++;
+    tc->ct.passive_count++;
 #endif
 
     rb_buf = malloc(tc->qsize);
     assert(rb_buf != NULL);
 
-    vs_state.last_victim = tc->last_victim;
+    vs_state.last_target = tc->last_target;
 
     // Keep searching until we find work or detect termination
     while (!got_task && !tc->terminated) {
       int      max_steal_attempts, steal_attempts, steal_done;
-      void *victim_rb;
+      void *target_rb;
 
       tc->state = STATE_SEARCHING;
 
@@ -214,18 +214,18 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
         searching = 1;
       }
 
-      // Select the next victim
-      v = gtc_select_victim(gtc, &vs_state);
+      // Select the next target
+      v = gtc_select_target(gtc, &vs_state);
 
       max_steal_attempts = tc->ldbal_cfg.max_steal_attempts_remote;
-      victim_rb = rb_buf;
+      target_rb = rb_buf;
 
-      TC_START_TSCTIMER(tc,poptail); // this counts as attempting to steal
-      // sdc_shrb_fetch_remote_trb(tc->shared_rb, victim_rb, v);
-      shmem_getmem(victim_rb, tc->shared_rb, sizeof(sdc_shrb_t), v);
-      TC_STOP_TSCTIMER(tc,poptail);
+      TC_START_TIMER(tc,poptail); // this counts as attempting to steal
+      // sdc_shrb_fetch_remote_trb(tc->shared_rb, target_rb, v);
+      shmem_getmem(target_rb, tc->shared_rb, sizeof(sdc_shrb_t), v);
+      TC_STOP_TIMER(tc,poptail);
 
-      // Poll the victim for work.  In between polls, maintain progress on termination detection.
+      // Poll the target for work.  In between polls, maintain progress on termination detection.
       for (steal_attempts = 0, steal_done = 0;
            !steal_done && !tc->terminated && steal_attempts < max_steal_attempts;
            steal_attempts++) {
@@ -237,7 +237,7 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
             gtc_get_dummy_work += 1.0;
         }
 
-        if (tc->cb.work_avail(victim_rb) > 0) {
+        if (tc->cb.work_avail(target_rb) > 0) {
           tc->state = STATE_STEALING;
 
           if (searching) {
@@ -255,25 +255,25 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
 
           // Steal succeeded: Got some work from remote node
           if (steal_size > 0) {
-            tc->tasks_stolen += steal_size;
-            tc->num_steals += 1;
+            tc->ct.tasks_stolen += steal_size;
+            tc->ct.num_steals += 1;
             steal_done = 1;
-            tc->last_victim = v;
+            tc->last_target = v;
 
           // Steal failed: Got the lock, no longer any work on remote node
           } else if (steal_size == 0) {
-            tc->failed_steals_locked++;
+            tc->ct.failed_steals_locked++;
             steal_done = 1;
 
-          // Steal aborted: Didn't get the lock, refresh victim metadata and try again
+          // Steal aborted: Didn't get the lock, refresh target metadata and try again
           } else {
             if (steal_attempts + 1 == max_steal_attempts)
-              tc->aborted_steals++;
-            vs_state.victim_retry = 1;
+              tc->ct.aborted_steals++;
+            vs_state.target_retry = 1;
           }
 
-        } else /* ! (QUEUE_WORK_AVAIL(victim_rb) > 0) */ {
-          tc->failed_steals_unlocked++;
+        } else /* ! (QUEUE_WORK_AVAIL(target_rb) > 0) */ {
+          tc->ct.failed_steals_unlocked++;
           steal_done = 1;
         }
 
@@ -288,7 +288,7 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
           //shrb_lock(tc->inbox, _c->rank); /* no task pushing */
 
           if (gtc_tasks_avail(gtc) == 0 && !tc->external_work_avail) {
-            td_set_counters(tc->td, tc->tasks_spawned, tc->tasks_completed);
+            td_set_counters(tc->td, tc->ct.tasks_spawned, tc->ct.tasks_completed);
             tc->terminated = td_attempt_vote(tc->td);
           }
 
@@ -307,7 +307,7 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
 
     free(rb_buf);
   } else {
-    tc->getlocal++;
+    tc->ct.getlocal++;
   }
 
 #ifndef NO_SEATBELTS
@@ -321,13 +321,13 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
   if (!tc->dispersed) {
     if (passive) TC_STOP_TIMER(tc, dispersion);
     tc->dispersed = 1;
-    tc->dispersion_attempts_unlocked = tc->failed_steals_unlocked;
-    tc->dispersion_attempts_locked   = tc->failed_steals_locked;
+    tc->ct.dispersion_attempts_unlocked = tc->ct.failed_steals_unlocked;
+    tc->ct.dispersion_attempts_locked   = tc->ct.failed_steals_locked;
   }
 
   gtc_lprintf(DBGGET, " Thread %d: gtc_get() %s\n", _c->rank, got_task? "got work":"no work");
   if (got_task) tc->state = STATE_WORKING;
-  TC_STOP_TSCTIMER(tc,getbuf);
+  TC_STOP_TIMER(tc,getbuf);
   return got_task;
 }
 
@@ -353,7 +353,7 @@ int gtc_add_sdc(gtc_t gtc, task_t *task, int proc) {
 
   assert(gtc_task_body_size(task) <= tc->max_body_size);
   assert(tc->state != STATE_TERMINATED);
-  TC_START_TSCTIMER(tc,add);
+  TC_START_TIMER(tc,add);
 
   task->created_by = _c->rank;
 
@@ -371,8 +371,8 @@ int gtc_add_sdc(gtc_t gtc, task_t *task, int proc) {
   }
 #endif /* no task pushing */
 
-  ++tc->tasks_spawned;
-  TC_STOP_TSCTIMER(tc,add);
+  ++tc->ct.tasks_spawned;
+  TC_STOP_TIMER(tc,add);
 
   return 0;
 }
@@ -391,7 +391,7 @@ int gtc_add_sdc(gtc_t gtc, task_t *task, int proc) {
 task_t *gtc_task_inplace_create_and_add_sdc(gtc_t gtc, task_class_t tclass) {
   tc_t   *tc = gtc_lookup(gtc);
   task_t *t;
-  TC_START_TSCTIMER(tc,addinplace);
+  TC_START_TIMER(tc,addinplace);
 
   //assert(gtc_group_steal_ismember(gtc)); // Only masters can do this
 
@@ -402,9 +402,9 @@ task_t *gtc_task_inplace_create_and_add_sdc(gtc_t gtc, task_class_t tclass) {
   //t->affinity   = 0;
   t->priority   = 0;
 
-  ++tc->tasks_spawned;
+  ++tc->ct.tasks_spawned;
 
-  TC_STOP_TSCTIMER(tc,addinplace);
+  TC_STOP_TIMER(tc,addinplace);
 
   return t;
 }
@@ -421,11 +421,11 @@ void gtc_task_inplace_create_and_add_finish_sdc(gtc_t gtc, task_t *t) {
   tc_t *tc = gtc_lookup(gtc);
   // TODO: Maintain a counter of how many are outstanding to avoid corruption at the
   // head of the queue
-  TC_START_TSCTIMER(tc,addfinish);
+  TC_START_TIMER(tc,addfinish);
 
   // Can't release until the inplace op completes
   gtc_progress_sdc(gtc);
-  TC_STOP_TSCTIMER(tc,addfinish);
+  TC_STOP_TIMER(tc,addfinish);
 }
 
 
@@ -441,16 +441,16 @@ void gtc_print_stats_sdc(gtc_t gtc) {
 
   if (!getenv("SCIOTO_DISABLE_STATS") && !getenv("SCIOTO_DISABLE_PERNODE_STATS")) {
     // avoid floating point exceptions...
-    perget       = tc->getcalls      != 0 ? TC_READ_TSCTIMER(tc,getbuf)    / tc->getcalls      : 0;
-    peradd       = tc->tasks_spawned != 0 ? TC_READ_TSCTIMER(tc,add)       / tc->tasks_spawned : 0;
-    perinplace   = tc->tasks_spawned != 0 ? TC_READ_TSCTIMER(tc,addinplace)/ tc->tasks_spawned : 0; // borrowed
-    perfinish    = rb->nprogress     != 0 ? TC_READ_TSCTIMER(tc,addfinish) / rb->nprogress     : 0; // borrowed, but why?
-    perprogress  = rb->nprogress     != 0 ? TC_READ_TSCTIMER(tc,progress)  / rb->nprogress     : 0;
-    perreclaim   = rb->nreccalls     != 0 ? TC_READ_TSCTIMER(tc,reclaim)   / rb->nreccalls     : 0;
-    perensure    = rb->nensure       != 0 ? TC_READ_TSCTIMER(tc,ensure)    / rb->nensure       : 0;
-    perrelease   = rb->nrelease      != 0 ? TC_READ_TSCTIMER(tc,release)   / rb->nrelease      : 0;
-    perreacquire = rb->nreacquire    != 0 ? TC_READ_TSCTIMER(tc,reacquire) / rb->nreacquire    : 0;
-    perpoptail   = rb->ngets         != 0 ? TC_READ_TSCTIMER(tc,poptail)   / rb->ngets         : 0;
+    perget       = tc->ct.getcalls      != 0 ? TC_READ_TIMER(tc,getbuf)    / tc->ct.getcalls      : 0;
+    peradd       = tc->ct.tasks_spawned != 0 ? TC_READ_TIMER(tc,add)       / tc->ct.tasks_spawned : 0;
+    perinplace   = tc->ct.tasks_spawned != 0 ? TC_READ_TIMER(tc,addinplace)/ tc->ct.tasks_spawned : 0; // borrowed
+    perfinish    = rb->nprogress     != 0 ? TC_READ_TIMER(tc,addfinish) / rb->nprogress     : 0; // borrowed, but why?
+    perprogress  = rb->nprogress     != 0 ? TC_READ_TIMER(tc,progress)  / rb->nprogress     : 0;
+    perreclaim   = rb->nreccalls     != 0 ? TC_READ_TIMER(tc,reclaim)   / rb->nreccalls     : 0;
+    perensure    = rb->nensure       != 0 ? TC_READ_TIMER(tc,ensure)    / rb->nensure       : 0;
+    perrelease   = rb->nrelease      != 0 ? TC_READ_TIMER(tc,release)   / rb->nrelease      : 0;
+    perreacquire = rb->nreacquire    != 0 ? TC_READ_TIMER(tc,reacquire) / rb->nreacquire    : 0;
+    perpoptail   = rb->ngets         != 0 ? TC_READ_TIMER(tc,poptail)   / rb->ngets         : 0;
 
     printf(" %4d - SDC-Q: nrelease %6lu, nreacquire %6lu, nreclaimed %6lu, nwaited %2lu, nprogress %6lu\n"
            " %4d -    failed w/lock: %6lu, failed w/o lock: %6lu, aborted steals: %6lu\n"
@@ -458,29 +458,29 @@ void gtc_print_stats_sdc(gtc_t gtc) {
       _c->rank,
         tc->shared_rb->nrelease, tc->shared_rb->nreacquire, tc->shared_rb->nreclaimed, tc->shared_rb->nwaited, tc->shared_rb->nprogress,
       _c->rank,
-        tc->failed_steals_locked, tc->failed_steals_unlocked, tc->aborted_steals,
+        tc->ct.failed_steals_locked, tc->ct.failed_steals_unlocked, tc->ct.aborted_steals,
       _c->rank,
         tc->shared_rb->ngets, TC_READ_TIMER_USEC(tc, t[0])/(double)tc->shared_rb->ngets, tc->shared_rb->nxfer);
     printf(" %4d - TSC: get: %"PRIu64"M (%"PRIu64" x %"PRIu64")  add: %"PRIu64"M (%"PRIu64" x %"PRIu64") inplace: %"PRIu64"M (%"PRIu64")\n",
         _c->rank,
-        TC_READ_TSCTIMER_M(tc,getbuf), perget, tc->getcalls,
-        TC_READ_TSCTIMER_M(tc,add), peradd, tc->tasks_spawned,
-        TC_READ_TSCTIMER_M(tc,addinplace), perinplace);
+        TC_READ_TIMER_M(tc,getbuf), perget, tc->ct.getcalls,
+        TC_READ_TIMER_M(tc,add), peradd, tc->ct.tasks_spawned,
+        TC_READ_TIMER_M(tc,addinplace), perinplace);
     printf(" %4d - TSC: addfinish: %"PRIu64"M (%"PRIu64") progress: %"PRIu64"M (%"PRIu64" x %"PRIu64") reclaim: %"PRIu64"M (%"PRIu64" x %"PRIu64")\n",
         _c->rank,
-        TC_READ_TSCTIMER_M(tc,addfinish), perfinish,
-        TC_READ_TSCTIMER_M(tc,progress), perprogress, rb->nprogress,
-        TC_READ_TSCTIMER_M(tc,reclaim), perreclaim, rb->nreccalls);
+        TC_READ_TIMER_M(tc,addfinish), perfinish,
+        TC_READ_TIMER_M(tc,progress), perprogress, rb->nprogress,
+        TC_READ_TIMER_M(tc,reclaim), perreclaim, rb->nreccalls);
     printf(" %4d - TSC: ensure: %"PRIu64"M (%"PRIu64" x %"PRIu64") release: %"PRIu64"M (%"PRIu64" x %"PRIu64") "
            "reacquire: %"PRIu64"M (%"PRIu64" x %"PRIu64")\n",
         _c->rank,
-        TC_READ_TSCTIMER_M(tc,ensure), perensure, rb->nensure,
-        TC_READ_TSCTIMER_M(tc,release), perrelease, rb->nrelease,
-        TC_READ_TSCTIMER_M(tc,reacquire), perreacquire, rb->nreacquire);
+        TC_READ_TIMER_M(tc,ensure), perensure, rb->nensure,
+        TC_READ_TIMER_M(tc,release), perrelease, rb->nrelease,
+        TC_READ_TIMER_M(tc,reacquire), perreacquire, rb->nreacquire);
     printf(" %4d - TSC: pushhead: %"PRIu64"M (%"PRIu64") poptail: %"PRIu64"M (%"PRIu64" x %"PRIu64")\n",
         _c->rank,
-        TC_READ_TSCTIMER_M(tc,pushhead), (uint64_t)0,
-        TC_READ_TSCTIMER_M(tc,poptail), perpoptail, rb->ngets);
+        TC_READ_TIMER_M(tc,pushhead), (uint64_t)0,
+        TC_READ_TIMER_M(tc,poptail), perpoptail, rb->ngets);
   }
 }
 
@@ -491,83 +491,121 @@ void gtc_print_stats_sdc(gtc_t gtc) {
  * @param tc       IN Ptr to task collection
  */
 void gtc_print_gstats_sdc(gtc_t gtc) {
-  char buf1[200], buf2[200], buf3[200];
-  double perprogress, perreclaim, perensure, perrelease, perreacquire, perpoptail, pergetmeta;
   tc_t *tc = gtc_lookup(gtc);
   sdc_shrb_t *rb = (sdc_shrb_t *)tc->shared_rb;
+  double   *times, *mintimes, *maxtimes, *sumtimes;
+  uint64_t *counts, *mincounts, *maxcounts, *sumcounts;
 
-  // avoid floating point exceptions...
-  perpoptail   = rb->ngets         != 0 ? TC_READ_TSCTIMER_MSEC(tc,poptail)   / rb->ngets         : 0.0;
-  pergetmeta   = rb->nmeta         != 0 ? TC_READ_TSCTIMER_MSEC(tc,getmeta)   / rb->nmeta         : 0.0;
-  perprogress  = rb->nprogress     != 0 ? TC_READ_TSCTIMER_USEC(tc,progress)  / rb->nprogress     : 0.0;
-  perreclaim   = rb->nreccalls     != 0 ? TC_READ_TSCTIMER_USEC(tc,reclaim)   / rb->nreccalls     : 0.0;
-  perensure    = rb->nensure       != 0 ? TC_READ_TSCTIMER_USEC(tc,ensure)    / rb->nensure       : 0.0;
-  perreacquire = rb->nreacquire    != 0 ? TC_READ_TSCTIMER_MSEC(tc,reacquire) / rb->nreacquire    : 0.0;
-  perrelease   = rb->nrelease      != 0 ? TC_READ_TSCTIMER_USEC(tc,release)   / rb->nrelease      : 0.0;
+  int ntimes = 14;
+  times     = shmem_calloc(ntimes, sizeof(double));
+  mintimes  = shmem_calloc(ntimes, sizeof(double));
+  maxtimes  = shmem_calloc(ntimes, sizeof(double));
+  sumtimes  = shmem_calloc(ntimes, sizeof(double));
 
-  eprintf("        : gets         %-32stime %35s per %s\n",
-      gtc_print_mmau(buf1, "", rb->ngets, 1),
-      gtc_print_mmad(buf2, "ms", TC_READ_TSCTIMER_MSEC(tc,poptail), 0),
-      gtc_print_mmad(buf3, "ms", perpoptail, 0));
-  eprintf("        :   get_buf    %-32s\n", gtc_print_mmau(buf1, "", tc->getcalls, 1));
-  eprintf("        :   get_meta   %-32stime %35s per %s\n", 
-      gtc_print_mmau(buf1, "", rb->nmeta, 1),
-      gtc_print_mmad(buf2, "ms", TC_READ_TSCTIMER_MSEC(tc,getmeta), 0),
-      gtc_print_mmad(buf3, "ms", pergetmeta, 0));
-  eprintf("        :   localget   %-32s\n", gtc_print_mmau(buf1, "", tc->getlocal, 1));
-  eprintf("        :   steals     %-32s\n", gtc_print_mmau(buf1, "", rb->nsteals, 1));
-  eprintf("        :   fails lock %-32s\n", gtc_print_mmau(buf1, "", tc->failed_steals_locked, 1));
-  eprintf("        :   fails un   %-32s\n", gtc_print_mmau(buf1, "", tc->failed_steals_unlocked, 1));
-  eprintf("        :   fails ab   %-32s\n", gtc_print_mmau(buf1, "", tc->aborted_steals, 1));
-  eprintf("        : progress   %32s  time %35s    per %s\n",
-      gtc_print_mmau(buf1, "", rb->nprogress, 0),
-      gtc_print_mmad(buf2, "us", TC_READ_TSCTIMER_USEC(tc,progress), 0),
-      gtc_print_mmad(buf3, "us", perprogress, 0));
-  eprintf("        : reclaim    %32s  time %35s    per %s\n",
-      gtc_print_mmau(buf1, "", rb->nreccalls, 0),
-      gtc_print_mmad(buf2, "us", TC_READ_TSCTIMER_USEC(tc,reclaim), 0),
-      gtc_print_mmad(buf3, "us", perreclaim, 0));
-  eprintf("        : ensure     %32s  time %35s    per %s\n",
-      gtc_print_mmau(buf1, "", rb->nensure, 0),
-      gtc_print_mmad(buf2, "us", TC_READ_TSCTIMER_USEC(tc,ensure), 0),
-      gtc_print_mmad(buf3, "us", perensure, 0));
-  eprintf("        : reacquire  %32s  time %35s    per %s\n",
-      gtc_print_mmau(buf1, "", rb->nreacquire, 0),
-      gtc_print_mmad(buf2, "ms", TC_READ_TSCTIMER_MSEC(tc,reacquire), 0),
-      gtc_print_mmad(buf3, "ms", perreacquire, 0));
-  eprintf("        : release    %32s  time %35s    per %s\n",
-      gtc_print_mmau(buf1, "", rb->nrelease, 0),
-      gtc_print_mmad(buf2, "us", TC_READ_TSCTIMER_USEC(tc,release), 0),
-      gtc_print_mmad(buf3, "us", perrelease, 0));
+  int ncounts = 13;
+  counts     = shmem_calloc(ncounts, sizeof(uint64_t));
+  mincounts  = shmem_calloc(ncounts, sizeof(uint64_t));
+  maxcounts  = shmem_calloc(ncounts, sizeof(uint64_t));
+  sumcounts  = shmem_calloc(ncounts, sizeof(uint64_t));
 
 
-#if 0
-  unsigned long tgets, tRelease, tReacquire, tProgress, tContFail, tContTot, contention_fails, contention_total;
-  double tgettime, mingettime, maxgettime, gettime, perget;
+  times[SDCPopTailTime]        = TC_READ_TIMER_MSEC(tc,poptail);
+  times[SDCGetMetaTime]        = TC_READ_TIMER_MSEC(tc,getmeta);
+  times[SDCProgressTime]       = TC_READ_TIMER_USEC(tc,progress);
+  times[SDCReclaimTime]        = TC_READ_TIMER_USEC(tc,reclaim);
+  times[SDCEnsureTime]         = TC_READ_TIMER_USEC(tc,ensure);
+  times[SDCReacquireTime]      = TC_READ_TIMER_MSEC(tc,reacquire);
+  times[SDCReleaseTime]        = TC_READ_TIMER_USEC(tc,release);
+  times[SDCPerPopTailTime]     = rb->ngets         != 0 ? TC_READ_TIMER_MSEC(tc,poptail)   / rb->ngets         : 0.0;
+  times[SDCPerGetMetaTime]     = rb->nmeta         != 0 ? TC_READ_TIMER_MSEC(tc,getmeta)   / rb->nmeta         : 0.0;
+  times[SDCPerProgressTime]    = rb->nprogress     != 0 ? TC_READ_TIMER_USEC(tc,progress)  / rb->nprogress     : 0.0;
+  times[SDCPerReclaimTime]     = rb->nreccalls     != 0 ? TC_READ_TIMER_USEC(tc,reclaim)   / rb->nreccalls     : 0.0;
+  times[SDCPerEnsureTime]      = rb->nensure       != 0 ? TC_READ_TIMER_USEC(tc,ensure)    / rb->nensure       : 0.0;
+  times[SDCPerReacquireTime]   = rb->nreacquire    != 0 ? TC_READ_TIMER_MSEC(tc,reacquire) / rb->nreacquire    : 0.0;
+  times[SDCPerReleaseTime]     = rb->nrelease      != 0 ? TC_READ_TIMER_USEC(tc,release)   / rb->nrelease      : 0.0;
 
-  gtc_reduce(&rb->nrelease,   &tRelease,    GtcReduceOpSum, LongType, 1);
-  gtc_reduce(&rb->nreacquire, &tReacquire,  GtcReduceOpSum, LongType, 1);
-  gtc_reduce(&rb->nprogress,  &tProgress,   GtcReduceOpSum, LongType, 1);
+  counts[SDCNumGets]            = rb->ngets;
+  counts[SDCGetCalls]           = tc->ct.getcalls;
+  counts[SDCNumMeta]            = rb->nmeta;
+  counts[SDCGetLocalCalls]      = tc->ct.getlocal;
+  counts[SDCNumSteals]          = rb->nsteals;
+  counts[SDCStealFailsLocked]   = tc->ct.failed_steals_locked;
+  counts[SDCStealFailsUnlocked] = tc->ct.failed_steals_unlocked;
+  counts[SDCAbortedSteals]      = tc->ct.aborted_steals;
+  counts[SDCProgressCalls]      = rb->nprogress;
+  counts[SDCReclaimCalls]       = rb->nreccalls;
+  counts[SDCEnsureCalls]        = rb->nensure;
+  counts[SDCReacquireCalls]     = rb->nreacquire;
+  counts[SDCReleaseCalls]       = rb->nrelease;
 
-  contention_fails = tc->failed_steals_locked + tc->aborted_steals;
-  contention_total = tc->num_steals + tc->failed_steals_unlocked + tc->failed_steals_locked + tc->aborted_steals;
+  shmemx_min_reduce(SHMEMX_TEAM_WORLD, mintimes, times, ntimes);
+  shmemx_max_reduce(SHMEMX_TEAM_WORLD, maxtimes, times, ntimes);
+  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, sumtimes, times, ntimes);
 
-  gtc_reduce(&contention_fails, &tContFail, GtcReduceOpSum, LongType, 1);
-  gtc_reduce(&contention_total, &tContTot, GtcReduceOpSum, LongType, 1);
+  shmemx_min_reduce(SHMEMX_TEAM_WORLD, mincounts, counts, ncounts);
+  shmemx_max_reduce(SHMEMX_TEAM_WORLD, maxcounts, counts, ncounts);
+  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, sumcounts, counts, ncounts);
+  shmem_barrier_all();
 
-  gettime = TC_READ_TIMER_USEC(tc, t[0]);
-  perget   = gettime / (double)rb->ngets;
-  gtc_reduce(&rb->ngets,      &tgets,       GtcReduceOpSum, LongType, 1);
-  gtc_reduce(&gettime,        &tgettime,    GtcReduceOpSum, DoubleType, 1);
-  gtc_reduce(&perget,         &mingettime,  GtcReduceOpMin, DoubleType, 1);
-  gtc_reduce(&perget,         &maxgettime,  GtcReduceOpMax, DoubleType, 1);
+  eprintf("        : gets         %6lu (%6.2f/%3lu/%3lu) time %6.2fms/%6.2fms/%6.2fms per %6.2fms/%6.2fms/%6.2fms\n",
+      sumcounts[SDCNumGets], sumcounts[SDCNumGets]/(double)_c->size, mincounts[SDCNumGets], maxcounts[SDCNumGets],
+      sumtimes[SDCPopTailTime]/_c->size, mintimes[SDCPopTailTime], maxtimes[SDCPopTailTime],
+      sumtimes[SDCPerPopTailTime]/_c->size, mintimes[SDCPerPopTailTime], maxtimes[SDCPerPopTailTime]);
 
-  eprintf("   SDC:  nrelease: %6lu nreacq: %6lu, contention %lu/%lu (%5.2f %%) steal attempts\n",
-      tRelease, tReacquire, tContFail, tContTot, tContFail/(double)tContTot*100.0);
-  eprintf("   SDC:  avg release: %6lu avg reacq: %6lu avg progress: %6lu\n", tRelease/_c->size, tReacquire/_c->size, tProgress/_c->size);
-  eprintf("   SDC:  gettime: avg: %5.2f us max: %5.2f us min: %5.2f us\n", tgettime/(double)tgets, maxgettime, mingettime);
+  eprintf("        :   get_buf    %6lu (%6.2f/%3lu/%3lu\n",
+      sumcounts[SDCGetCalls], sumcounts[SDCGetCalls]/(double)_c->size, mincounts[SDCGetCalls], maxcounts[SDCGetCalls]);
 
-#endif
+  eprintf("        :   get_meta   %6lu (%6.2f/%3lu/%3lu) time %6.2fms/%6.2fms/%6.2fms per %6.2fms/%6.2fms/%6.2fms\n",
+      sumcounts[SDCNumMeta], sumcounts[SDCNumMeta]/(double)_c->size, mincounts[SDCNumMeta], maxcounts[SDCNumMeta],
+      sumtimes[SDCGetMetaTime]/_c->size, mintimes[SDCGetMetaTime], maxtimes[SDCGetMetaTime],
+      sumtimes[SDCPerGetMetaTime]/_c->size, mintimes[SDCPerGetMetaTime], maxtimes[SDCPerGetMetaTime]);
+
+  eprintf("        :   localget   %6lu (%6.2f/%3lu/%3lu)\n",
+      sumcounts[SDCGetLocalCalls], sumcounts[SDCGetLocalCalls]/(double)_c->size, 
+      mincounts[SDCGetLocalCalls], maxcounts[SDCGetLocalCalls]);
+  eprintf("        :   steals     %6lu (%6.2f/%3lu/%3lu)\n",
+      sumcounts[SDCNumSteals], sumcounts[SDCNumSteals]/(double)_c->size, 
+      mincounts[SDCNumSteals], maxcounts[SDCNumSteals]);
+  eprintf("        :   fails lock %6lu (%6.2f/%3lu/%3lu)\n",
+      sumcounts[SDCStealFailsLocked], sumcounts[SDCStealFailsLocked]/(double)_c->size, 
+      mincounts[SDCStealFailsLocked], maxcounts[SDCStealFailsLocked]);
+  eprintf("        :   fails un   %6lu (%6.2f/%3lu/%3lu)\n",
+      sumcounts[SDCStealFailsUnlocked], sumcounts[SDCStealFailsUnlocked]/(double)_c->size, 
+      mincounts[SDCStealFailsUnlocked], maxcounts[SDCStealFailsUnlocked]);
+  eprintf("        :   fails ab   %6lu (%6.2f/%3lu/%3lu)\n",
+      sumcounts[SDCAbortedSteals], sumcounts[SDCAbortedSteals]/(double)_c->size, 
+      mincounts[SDCAbortedSteals], maxcounts[SDCAbortedSteals]);
+
+  eprintf("        : progress   %6.2f/%3lu/%3lu time %6.2fus/%6.2fus/%6.2fus per %6.2fus/%6.2fus/%6.2fus\n",
+      sumcounts[SDCProgressCalls]/(double)_c->size, mincounts[SDCProgressCalls], maxcounts[SDCProgressCalls],
+      sumtimes[SDCProgressTime]/_c->size, mintimes[SDCProgressTime], maxtimes[SDCProgressTime],
+      sumtimes[SDCPerProgressTime]/_c->size, mintimes[SDCPerProgressTime], maxtimes[SDCPerProgressTime]);
+  eprintf("        : reclaim    %6.2f/%3lu/%3lu time %6.2fus/%6.2fus/%6.2fus per %6.2fus/%6.2fus/%6.2fus\n",
+      sumcounts[SDCReclaimCalls]/(double)_c->size, mincounts[SDCReclaimCalls], maxcounts[SDCReclaimCalls],
+      sumtimes[SDCReclaimTime]/_c->size, mintimes[SDCReclaimTime], maxtimes[SDCReclaimTime],
+      sumtimes[SDCPerReclaimTime]/_c->size, mintimes[SDCPerReclaimTime], maxtimes[SDCPerReclaimTime]);
+  eprintf("        : ensure     %6.2f/%3lu/%3lu time %6.2fus/%6.2fus/%6.2fus per %6.2fus/%6.2fus/%6.2fus\n",
+      sumcounts[SDCEnsureCalls]/(double)_c->size, mincounts[SDCEnsureCalls], maxcounts[SDCEnsureCalls],
+      sumtimes[SDCEnsureTime]/_c->size, mintimes[SDCEnsureTime], maxtimes[SDCEnsureTime],
+      sumtimes[SDCPerEnsureTime]/_c->size, mintimes[SDCPerEnsureTime], maxtimes[SDCPerEnsureTime]);
+  eprintf("        : reacquire  %6.2f/%3lu/%3lu time %6.2fms/%6.2fms/%6.2fms per %6.2fms/%6.2fms/%6.2fms\n",
+      sumcounts[SDCReacquireCalls]/(double)_c->size, mincounts[SDCReacquireCalls], maxcounts[SDCReacquireCalls],
+      sumtimes[SDCReacquireTime]/_c->size, mintimes[SDCReacquireTime], maxtimes[SDCReacquireTime],
+      sumtimes[SDCPerReacquireTime]/_c->size, mintimes[SDCPerReacquireTime], maxtimes[SDCPerReacquireTime]);
+  eprintf("        : release    %6.2f/%3lu/%3lu time %6.2fus/%6.2fus/%6.2fus per %6.2fus/%6.2fus/%6.2fus\n",
+      sumcounts[SDCReleaseCalls]/(double)_c->size, mincounts[SDCReleaseCalls], maxcounts[SDCReleaseCalls],
+      sumtimes[SDCReleaseTime]/_c->size, mintimes[SDCReleaseTime], maxtimes[SDCReleaseTime],
+      sumtimes[SDCPerReleaseTime]/_c->size, mintimes[SDCPerReleaseTime], maxtimes[SDCPerReleaseTime]);
+
+  shmem_free(times);
+  shmem_free(mintimes);
+  shmem_free(maxtimes);
+  shmem_free(sumtimes);
+
+  shmem_free(counts);
+  shmem_free(mincounts);
+  shmem_free(maxcounts);
+  shmem_free(sumcounts);
 }
 
 

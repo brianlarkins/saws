@@ -29,46 +29,6 @@ gtc_context_t *_c;
 int gtc_is_initialized = 0;
 
 
-/** Set the behavior of the load balancer.
-  */
-void gtc_ldbal_cfg_set(gtc_t gtc, gtc_ldbal_cfg_t *cfg) {
-  tc_t *tc = gtc_lookup(gtc);
-
-  assert(cfg->victim_selection == VICTIM_RANDOM || cfg->victim_selection == VICTIM_ROUND_ROBIN);
-  assert(cfg->steal_method == STEAL_HALF || cfg->steal_method == STEAL_ALL || cfg->steal_method == STEAL_CHUNK);
-  assert(cfg->max_steal_retries >= 0);
-  assert(cfg->max_steal_attempts_local >= 0);
-  assert(cfg->max_steal_attempts_remote >= 0);
-  assert(cfg->chunk_size >= 1);
-  assert(cfg->local_search_factor >= 0 && cfg->local_search_factor <= 100);
-
-  tc->ldbal_cfg = *cfg;
-}
-
-
-
-/** Get the behavior of the load balancer.
-  */
-void gtc_ldbal_cfg_get(gtc_t gtc, gtc_ldbal_cfg_t *cfg) {
-  tc_t *tc = gtc_lookup(gtc);
-
-  *cfg = tc->ldbal_cfg;
-}
-
-
-/** Set up a ldbal_cfg struct with the default values.
-  */
-void gtc_ldbal_cfg_init(gtc_ldbal_cfg_t *cfg) {
-  cfg->stealing_enabled    = 1;
-  cfg->victim_selection    = VICTIM_RANDOM;
-  cfg->steal_method        = STEAL_HALF;
-  cfg->steals_can_abort    = 1;
-  cfg->max_steal_retries   = 5;
-  cfg->max_steal_attempts_local = 1000;
-  cfg->max_steal_attempts_remote= 10;
-  cfg->chunk_size          = 1;
-  cfg->local_search_factor = 75;
-}
 
 
 /**
@@ -108,6 +68,8 @@ gtc_context_t *gtc_init(void) {
 
   sigaction(SIGSEGV, &sa, NULL);
   sigaction(SIGINT, &sa, NULL);
+
+  _c->tsc_cpu_hz = gtc_tsc_calibrate();
 
   return _c;
 }
@@ -168,4 +130,49 @@ void gtc_bthandler(int sig, siginfo_t *si, void *vctx) {
     }
   }
   exit(1);
+}
+
+
+
+/**
+ * Set the behavior of the load balancer.
+ */
+void gtc_ldbal_cfg_set(gtc_t gtc, gtc_ldbal_cfg_t *cfg) {
+  tc_t *tc = gtc_lookup(gtc);
+
+  assert(cfg->target_selection == TARGET_RANDOM || cfg->target_selection == TARGET_ROUND_ROBIN);
+  assert(cfg->steal_method == STEAL_HALF || cfg->steal_method == STEAL_ALL || cfg->steal_method == STEAL_CHUNK);
+  assert(cfg->max_steal_retries >= 0);
+  assert(cfg->max_steal_attempts_local >= 0);
+  assert(cfg->max_steal_attempts_remote >= 0);
+  assert(cfg->chunk_size >= 1);
+  assert(cfg->local_search_factor >= 0 && cfg->local_search_factor <= 100);
+
+  tc->ldbal_cfg = *cfg;
+}
+
+
+
+/** Get the behavior of the load balancer.
+  */
+void gtc_ldbal_cfg_get(gtc_t gtc, gtc_ldbal_cfg_t *cfg) {
+  tc_t *tc = gtc_lookup(gtc);
+
+  *cfg = tc->ldbal_cfg;
+}
+
+
+/**
+ * Set up a ldbal_cfg struct with the default values.
+ */
+void gtc_ldbal_cfg_init(gtc_ldbal_cfg_t *cfg) {
+  cfg->stealing_enabled    = 1;
+  cfg->target_selection    = TARGET_RANDOM;
+  cfg->steal_method        = STEAL_HALF;
+  cfg->steals_can_abort    = 1;
+  cfg->max_steal_retries   = 5;
+  cfg->max_steal_attempts_local = 1000;
+  cfg->max_steal_attempts_remote= 10;
+  cfg->chunk_size          = 1;
+  cfg->local_search_factor = 75;
 }

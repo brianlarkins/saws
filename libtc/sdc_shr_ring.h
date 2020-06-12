@@ -6,6 +6,41 @@
 #include <mutex.h>
 #include <tc.h>
 
+typedef enum {
+  SDCPopTailTime,
+  SDCPerPopTailTime,
+  SDCGetMetaTime,
+  SDCPerGetMetaTime,
+  SDCProgressTime,
+  SDCPerProgressTime,
+  SDCReclaimTime,
+  SDCPerReclaimTime,
+  SDCEnsureTime,
+  SDCPerEnsureTime,
+  SDCReacquireTime,
+  SDCPerReacquireTime,
+  SDCReleaseTime,
+  SDCPerReleaseTime
+} gtc_sdc_gtimestats_e;
+
+
+typedef enum {
+  SDCGetCalls,
+  SDCNumGets,
+  SDCNumMeta,
+  SDCGetLocalCalls,
+  SDCNumSteals,
+  SDCStealFailsLocked,
+  SDCStealFailsUnlocked,
+  SDCAbortedSteals,
+  SDCProgressCalls,
+  SDCReclaimCalls,
+  SDCEnsureCalls,
+  SDCReacquireCalls,
+  SDCReleaseCalls
+} gtc_sdc_gcountstats_e;
+
+
 struct sdc_shrb_s {
   int             itail;     // Index of the intermediate tail (between vtail and tail)
   int             tail;      // Index of tail element (between 0 and rb_size-1)

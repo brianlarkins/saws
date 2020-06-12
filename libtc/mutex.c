@@ -68,7 +68,7 @@ void synch_mutex_lock(synch_mutex_t *m, int proc) {
     // Linear backoff to avoid flooding the network and bogging down the
     // remote data server.
     backoff = _c->rank == proc ?  0 : MIN(SPINCOUNT*nattempts, MAXSPIN);
-    for (int i = 0; i < backoff; i++) { 
+    for (int i = 0; i < backoff; i++) {
       synch_mutex_dummy_work += 1.0;
     }
 #endif /* LINEAR_BACKOFF */
@@ -83,7 +83,7 @@ void synch_mutex_lock(synch_mutex_t *m, int proc) {
 
 /** Attempt to lock the given mutex on the given processor.
   *
-  *  @param[in] lock Array that holds current lock state for every processor. 
+  *  @param[in] lock Array that holds current lock state for every processor.
   *  @param[in] proc Processor id to index into lock array.
   *  @return         0 if lock set successfully, 1 if lock already set by other call.
   */
@@ -99,7 +99,7 @@ int synch_mutex_trylock(synch_mutex_t *m, int proc) {
 #else  /* !USING_SHMEM_LOCKS */
 
     lock_val = shmem_atomic_swap(&m->locks[proc], SYNCH_MUTEX_LOCKED, proc);
-    ret = (lock_val == SYNCH_MUTEX_UNLOCKED);  
+    ret = (lock_val == SYNCH_MUTEX_UNLOCKED);
 
 #endif /*  USING_SHMEM_LOCKS */
 

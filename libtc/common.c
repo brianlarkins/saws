@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2018. See COPYRIGHT in top-level directory.
  */
-
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -14,9 +14,9 @@
 void gtc_print_my_stats(gtc_t gtc);
 //static int dcomp(const void *a, const void *b);
 
-enum victim_types_e { FREE, LOCAL_SEARCH, RETRY };
+enum target_types_e { FREE, LOCAL_SEARCH, RETRY };
 
-char *victim_methods[2] = { "Random", "Round Robin" };
+char *target_methods[2] = { "Random", "Round Robin" };
 char *steal_methods[3]  = { "Half", "Greedy", "Chunk" };
 
 static int gtc_is_seeded = 0;
@@ -53,7 +53,7 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
   }
 
   // allocate collection
-  tc = calloc(1, sizeof(tc_t));
+  tc = shmem_calloc(1, sizeof(tc_t));
   assert(tc != NULL);
 
   // add to global registry
@@ -61,7 +61,7 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
 
 
   // allocate timers
-  tc->timers = calloc(1,sizeof(tc_timers_t));
+  tc->timers = calloc(1, sizeof(tc_timers_t));
   TC_INIT_TIMER(tc,process);
   TC_INIT_TIMER(tc,passive);
   TC_INIT_TIMER(tc,search);
@@ -74,24 +74,20 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
   for (int i=0; i<5; i++)
     TC_INIT_TIMER(tc,t[i]);
 
-/* TEST CODE */
-  tc->tsctimers = calloc(1, sizeof(tc_tsctimers_t));
-  TC_INIT_TSCTIMER(tc, getbuf);
-  TC_INIT_TSCTIMER(tc, add);
-  TC_INIT_TSCTIMER(tc, addinplace);
-  TC_INIT_TSCTIMER(tc, addfinish);
-  TC_INIT_TSCTIMER(tc, progress);
-  TC_INIT_TSCTIMER(tc, reclaim);
-  TC_INIT_TSCTIMER(tc, ensure);
-  TC_INIT_TSCTIMER(tc, release);
-  TC_INIT_TSCTIMER(tc, reacquire);
-  TC_INIT_TSCTIMER(tc, pushhead);
-  TC_INIT_TSCTIMER(tc, poptail);
-  TC_INIT_TSCTIMER(tc, getsteal);
-  TC_INIT_TSCTIMER(tc, getfail);
-  TC_INIT_TSCTIMER(tc, getmeta);
-  TC_INIT_TSCTIMER(tc, sanity);
-/* TEST CODE */
+  TC_INIT_TIMER(tc, getbuf);
+  TC_INIT_TIMER(tc, add);
+  TC_INIT_TIMER(tc, addinplace);
+  TC_INIT_TIMER(tc, addfinish);
+  TC_INIT_TIMER(tc, progress);
+  TC_INIT_TIMER(tc, reclaim);
+  TC_INIT_TIMER(tc, ensure);
+  TC_INIT_TIMER(tc, release);
+  TC_INIT_TIMER(tc, reacquire);
+  TC_INIT_TIMER(tc, pushhead);
+  TC_INIT_TIMER(tc, poptail);
+  TC_INIT_TIMER(tc, getsteal);
+  TC_INIT_TIMER(tc, getfail);
+  TC_INIT_TIMER(tc, getmeta);
 
   if (!ldbal_cfg) {
     ldbal_cfg = alloca(sizeof(gtc_ldbal_cfg_t));
@@ -169,12 +165,10 @@ void gtc_destroy(gtc_t gtc) {
   clod_destroy(tc->clod);
   if (tc->steal_buf)
     free(tc->steal_buf);
-  if (tc->timers)
+  if (tc->timers) 
     free(tc->timers);
-  if (tc->tsctimers) 
-    free(tc->tsctimers);
 
-  free(tc);
+  shmem_free(tc);
 
   gtc_handle_release(gtc);
 
@@ -197,20 +191,20 @@ void gtc_reset(gtc_t gtc) {
   tc->state = STATE_INACTIVE;
 
   // Reset stats
-  tc->tasks_completed = 0;
-  tc->tasks_spawned   = 0;
-  tc->tasks_stolen    = 0;
-  tc->num_steals      = 0;
-  tc->passive_count   = 0;
-  tc->failed_steals_locked   = 0;
-  tc->failed_steals_unlocked = 0;
-  tc->aborted_steals         = 0;
-  tc->aborted_victims        = 0;
-  tc->dispersion_attempts_unlocked = 0;
-  tc->dispersion_attempts_locked   = 0;
+  tc->ct.tasks_completed = 0;
+  tc->ct.tasks_spawned   = 0;
+  tc->ct.tasks_stolen    = 0;
+  tc->ct.num_steals      = 0;
+  tc->ct.passive_count   = 0;
+  tc->ct.failed_steals_locked   = 0;
+  tc->ct.failed_steals_unlocked = 0;
+  tc->ct.aborted_steals         = 0;
+  tc->ct.aborted_targets        = 0;
+  tc->ct.dispersion_attempts_unlocked = 0;
+  tc->ct.dispersion_attempts_locked   = 0;
 
   // Reset round-robin counter
-  tc->last_victim = (_c->rank + 1) % _c->size;
+  tc->last_target = (_c->rank + 1) % _c->size;
 
   // Zero out the timers
   memset(tc->timers, 0, sizeof(tc_timers_t));
@@ -252,7 +246,7 @@ void gtc_print_config(gtc_t gtc) {
   idx += snprintf(msg+idx, size-idx, ", Mutexes: %s", "PtlSwap Spinlocks");
 
   if (tc->ldbal_cfg.stealing_enabled) {
-    idx += snprintf(msg+idx, size-idx, ", Victim selection: %s", victim_methods[tc->ldbal_cfg.victim_selection]);
+    idx += snprintf(msg+idx, size-idx, ", Target selection: %s", target_methods[tc->ldbal_cfg.target_selection]);
 
     if (tc->ldbal_cfg.steal_method == STEAL_CHUNK)
       idx += snprintf(msg+idx, size-idx, ", Steal method: %s (%d)", steal_methods[tc->ldbal_cfg.steal_method], tc->ldbal_cfg.chunk_size);
@@ -404,43 +398,42 @@ int gtc_get_local_buf(gtc_t gtc, int priority, task_t *buf) {
 }
 
 /**
- * gtc_steal_tail -- Attempt to steal a chunk of tasks from the given victim's tail.
+ * gtc_steal_tail -- Attempt to steal a chunk of tasks from the given target's tail.
  *
- * @param  victim        Process ID of victim
+ * @param  target        Process ID of target
  * @param  req_stealsize Amount of work to steal.
  * @return number of tasks stolen
  */
-int gtc_steal_tail(gtc_t gtc, int victim) {
+int gtc_steal_tail(gtc_t gtc, int target) {
   tc_t *tc = gtc_lookup(gtc);
   int   stealsize;
   int   req_stealsize;
-  tc_tsctimer_t temp;
+  tc_timer_t temp;
 
   if (tc->ldbal_cfg.steal_method == STEAL_CHUNK)
     req_stealsize = tc->ldbal_cfg.chunk_size;
   else
     req_stealsize = __GTC_MAX_STEAL_SIZE;
 
-  // TSC timer code is ugly because of inflexible macros
-  temp.total = 0;
-  temp.last = gtc_get_tsctime();
-  stealsize = tc->cb.pop_n_tail(tc->shared_rb, victim, req_stealsize, tc->steal_buf, tc->ldbal_cfg.steal_method);
-  temp.temp = gtc_get_tsctime();
+  TC_INIT_ATIMER(temp);
+  TC_START_ATIMER(temp);
+  stealsize = tc->cb.pop_n_tail(tc->shared_rb, target, req_stealsize, tc->steal_buf, tc->ldbal_cfg.steal_method);
+  TC_STOP_ATIMER(temp);
 
   // account into success or failed steal timers
   if (stealsize > 0)
-    tc->tsctimers->getsteal.total += (temp.temp - temp.last);
+    TC_ADD_TIMER(tc, getsteal, temp);
   else
-    tc->tsctimers->getfail.total  += (temp.temp - temp.last);
+    TC_ADD_TIMER(tc, getfail, temp);
 
   if (stealsize > 0) {
-    gtc_lprintf(DBGGET, "\tthread %d: steal try: %d got: %d tasks from thread %d\n", _c->rank, req_stealsize, stealsize, victim);
+    gtc_lprintf(DBGGET, "\tthread %d: steal try: %d got: %d tasks from thread %d\n", _c->rank, req_stealsize, stealsize, target);
     tc->cb.push_n_head(tc->shared_rb, _c->rank, tc->steal_buf, stealsize);
   } else if (stealsize < 0) {
-    //gtc_lprintf(DBGGET, "\tthread %d: Aborting steal from %d\n", _c->rank, victim);
+    //gtc_lprintf(DBGGET, "\tthread %d: Aborting steal from %d\n", _c->rank, target);
     // XXX should account for number of aborted steals?
   } else {
-    //gtc_lprintf(DBGGET, "\tthread %d: failed steal got no tasks from thread %d\n", _c->rank, victim);
+    //gtc_lprintf(DBGGET, "\tthread %d: failed steal got no tasks from thread %d\n", _c->rank, target);
   }
 
   return stealsize;
@@ -448,14 +441,14 @@ int gtc_steal_tail(gtc_t gtc, int victim) {
 
 
 /**
- * gtc_try_steal_tail -- Attempt to steal a chunk of tasks from the given victim's tail.
+ * gtc_try_steal_tail -- Attempt to steal a chunk of tasks from the given target's tail.
  *
- * @param  victim        Process ID of victim
+ * @param  target        Process ID of target
  * @param  req_stealsize Amount of work to steal.  If this number is negative, perform work
  *                       splitting and get up to abs(req_stealsize) tasks.
  * @return number of tasks stolen or -1 on failure
  */
-int gtc_try_steal_tail(gtc_t gtc, int victim) {
+int gtc_try_steal_tail(gtc_t gtc, int target) {
   tc_t *tc = gtc_lookup(gtc);
   int   stealsize;
   int   req_stealsize;
@@ -465,19 +458,19 @@ int gtc_try_steal_tail(gtc_t gtc, int victim) {
   else
     req_stealsize = __GTC_MAX_STEAL_SIZE;
 
-  gtc_lprintf(DBGGET, "  thread %d: attempting to steal %d tasks from thread %d\n", _c->rank, req_stealsize, victim);
+  gtc_lprintf(DBGGET, "  thread %d: attempting to steal %d tasks from thread %d\n", _c->rank, req_stealsize, target);
 
 #ifdef QUEUE_TRY_POP_N_TAIL
-  stealsize = tc->cb.try_pop_n_tail(tc->shared_rb, victim, req_stealsize, tc->steal_buf, tc->ldbal_cfg.steal_method);
+  stealsize = tc->cb.try_pop_n_tail(tc->shared_rb, target, req_stealsize, tc->steal_buf, tc->ldbal_cfg.steal_method);
 #else
-  stealsize = tc->cb.pop_n_tail(tc->shared_rb, victim, req_stealsize, tc->steal_buf, tc->ldbal_cfg.steal_method);
+  stealsize = tc->cb.pop_n_tail(tc->shared_rb, target, req_stealsize, tc->steal_buf, tc->ldbal_cfg.steal_method);
 #endif
 
   if (stealsize > 0) {
     gtc_lprintf(DBGGET, "  thread %d: Got %d tasks, pushing onto my head\n", _c->rank, stealsize);
     tc->cb.push_n_head(tc->shared_rb, _c->rank, tc->steal_buf, stealsize);
   } else if (stealsize < 0) {
-    gtc_lprintf(DBGGET, "  thread %d: Aborting steal from %d\n", _c->rank, victim);
+    gtc_lprintf(DBGGET, "  thread %d: Aborting steal from %d\n", _c->rank, target);
   }
 
   gtc_lprintf(DBGGET, "  thread %d: steal completed\n", _c->rank);
@@ -487,14 +480,14 @@ int gtc_try_steal_tail(gtc_t gtc, int victim) {
 
 
 
-/** Internal victim selector state machine: Select the next victim to attempt a steal from.
+/** Internal target selector state machine: Select the next target to attempt a steal from.
   *
   * @param[in] gtc   Current task collection
-  * @param[in] state State of the victim selector.  The state struct should be
+  * @param[in] state State of the target selector.  The state struct should be
   *                  initially set to 0
-  * @return          Next victim
+  * @return          Next target
   */
-int gtc_select_victim(gtc_t gtc, gtc_vs_state_t *state) {
+int gtc_select_target(gtc_t gtc, gtc_vs_state_t *state) {
   int v;
   tc_t *tc;
 
@@ -507,44 +500,44 @@ int gtc_select_victim(gtc_t gtc, gtc_vs_state_t *state) {
     v = 0;
   }
 
-  /* RETRY: Attempt to steal from the same victim again.  This is used
+  /* RETRY: Attempt to steal from the same target again.  This is used
    * with aborting steals which are non-blocking a require retrying.
    */
-  if (state->victim_retry) {
+  if (state->target_retry) {
     // Note: max_steal_retries < 0 means infinite number of retries
     if (state->num_retries >= tc->ldbal_cfg.max_steal_retries && tc->ldbal_cfg.max_steal_retries > 0) {
       state->num_retries = 0;
-      tc->aborted_victims++;
+      tc->ct.aborted_targets++;
 
     } else {
-      state->victim_retry = 0;
+      state->target_retry = 0;
       state->num_retries++;
-      v = state->last_victim;
+      v = state->last_target;
     }
   }
 
-  /* FREE: Free victim selection.
+  /* FREE: Free target selection.
    */
   if (v < 0) {
-    // Victim Random: Randomly select the next victim
-    if (tc->ldbal_cfg.victim_selection == VICTIM_RANDOM) {
+    // Target Random: Randomly select the next target
+    if (tc->ldbal_cfg.target_selection == TARGET_RANDOM) {
       do {
         v = rand() % _c->size;
       } while (v == _c->rank);
     }
 
-    // Round Robin: Next victim is selected round-robin
-    else if (tc->ldbal_cfg.victim_selection == VICTIM_ROUND_ROBIN) {
-      v = (state->last_victim + 1) % _c->size;
+    // Round Robin: Next target is selected round-robin
+    else if (tc->ldbal_cfg.target_selection == TARGET_ROUND_ROBIN) {
+      v = (state->last_target + 1) % _c->size;
     }
 
     else {
-      printf("Unknown victim selection method\n");
+      printf("Unknown target selection method\n");
       assert(0);
     }
   }
 
-  state->last_victim = v;
+  state->last_target = v;
 
   return v;
 }
@@ -603,28 +596,25 @@ void gtc_process(gtc_t gtc) {
   fclose(trace_file);
 #endif
 
-#if 0
-  if (getenv("SCIOTO_CHECK_PROCESSED_EQUAL_SPAWNED")) {
-    unsigned long processed, spawned;
-    unsigned long grp_processed = 0;
-
-    grp_processed = tc->tasks_completed;
-
-  printf("\nprocess %d reached barrier\n", _c->rank);
-    gtc_reduce(&grp_processed, &processed, GtcReduceOpSum, LongType, 1);
-    gtc_reduce(&tc->tasks_spawned, &spawned, GtcReduceOpSum, LongType, 1);
-    //MPI_Reduce(&grp_processed, &processed, 1, MPI_UNSIGNED_LONG, MPI_SUM, 0, tc->comm);
-    //MPI_Reduce(&tc->tasks_spawned, &spawned, 1, MPI_UNSIGNED_LONG, MPI_SUM, 0, tc->comm);
-
-    if (_c->rank == 0) {
-      printf("GTC internal check: %lu tasks spawned, %lu tasks processed, %s.\n", spawned, processed,
-          (processed == spawned) ? "PASS" : "FAIL");
-    }
-  }
-#endif /* not used */
-
   assert(gtc_tasks_avail(gtc) == 0);
 }
+
+typedef enum {
+  ProcessTime,
+  PassiveTime,
+  SearchTime,
+  AcquireTime,
+  DispersionTime,
+  ImbalanceTime
+} gtc_gtimestats_e;
+
+
+typedef enum {
+  TasksCompleted,
+  TasksStolen,
+  NumSteals,
+  DispersionAttempts
+} gtc_gcountstats_e;
 
 
 
@@ -637,10 +627,10 @@ void gtc_print_gstats(gtc_t gtc) {
   char *pernode_stats_disabled = getenv("SCIOTO_DISABLE_PERNODE_STATS");
   char *ext_stats_enabled      = getenv("SCIOTO_EXTENDED_STATS");
   char *unordered_stats         = getenv("SCIOTO_UNORDERED_STATS");
-  unsigned long tStolen, tSteals;
-  double  dispersion, maxDispersion, acquire, imbalance, maxImbalance, minImbalance;
-  double  search, tSearch, passive, tPassive, tAcquire;
   tc_t *tc = gtc_lookup(gtc);
+  double   *times, *mintimes, *maxtimes, *sumtimes;
+  uint64_t *counts, *mincounts, *maxcounts, *sumcounts;
+
 
   if (stats_disabled) return;
 
@@ -657,78 +647,99 @@ void gtc_print_gstats(gtc_t gtc) {
     }
   }
 
-
-  if (ext_stats_enabled == NULL) {
-
-    fflush(NULL);
-    shmem_barrier_all();
-
-    dispersion = TC_READ_TIMER_SEC(tc, dispersion);
-    imbalance  = TC_READ_TIMER_SEC(tc, imbalance);
-    acquire    = tc->num_steals ?  (TC_READ_TIMER_SEC(tc, passive) - TC_READ_TIMER_SEC(tc, imbalance))/(tc->num_steals) : 0.0;
-    search     = TC_READ_TIMER_SEC(tc, search);
-    passive    = TC_READ_TIMER_SEC(tc, passive);
-
-    // global stats
-    gtc_reduce(&tc->tasks_stolen, &tStolen, GtcReduceOpSum, LongType, 1);
-    gtc_reduce(&tc->num_steals,   &tSteals, GtcReduceOpSum, LongType, 1);
-
-    acquire    = (tc->num_steals) ?  (TC_READ_TIMER_SEC(tc, passive) - TC_READ_TIMER_SEC(tc, imbalance))/(tc->num_steals) : 0.0;
-
-    gtc_reduce(&dispersion, &maxDispersion, GtcReduceOpMax, DoubleType, 1);
-    gtc_reduce(&imbalance,  &maxImbalance,  GtcReduceOpMax, DoubleType, 1);
-    gtc_reduce(&imbalance,  &minImbalance,  GtcReduceOpMin, DoubleType, 1);
-    gtc_reduce(&acquire,    &tAcquire,      GtcReduceOpSum, DoubleType, 1);
-    gtc_reduce(&search,     &tSearch,       GtcReduceOpSum, DoubleType, 1);
-    gtc_reduce(&passive,    &tPassive,      GtcReduceOpSum, DoubleType, 1);
-
-    shmem_barrier_all();
-
-    eprintf("Total  : stolen %3lu, steals %3lu Average: stolen %3lu, steals %3lu\n", tStolen, tSteals, (tStolen)/_c->size, (tSteals)/_c->size);
-    eprintf("Time   : worst dispersion %8.5fms, worst imbalance %8.5fms, best imbalance %8.5fms, avg acquire %8.5fms, avg search %8.5fs (%5.2f %%)\n",
-          maxDispersion*1000.0, maxImbalance*1000.0, minImbalance*1000.0, tAcquire/_c->size*1000.0, tSearch/_c->size, tSearch/tPassive);
-    tc->cb.print_gstats(gtc);
-  }
   fflush(NULL);
   shmem_barrier_all();
 
-  double passive_loc, passive_rem;
-  double process_loc, process_rem;
-  unsigned long tCompleted;
+  int ntimes = 7;
+  times     = shmem_calloc(ntimes, sizeof(double));
+  mintimes  = shmem_calloc(ntimes, sizeof(double));
+  maxtimes  = shmem_calloc(ntimes, sizeof(double));
+  sumtimes  = shmem_calloc(ntimes, sizeof(double));
 
-  process_loc = TC_READ_TIMER_SEC(tc, process);
-  passive_loc = TC_READ_TIMER_SEC(tc, passive);
+  int ncounts = 4;
+  counts     = shmem_calloc(ncounts, sizeof(uint64_t));
+  mincounts  = shmem_calloc(ncounts, sizeof(uint64_t));
+  maxcounts  = shmem_calloc(ncounts, sizeof(uint64_t));
+  sumcounts  = shmem_calloc(ncounts, sizeof(uint64_t));
 
-  gtc_reduce(&tc->tasks_completed, &tCompleted, GtcReduceOpSum, UnsignedLongType, 1);
+  assert(times && mintimes && maxtimes && sumtimes);
+  assert(counts && mincounts && maxcounts && sumcounts);
+  memset(mintimes, 0, ntimes*sizeof(double));
+  memset(maxtimes, 0, ntimes*sizeof(double));
+  memset(sumtimes, 0, ntimes*sizeof(double));
 
-  gtc_reduce(&process_loc, &process_rem, GtcReduceOpSum, DoubleType, 1);
-  gtc_reduce(&passive_loc, &passive_rem, GtcReduceOpSum, DoubleType, 1);
+
+  times[ProcessTime]    = TC_READ_TIMER_SEC(tc,process);
+  times[PassiveTime]    = TC_READ_TIMER_SEC(tc,passive);
+  times[SearchTime]     = TC_READ_TIMER_SEC(tc,search);
+  times[AcquireTime]    = tc->ct.num_steals ? (TC_READ_TIMER_SEC(tc,passive) - TC_READ_TIMER_SEC(tc, imbalance))/tc->ct.num_steals : 0.0;
+  times[DispersionTime] = TC_READ_TIMER_SEC(tc,dispersion);
+  times[ImbalanceTime]  = TC_READ_TIMER_SEC(tc,imbalance);
+
+  counts[TasksCompleted]     = tc->ct.tasks_completed;
+  counts[TasksStolen]        = tc->ct.tasks_stolen;
+  counts[NumSteals]          = tc->ct.num_steals;
+
+  shmemx_min_reduce(SHMEMX_TEAM_WORLD, mintimes, times, ntimes);
+  shmemx_max_reduce(SHMEMX_TEAM_WORLD, maxtimes, times, ntimes);
+  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, sumtimes, times, ntimes);
+
+  shmemx_min_reduce(SHMEMX_TEAM_WORLD, mincounts, counts, ncounts);
+  shmemx_max_reduce(SHMEMX_TEAM_WORLD, maxcounts, counts, ncounts);
+  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, sumcounts, counts, ncounts);
+  shmem_barrier_all();
+
+  if (ext_stats_enabled == NULL) {
+    eprintf("Total  : stolen %3lu, steals %3lu Average: stolen %3lu, steals %3lu\n", 
+        sumcounts[TasksStolen], sumcounts[NumSteals], 
+        sumcounts[TasksStolen]/_c->size, sumcounts[NumSteals]/_c->size);
+    eprintf("Time   : worst dispersion %8.5fms, worst imbalance %8.5fms, best imbalance %8.5fms,"
+       " avg acquire %8.5fms, avg search %8.5fs (%5.2f %%)\n",
+          maxtimes[DispersionTime]*1000.0, 
+          maxtimes[ImbalanceTime]*1000.0,
+          mintimes[ImbalanceTime]*1000.0,
+          sumtimes[AcquireTime]/(_c->size*1000.0), 
+          sumtimes[SearchTime]/(_c->size),
+          sumtimes[SearchTime]/sumtimes[PassiveTime]);
+    tc->cb.print_gstats(gtc);
+  }
+
+  fflush(NULL);
   shmem_barrier_all();
 
   struct timespec sleep = { 0, 25 * 1000000L }; // 25ms
   nanosleep(&sleep, NULL);       // lag a little to make sure that final results appear after all other stats i/o is done.
 
   eprintf("SCIOTO : Process time %.5f s, passive time %.5f s (%.2f%%), %lu tasks completed, %.2f tasks/sec (%.2f tasks/sec/PE)\n",
-      process_rem/_c->size, passive_rem/_c->size, passive_rem/process_rem*100.0, tCompleted,
-      tCompleted/(process_rem/_c->size), tCompleted/process_rem);
+     sumtimes[ProcessTime]/_c->size, sumtimes[PassiveTime]/_c->size,
+     (sumtimes[PassiveTime]/(sumtimes[ProcessTime])*100.0),
+     sumcounts[TasksCompleted]/(sumtimes[ProcessTime]/_c->size), 
+     sumcounts[TasksCompleted]/sumtimes[ProcessTime]);
 
   fflush(NULL);
+
+  shmem_free(times);
+  shmem_free(mintimes);
+  shmem_free(maxtimes);
+  shmem_free(sumtimes);
+
+  shmem_free(counts);
+  shmem_free(mincounts);
+  shmem_free(maxcounts);
+  shmem_free(sumcounts);
+
   shmem_barrier_all();
 }
 
 
 
-
 void gtc_print_stats(gtc_t gtc) {
-  char buf[100], buf2[100];
-  double passive_loc, passive_rem;
-  double process_loc, process_rem;
-  double search_loc, search_rem;
-  unsigned long tCompleted;
   char *stats_disabled         = getenv("SCIOTO_DISABLE_STATS");
   char *pernode_stats_disabled = getenv("SCIOTO_DISABLE_PERNODE_STATS");
-  char *unordered_stats         = getenv("SCIOTO_UNORDERED_STATS");
+  char *unordered_stats        = getenv("SCIOTO_UNORDERED_STATS");
   tc_t *tc = gtc_lookup(gtc);
+  double   *times, *mintimes, *maxtimes, *sumtimes;
+  uint64_t *counts, *mincounts, *maxcounts, *sumcounts;
 
   if (stats_disabled) return;
 
@@ -740,7 +751,6 @@ void gtc_print_stats(gtc_t gtc) {
       for (int i=0; i<= _c->size; i++) {
         if (i == _c->rank)
           gtc_print_my_stats(gtc);
-        printf("thread %d reached problematic barrier\n", _c->rank);
         shmem_barrier_all();
       }
     }
@@ -748,55 +758,80 @@ void gtc_print_stats(gtc_t gtc) {
   fflush(NULL);
   shmem_barrier_all();
 
-  process_loc = TC_READ_TIMER_SEC(tc, process);
-  passive_loc = TC_READ_TIMER_SEC(tc, passive);
-  search_loc  = TC_READ_TIMER_MSEC(tc, search);
+  int ntimes = 7;
+  times     = shmem_calloc(ntimes, sizeof(double));
+  mintimes  = shmem_calloc(ntimes, sizeof(double));
+  maxtimes  = shmem_calloc(ntimes, sizeof(double));
+  sumtimes  = shmem_calloc(ntimes, sizeof(double));
 
-  gtc_reduce(&tc->tasks_completed, &tCompleted,  GtcReduceOpSum, UnsignedLongType, 1);
-  gtc_reduce(&process_loc,         &process_rem, GtcReduceOpSum, DoubleType, 1);
-  gtc_reduce(&passive_loc,         &passive_rem, GtcReduceOpSum, DoubleType, 1);
-  gtc_reduce(&search_loc,          &search_rem,  GtcReduceOpSum, DoubleType, 1);
+  int ncounts = 4;
+  counts     = shmem_calloc(ncounts, sizeof(uint64_t));
+  mincounts  = shmem_calloc(ncounts, sizeof(uint64_t));
+  maxcounts  = shmem_calloc(ncounts, sizeof(uint64_t));
+  sumcounts  = shmem_calloc(ncounts, sizeof(uint64_t));
+
+  assert(times && mintimes && maxtimes && sumtimes);
+  assert(counts && mincounts && maxcounts && sumcounts);
+  memset(mintimes, 0, ntimes*sizeof(double));
+  memset(maxtimes, 0, ntimes*sizeof(double));
+  memset(sumtimes, 0, ntimes*sizeof(double));
+
+
+  times[ProcessTime]    = TC_READ_TIMER_SEC(tc,process);
+  times[PassiveTime]    = TC_READ_TIMER_SEC(tc,passive);
+  times[SearchTime]     = TC_READ_TIMER_MSEC(tc,search);
+  times[AcquireTime]    = tc->ct.num_steals ? (TC_READ_TIMER_MSEC(tc,passive) - TC_READ_TIMER_MSEC(tc, imbalance))/tc->ct.num_steals : 0.0;
+  times[DispersionTime] = TC_READ_TIMER_MSEC(tc,dispersion);
+  times[ImbalanceTime]  = TC_READ_TIMER_MSEC(tc,imbalance);
+
+  counts[TasksCompleted]     = tc->ct.tasks_completed;
+  counts[TasksStolen]        = tc->ct.tasks_stolen;
+  counts[NumSteals]          = tc->ct.num_steals;
+  counts[DispersionAttempts] = tc->ct.dispersion_attempts_locked + tc->ct.dispersion_attempts_unlocked;
+
+  shmemx_min_reduce(SHMEMX_TEAM_WORLD, mintimes, times, ntimes);
+  shmemx_max_reduce(SHMEMX_TEAM_WORLD, maxtimes, times, ntimes);
+  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, sumtimes, times, ntimes);
+
+  shmemx_min_reduce(SHMEMX_TEAM_WORLD, mincounts, counts, ncounts);
+  shmemx_max_reduce(SHMEMX_TEAM_WORLD, maxcounts, counts, ncounts);
+  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, sumcounts, counts, ncounts);
   shmem_barrier_all();
+
   
-  // sanity check timing
-
-  TC_INIT_TIMER(tc, t[0]);
-  TC_INIT_TSCTIMER(tc, sanity);
-  struct timespec sleep = { 0, 25 * 1000000L }; // 25ms
-  TC_START_TIMER(tc, t[0]);
-  TC_START_TSCTIMER(tc, sanity);
-  nanosleep(&sleep, NULL);       // lag a little to make sure that final results appear after all other stats i/o is done.
-  TC_STOP_TIMER(tc, t[0]);
-  TC_STOP_TSCTIMER(tc, sanity);
-
   // 9 char to colon
+  eprintf("process: %.5f : %.5f size: %d\n", sumtimes[ProcessTime], times[ProcessTime], _c->size);
   eprintf("SCIOTWO : queue: %s \n", gtc_queue_name(gtc));
   eprintf("        : process time %.5f s, passive time %.5f s (%.2f%%), search time %.5f ms\n",
-                     process_rem/_c->size, passive_rem/_c->size, passive_rem/process_rem*100.0,
-                     search_rem/_c->size);
-  eprintf("        : tasks completed %lu, %.2f tasks/sec (%.2f tasks/sec/PE) timer sanity: clocktime: %.2f ms TSC %.2f ms\n",
-                     tCompleted, tCompleted/(process_rem/_c->size), tCompleted/process_rem,
-                     TC_READ_TIMER_MSEC(tc, t[0]), TC_READ_TSCTIMER_MSEC(tc,sanity));
+                     sumtimes[ProcessTime]/_c->size, sumtimes[PassiveTime]/_c->size, (sumtimes[PassiveTime]/sumtimes[ProcessTime])*100.0,
+                     sumtimes[SearchTime]/_c->size);
+  eprintf("        : tasks completed %lu, %.2f tasks/sec (%.2f tasks/sec/PE)\n",
+                     sumcounts[TasksCompleted], 
+                     sumtimes[TasksCompleted]/(sumtimes[ProcessTime]/_c->size), 
+                     sumcounts[TasksCompleted]/sumtimes[ProcessTime]);
 
-  eprintf("        : dispersion %s attempts %32s\n", 
-      gtc_print_mmad(buf, "ms", TC_READ_TIMER_MSEC(tc, dispersion), 0),
-      gtc_print_mmad(buf2, "", tc->dispersion_attempts_locked+tc->dispersion_attempts_unlocked, 1));
-  eprintf("        : imbalance  %s\n", gtc_print_mmad(buf, "ms", TC_READ_TIMER_MSEC(tc, imbalance), 0));
+  eprintf("        : dispersion %6.2fms/%6.2fms/%6.2fms attempts %6.2f (%6.2f/%6.2f/%6.2f)\n", 
+      sumtimes[DispersionTime]/_c->size, mintimes[DispersionTime], maxtimes[DispersionTime],
+      sumcounts[DispersionAttempts], sumcounts[DispersionAttempts]/_c->size, 
+      mincounts[DispersionAttempts], maxcounts[DispersionAttempts]);
+
+  eprintf("        : imbalance  %6.2fms/%6.2fms/%6.2fms\n",
+      sumtimes[ImbalanceTime]/_c->size, mintimes[ImbalanceTime], maxtimes[ImbalanceTime]);
 
   tc->cb.print_gstats(gtc);
 
-  double lDisp, lAtt, tDisp, tAtt;
-  lDisp = TC_READ_TIMER_MSEC(tc, dispersion);
-  lAtt  = tc->dispersion_attempts_locked + tc->dispersion_attempts_unlocked;
-  gtc_reduce(&lDisp, &tDisp, GtcReduceOpSum, DoubleType, 1);
-  gtc_reduce(&lAtt,  &tAtt,  GtcReduceOpSum, DoubleType, 1);
-  shmem_barrier_all();
+  shmem_free(times);
+  shmem_free(mintimes);
+  shmem_free(maxtimes);
+  shmem_free(sumtimes);
 
-  eprintf("%lu      %.5f %lu %.2f %.2f %.2f\n", _c->size, process_rem/_c->size, tCompleted, tCompleted/(process_rem/_c->size), tDisp/_c->size, tAtt/_c->size);
+  shmem_free(counts);
+  shmem_free(mincounts);
+  shmem_free(maxcounts);
+  shmem_free(sumcounts);
 
   fflush(NULL);
   shmem_barrier_all();
-
 }
 
 
@@ -811,7 +846,7 @@ void gtc_print_my_stats(gtc_t gtc) {
 
   if (stats_disabled) return;
 
-  avg_acquire_time_ms = (TC_READ_TIMER(tc, passive) - TC_READ_TIMER(tc, imbalance))/(tc->num_steals * (double)10e6);
+  avg_acquire_time_ms = (TC_READ_TIMER(tc, passive) - TC_READ_TIMER(tc, imbalance))/(tc->ct.num_steals * (double)10e6);
 
   if (!pernode_stats_disabled) {
     printf(" %4d - Tasks: completed %3lu, spawned %3lu, stolen %3lu\n"
@@ -821,23 +856,23 @@ void gtc_print_my_stats(gtc_t gtc) {
            " %4d -      : avg acquire %8.5fms, imbalance %8.5fms\n"
            " %4d -      : timers: %8.5fms %8.5fms %8.5fms %8.5f %8.5fms\n",
                 _c->rank,
-                  tc->tasks_completed, tc->tasks_spawned, tc->tasks_stolen,
+                  tc->ct.tasks_completed, tc->ct.tasks_spawned, tc->ct.tasks_stolen,
                 _c->rank,
-                  tc->num_steals, tc->failed_steals_unlocked + tc->failed_steals_locked, tc->aborted_steals,
+                  tc->ct.num_steals, tc->ct.failed_steals_unlocked + tc->ct.failed_steals_locked, tc->ct.aborted_steals,
                 _c->rank,
                   TC_READ_TIMER_SEC(tc, process),
                   TC_READ_TIMER_SEC(tc, process) - TC_READ_TIMER_SEC(tc, passive),
                   TC_READ_TIMER_SEC(tc, passive),
-                  tc->passive_count,
-                  TC_READ_TIMER_MSEC(tc, passive) / tc->passive_count,
+                  tc->ct.passive_count,
+                  TC_READ_TIMER_MSEC(tc, passive) / tc->ct.passive_count,
                   TC_READ_TIMER_SEC(tc, search),
                   (TC_READ_TIMER(tc, search)/(double)TC_READ_TIMER(tc, process))*100.0,
                 _c->rank,
                   TC_READ_TIMER_MSEC(tc, dispersion),
-                  tc->dispersion_attempts_unlocked,
-                  tc->dispersion_attempts_locked,
+                  tc->ct.dispersion_attempts_unlocked,
+                  tc->ct.dispersion_attempts_locked,
                 _c->rank,
-                  (tc->num_steals > 0) ?  avg_acquire_time_ms : 0.6, TC_READ_TIMER_MSEC(tc, imbalance),
+                  (tc->ct.num_steals > 0) ?  avg_acquire_time_ms : 0.6, TC_READ_TIMER_MSEC(tc, imbalance),
                 _c->rank,
                   TC_READ_TIMER_MSEC(tc, t[0]),
                   TC_READ_TIMER_MSEC(tc, t[1]),
@@ -855,7 +890,7 @@ void gtc_print_my_stats(gtc_t gtc) {
   */
 unsigned long gtc_stats_tasks_completed(gtc_t gtc) {
   tc_t *tc = gtc_lookup(gtc);
-  return tc->tasks_completed;
+  return tc->ct.tasks_completed;
 }
 
 
@@ -863,6 +898,6 @@ unsigned long gtc_stats_tasks_completed(gtc_t gtc) {
   */
 unsigned long gtc_stats_tasks_spawned(gtc_t gtc) {
   tc_t *tc = gtc_lookup(gtc);
-  return tc->tasks_spawned;
+  return tc->ct.tasks_spawned;
 }
 

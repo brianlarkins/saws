@@ -19,10 +19,10 @@ HDRS =  mutex.h        			 \
 
 OBJS =  collection-sdc.o     \
 				common.o             \
+				commsynch.o          \
         handle.o             \
         init.o               \
         mutex.o              \
-				reduce.o             \
 			  sdc_shr_ring.o       \
 				task.o               \
 			 	termination.o        \

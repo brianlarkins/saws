@@ -93,7 +93,7 @@ int main(int argc, char **argv)
 
   // Check if the correct number of tasks were processed
   tc_t *tc = gtc_lookup(gtc);
-  gtc_reduce(&tc->tasks_completed, &sum, GtcReduceOpSum, IntType, 1);
+  gtc_reduce(&tc->ct.tasks_completed, &sum, GtcReduceOpSum, IntType, 1);
 
   if (mythread == 0)
     printf("Total tasks processed = %d, expected = %d: %s\n", sum, NUM_TASKS,

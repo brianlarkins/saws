@@ -1,6 +1,6 @@
 /********************************************************/
 /*                                                      */
-/*  tc.h - portals task collections                     */
+/*  tc.h - shmem task collections                       */
 /*                                                      */
 /*  created: 6/30/19                                    */
 /*                                                      */
@@ -9,6 +9,7 @@
 #pragma once
 
 #include <shmem.h>
+#include <shmemx.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -50,6 +51,9 @@ extern "C" {
 #define GTC_MAX_CHUNKS       10000
 #define GTC_MAX_REDUCE_ELEMS   128
 #define GTC_MAX_CLOD_CLOS      100
+
+#define GTC_USE_INTERNAL_TIMERS
+#define GTC_USE_TSC_TIMERS
 
 
 // Enable/Disable different classes of debugging statements by OR-ing these flags
@@ -107,20 +111,20 @@ typedef unsigned long tc_counter_t;
 // the list of registered tasks
 #define AUTO_BODY_SIZE -1
 
-enum victim_select_e { VICTIM_RANDOM, VICTIM_ROUND_ROBIN };
+enum target_select_e { TARGET_RANDOM, TARGET_ROUND_ROBIN };
 enum steal_method_e  { STEAL_HALF, STEAL_ALL, STEAL_CHUNK };
 enum tc_states { STATE_WORKING = 0, STATE_SEARCHING, STATE_STEALING, STATE_INACTIVE, STATE_TERMINATED };
 
 typedef struct {
   int stealing_enabled;          /* Is stealing enabled?  If not, the load balance is static with pushing */
-  int victim_selection;          /* One of victim_select_e */
+  int target_selection;          /* One of target_select_e */
   int steal_method;              /* One of steal_method_e  */
   int steals_can_abort;          /* Allow aborting steals  */
   int max_steal_retries;         /* Max number of retries before we abort.  Set low to limit contention. -1 means infinity */
-  int max_steal_attempts_local;  /* Max number of lock attempts before we "retry" a local victim. */
-  int max_steal_attempts_remote; /* Max number of lock attempts before we "retry" a remote victim. */
+  int max_steal_attempts_local;  /* Max number of lock attempts before we "retry" a local target. */
+  int max_steal_attempts_remote; /* Max number of lock attempts before we "retry" a remote target. */
   int chunk_size;                /* Size of a steal when using STEAL_CHUNK */
-  int local_search_factor;       /* Percent of steal attempts (0-100) that should target intra-node victims */
+  int local_search_factor;       /* Percent of steal attempts (0-100) that should target intra-node targets */
 } gtc_ldbal_cfg_t;
 
 
@@ -141,17 +145,17 @@ struct task_s{
   // uint32_t      count;      // used by steal-half to determine chunk size
   task_class_t  task_class;
   int           created_by;
-//  int           affinity;
+  //  int           affinity;
   int           priority;
   char          body[0];
 };
 typedef struct task_s task_t;
 
-/** Victim selector state.  Initialize to 0.  */
+/** Target selector state.  Initialize to 0.  */
 typedef struct {
-  int victim_retry;
+  int target_retry;
   int num_retries;
-  int last_victim;
+  int last_target;
 } gtc_vs_state_t;
 
 /** queue implementation type */
@@ -163,23 +167,32 @@ enum gtc_qtype_e {
 };
 typedef enum gtc_qtype_e gtc_qtype_t;
 
+/*
+ * internal performance counters and timing structures
+ */
+
 /**
  *  timer counter/accumulator (we can use either clock_gettime() or rtsdc() )
  */
-struct tc_tsctimer_s {
+#ifdef GTC_USE_TSC_TIMERS
+struct tc_timer_s {
   uint64_t total;
   uint64_t last;
   uint64_t temp;
 };
-typedef struct tc_tsctimer_s tc_tsctimer_t;
+typedef struct tc_timer_s tc_timer_t;
 
+#else // GTC_USE_TSC_TIMERS
 struct tc_timer_s {
   struct timespec total;  //!< total time accumulated
   struct timespec last;   //!< keeps last start time
   struct timespec temp;   //!< for accumulation
 };
 typedef struct tc_timer_s tc_timer_t;
+#endif // GTC_USE_TSC_TIMERS
 
+
+// global timers
 struct tc_timers_s {
   tc_timer_t process;
   tc_timer_t passive;
@@ -190,29 +203,42 @@ struct tc_timers_s {
   tc_timer_t get;
   tc_timer_t dispersion;
   tc_timer_t imbalance;
+  tc_timer_t getbuf;
+  tc_timer_t add;
+  tc_timer_t addinplace;
+  tc_timer_t addfinish;
+  tc_timer_t progress;
+  tc_timer_t reclaim;
+  tc_timer_t ensure;
+  tc_timer_t release;
+  tc_timer_t reacquire;
+  tc_timer_t pushhead;
+  tc_timer_t poptail;
+  tc_timer_t getsteal;
+  tc_timer_t getfail;
+  tc_timer_t getmeta;
+  tc_timer_t sanity;
   tc_timer_t t[5]; // general purpose
 };
 typedef struct tc_timers_s tc_timers_t;
 
-// reclaim, ensure, release, reacquire
-struct tc_tsctimers_s {
-  tc_tsctimer_t getbuf;
-  tc_tsctimer_t add;
-  tc_tsctimer_t addinplace;
-  tc_tsctimer_t addfinish;
-  tc_tsctimer_t progress;
-  tc_tsctimer_t reclaim;
-  tc_tsctimer_t ensure;
-  tc_tsctimer_t release;
-  tc_tsctimer_t reacquire;
-  tc_tsctimer_t pushhead;
-  tc_tsctimer_t poptail;
-  tc_tsctimer_t getsteal;
-  tc_tsctimer_t getfail;
-  tc_tsctimer_t getmeta;
-  tc_tsctimer_t sanity;
+struct tc_counters_s {
+  tc_counter_t         passive_count;             // Number of transitions to passive state
+  tc_counter_t         tasks_spawned;             // Number of tasks spawned by this thread
+  tc_counter_t         tasks_completed;           // Number of tasks processed by this thread
+  tc_counter_t         tasks_stolen;              // Number of tasks stolen by this thread
+  tc_counter_t         num_steals;                // Number of successful steals
+  tc_counter_t         failed_steals_locked;      // # steal attempts that failed after locking
+  tc_counter_t         failed_steals_unlocked;    // # steal attempts that failed before locking
+  tc_counter_t         aborted_steals;            // # steal attempts that were aborted due to contention
+  tc_counter_t         aborted_targets;           // # targets that were aborted due to contention
+  tc_counter_t         dispersion_attempts_locked;   // failed_steals_locked during dispersion
+  tc_counter_t         dispersion_attempts_unlocked; // failed_steals_unlocked during dispersion
+  tc_counter_t         getcalls;                  // # of calls to get_buf
+  tc_counter_t         getlocal;                  // # of calls resulting in local work found
 };
-typedef struct tc_tsctimers_s tc_tsctimers_t;
+typedef struct tc_counters_s tc_counters_t;
+
 
 /*
  * SAWS task queue implementation callbacks
@@ -238,7 +264,6 @@ struct tqi_s {
 typedef struct tqi_s tqi_t;
 
 
-
 /*
  * SAWS Task Collection
  */
@@ -250,7 +275,7 @@ struct tc_s {
   void               *steal_buf;                  // buffer for performing steals (allocation not on crit path)
   int                 chunk_size;                 // number of tasks we can steal at a time
   int                 max_body_size;
-  int                 last_victim;                // Global round robin -- remember our last victim
+  int                 last_target;                // Global round robin -- remember our last target
 
   gtc_ldbal_cfg_t     ldbal_cfg;                  // load balancer configuration
 
@@ -260,21 +285,8 @@ struct tc_s {
   struct shrb_s      *inbox;                      // task inbox
 
   // STATISTICS:
-  tc_timers_t         *timers;                    // timers used for internal performance monitoring
-  tc_tsctimers_t      *tsctimers;                 // TSC timers used for internal performance monitoring
-  tc_counter_t         passive_count;             // Number of transitions to passive state
-  tc_counter_t         tasks_spawned;             // Number of tasks spawned by this thread
-  tc_counter_t         tasks_completed;           // Number of tasks processed by this thread
-  tc_counter_t         tasks_stolen;              // Number of tasks stolen by this thread
-  tc_counter_t         num_steals;                // Number of successful steals
-  tc_counter_t         failed_steals_locked;      // # steal attempts that failed after locking
-  tc_counter_t         failed_steals_unlocked;    // # steal attempts that failed before locking
-  tc_counter_t         aborted_steals;            // # steal attempts that were aborted due to contention
-  tc_counter_t         aborted_victims;           // # victims that were aborted due to contention
-  tc_counter_t         dispersion_attempts_locked;   // failed_steals_locked during dispersion
-  tc_counter_t         dispersion_attempts_unlocked; // failed_steals_unlocked during dispersion
-  tc_counter_t         getcalls;                  // # of calls to get_buf
-  tc_counter_t         getlocal;                  // # of calls resulting in local work found
+  tc_timers_t          *timers;                    // TSC timers used for internal performance monitoring
+  tc_counters_t        ct;                         // perf/stat counters
 
   // STATE FLAGS:
   int                 state;                       // task collection state
@@ -297,6 +309,7 @@ struct gtc_context_s {
   task_class_desc_t   task_class_req[GTC_MAX_TASK_CLASSES];
   int                 task_class_count;
   int                 auto_teardown;
+  double              tsc_cpu_hz;                            // calibrated MHZ value for TSC timer conversion
   int                 dbglvl;
   int                 quiet;
   int                 size;
@@ -332,10 +345,9 @@ typedef enum gtc_reduceop_e gtc_reduceop_t;
 // Global variables
 extern gtc_context_t *_c;
 extern int gtc_is_initialized;
-extern char *victim_methods[2];
+extern char *target_methods[2];
 extern char *steal_methods[3];
 extern int __gtc_marker[5];
-extern tc_tsctimers_t *tsctimers;
 
 
 /****  Assorted utility functions  ****/
@@ -368,9 +380,9 @@ int     gtc_tasks_avail(gtc_t gtc);
 void    gtc_enable_stealing(gtc_t gtc);
 void    gtc_disable_stealing(gtc_t gtc);
 int     gtc_get_local_buf(gtc_t gtc, int priority, task_t *buf);
-int     gtc_steal_tail(gtc_t gtc, int victim);
-int     gtc_try_steal_tail(gtc_t gtc, int victim);
-int     gtc_select_victim(gtc_t gtc, gtc_vs_state_t *state);
+int     gtc_steal_tail(gtc_t gtc, int target);
+int     gtc_try_steal_tail(gtc_t gtc, int target);
+int     gtc_select_target(gtc_t gtc, gtc_vs_state_t *state);
 task_t *gtc_get(gtc_t gtc, int priority);
 void    gtc_set_external_work_avail(gtc_t gtc, int flag);
 task_t *gtc_task_inplace_create_and_add(gtc_t gtc, task_class_t tclass);
@@ -399,7 +411,7 @@ task_class_desc_t *gtc_task_class_lookup(task_class_t tclass);
 void               gtc_task_execute(gtc_t gtc, task_t *task);
 #define            gtc_task_body(TSK) (&((TSK)->body))
 
-// reduce.c
+// commsynch.c
 gtc_status_t       gtc_reduce(void *in, void *out, gtc_reduceop_t op, gtc_datatype_t type, int elems);
 
 //util.c
@@ -408,6 +420,7 @@ int                eprintf(const char *format, ...);
 int                gtc_dbg_printf(const char *format, ...);
 int                gtc_lvl_dbg_printf(int lvl, const char *format, ...);
 int                gtc_lvl_dbg_eprintf(int lvl, const char *format, ...);
+double             gtc_tsc_calibrate(void);
 void               gtc_get_mmad(double *counter, double *tot, double *min, double *max, double *avg);
 void               gtc_get_mmau(tc_counter_t *counter, tc_counter_t *tot, tc_counter_t *min, tc_counter_t *max, double *avg);
 void               gtc_get_mmal(long *counter, long *tot, long *min, long *max, double *avg);
@@ -470,6 +483,12 @@ static inline long gtc_nthreads(void) {
     return _c->size;
 }
 
+/**
+ * gtc_barrier - convenience function for OpenSHMEM barrier
+ */
+static inline void gtc_barrier(void) {
+  shmem_barrier_all();
+}
 
 /* timing routines */
 
@@ -490,6 +509,39 @@ static inline uint64_t gtc_get_tsctime() {
   return __rdtsc();
 }
 
+#ifdef GTC_USE_INTERNAL_TIMERS
+
+#ifdef GTC_USE_TSC_TIMERS
+#define TC_CPU_HZ                 _c->tsc_cpu_hz*(double)1e6
+#define TC_INIT_ATIMER(TMR)       do { TMR.total = 0; } while (0)
+#define TC_START_ATIMER(TMR)      TMR.last = gtc_get_tsctime();
+#define TC_STOP_ATIMER(TMR)       do {\
+                                      TMR.temp = gtc_get_tsctime();\
+                                      TMR.total += TMR.temp - TMR.last;\
+                                    } while (0)
+#define TC_INIT_TIMER(TC,TMR)       TC_INIT_ATIMER(TC->timers->TMR)
+#define TC_START_TIMER(TC,TMR)      TC_START_ATIMER(TC->timers->TMR)
+#define TC_STOP_TIMER(TC,TMR)       TC_STOP_ATIMER(TC->timers->TMR)
+#define TC_ADD_TIMER(TC, TMR, ATMR) do {\
+                                       TC->timers->TMR.total += (ATMR.temp - ATMR.last);\
+                                    } while (0)
+
+#define TC_READ_ATIMER(TMR)          TMR.total
+#define TC_READ_ATIMER_M(TMR)        (TMR.total/1000000)
+#define TC_READ_ATIMER_NSEC(TMR)     (double)(TC_READ_ATIMER(TMR)/(TC_CPU_HZ)) * (double)1e9
+#define TC_READ_ATIMER_USEC(TMR)     (double)(TC_READ_ATIMER(TMR)/(TC_CPU_HZ)) * (double)1e6
+#define TC_READ_ATIMER_MSEC(TMR)     (double)(TC_READ_ATIMER(TMR)/(TC_CPU_HZ)) * (double)1000.0
+#define TC_READ_ATIMER_SEC(TMR)      (double)TC_READ_ATIMER(TMR)/(TC_CPU_HZ)
+
+#define TC_READ_TIMER(TC,TMR)        TC_READ_ATIMER(TC->timers->TMR)
+#define TC_READ_TIMER_M(TC,TMR)      TC_READ_ATIMER_M(TC->timers->TMR)
+#define TC_READ_TIMER_NSEC(TC,TMR)   TC_READ_ATIMER_NSEC(TC->timers->TMR)
+#define TC_READ_TIMER_USEC(TC,TMR)   TC_READ_ATIMER_USEC(TC->timers->TMR)
+#define TC_READ_TIMER_MSEC(TC,TMR)   TC_READ_ATIMER_MSEC(TC->timers->TMR)
+#define TC_READ_TIMER_SEC(TC,TMR)    TC_READ_ATIMER_SEC(TC->timers->TMR)
+
+#else // GTC_USE_TSC_TIMERS
+
 #define TC_INIT_ATIMER(TMR) do { TMR.total.tv_sec = 0; TMR.total.tv_nsec = 0; } while (0)
 #define TC_START_ATIMER(TMR) TMR.last   = gtc_get_wtime();
 #define TC_STOP_ATIMER(TMR) do {\
@@ -498,23 +550,27 @@ static inline uint64_t gtc_get_tsctime() {
                                   TMR.total.tv_nsec += (TMR.temp.tv_nsec - TMR.last.tv_nsec);\
                                 } while (0)
 // TC_READ_TIMER returns elapsed time in nanoseconds
-#define TC_READ_ATIMER(TMR)  (double)((1000000000L * (TMR.total.tv_sec)) + TMR.total.tv_nsec)
+#define TC_READ_ATIMER(TMR)       (double)((1000000000L * (TMR.total.tv_sec)) + TMR.total.tv_nsec)
+#define TC_READ_ATIMER_M(TMR)     TC_READ_ATIMER(TMR)/1000000
 #define TC_READ_ATIMER_USEC(TMR)  TC_READ_ATIMER(TMR)/1000.0
 #define TC_READ_ATIMER_MSEC(TMR)  (double)(TC_READ_ATIMER(TMR)/(double)1e6)
 #define TC_READ_ATIMER_SEC(TMR)   (double)(TC_READ_ATIMER(TMR)/(double)1e9)
+#define TC_INIT_TIMER(TC,TMR)     TC_INIT_ATIMER(TC->timers->TMR)
+#define TC_START_TIMER(TC,TMR)    TC_START_ATIMER(TC->timers->TMR)
+#define TC_STOP_TIMER(TC,TMR)     TC_STOP_ATIMER(TC->timers->TMR)
+#define TC_READ_TIMER(TC,TMR)     TC_READ_ATIMER(TC->timers->TMR)
+#define TC_ADD_TIMER(TC, TMR, ATMR) do {\
+                                       TC->timers->TMR.total.tv_sec  += (ATMR.temp.tv_sec  - ATMR.last.tv_sec);\
+                                       TC->timers->TMR.total.tv_nsec += (ATMR.temp.tv_nsec - ATMR.last.tv_nsec);\
+                                   } while (0)
 
-// TC_READ_TIMER returns elapsed time in nanoseconds
-#define TC_USE_INTERNAL_TIMERS
-#ifdef TC_USE_INTERNAL_TIMERS
-  #define TC_INIT_TIMER(TC,TMR)  TC_INIT_ATIMER(TC->timers->TMR)
-  #define TC_START_TIMER(TC,TMR) TC_START_ATIMER(TC->timers->TMR)
-  #define TC_STOP_TIMER(TC,TMR)  TC_STOP_ATIMER(TC->timers->TMR)
-  #define TC_READ_TIMER(TC,TMR)  TC_READ_ATIMER(TC->timers->TMR)
+#define TC_READ_TIMER_USEC(TC,TMR)  TC_READ_TIMER(TC,TMR)/1000.0
+#define TC_READ_TIMER_MSEC(TC,TMR)  TC_READ_TIMER(TC,TMR)/(double)1e6
+#define TC_READ_TIMER_SEC(TC,TMR)   TC_READ_TIMER(TC,TMR)/(double)1e9
 
-  #define TC_READ_TIMER_USEC(TC,TMR)  TC_READ_TIMER(TC,TMR)/1000.0
-  #define TC_READ_TIMER_MSEC(TC,TMR)  TC_READ_TIMER(TC,TMR)/(double)1e6
-  #define TC_READ_TIMER_SEC(TC,TMR)   TC_READ_TIMER(TC,TMR)/(double)1e9
-#else
+#endif // GTC_USE_TSC_TIMERS
+
+#else // GTC_USE_INTERNAL_TIMERS
   #define TC_START_TIMER(TC,TMR)
   #define TC_STOP_TIMER(TC,TMR)
   #define TC_READ_TIMER(TC,TMR)      0
@@ -522,37 +578,7 @@ static inline uint64_t gtc_get_tsctime() {
   #define TC_READ_TIMER_USEC(TC,TMR) 0
   #define TC_READ_TIMER_MSEC(TC,TMR) 0
   #define TC_READ_TIMER_SEC(TC,TMR)  0
-#endif // TC_USE_INTERNAL_TIMERS
-
-// TSC hardware counter support
-
-#define TC_CPU_MHZ_COMET 2500.000
-#define TC_CPU_MHZ_SENNA 2300.000
-// #define TC_CPU_HZ               TC_CPU_MHZ_COMET*(double)1e6
-#define TC_CPU_HZ                TC_CPU_MHZ_SENNA*(double)1e6
-#define TC_INIT_ATSCTIMER(TMR)   do { TMR.total = 0; } while (0)
-#define TC_START_ATSCTIMER(TMR)  TMR.last = gtc_get_tsctime();
-#define TC_STOP_ATSCTIMER(TMR)   do {\
-                                      TMR.temp = gtc_get_tsctime();\
-                                      TMR.total += TMR.temp - TMR.last;\
-                                } while (0)
-#define TC_INIT_TSCTIMER(TC,TMR)   TC_INIT_ATSCTIMER(TC->tsctimers->TMR)
-#define TC_START_TSCTIMER(TC,TMR)  TC_START_ATSCTIMER(TC->tsctimers->TMR)
-#define TC_STOP_TSCTIMER(TC,TMR)   TC_STOP_ATSCTIMER(TC->tsctimers->TMR)
-
-#define TC_READ_ATSCTIMER(TMR)        TMR.total
-#define TC_READ_ATSCTIMER_M(TMR)     (TMR.total/1000000)
-#define TC_READ_ATSCTIMER_NSEC(TMR)  (double)(TC_READ_ATSCTIMER(TMR)/(TC_CPU_HZ)) * (double)1e9
-#define TC_READ_ATSCTIMER_USEC(TMR)  (double)(TC_READ_ATSCTIMER(TMR)/(TC_CPU_HZ)) * (double)1e6
-#define TC_READ_ATSCTIMER_MSEC(TMR)  (double)(TC_READ_ATSCTIMER(TMR)/(TC_CPU_HZ)) * (double)1000.0
-#define TC_READ_ATSCTIMER_SEC(TMR)   (double)TC_READ_ATSCTIMER(TMR)/(TC_CPU_HZ)
-
-#define TC_READ_TSCTIMER(TC,TMR)        TC_READ_ATSCTIMER(TC->tsctimers->TMR)
-#define TC_READ_TSCTIMER_M(TC,TMR)      TC_READ_ATSCTIMER_M(TC->tsctimers->TMR)
-#define TC_READ_TSCTIMER_NSEC(TC,TMR)   TC_READ_ATSCTIMER_NSEC(TC->tsctimers->TMR)
-#define TC_READ_TSCTIMER_USEC(TC,TMR)   TC_READ_ATSCTIMER_USEC(TC->tsctimers->TMR)
-#define TC_READ_TSCTIMER_MSEC(TC,TMR)   TC_READ_ATSCTIMER_MSEC(TC->tsctimers->TMR)
-#define TC_READ_TSCTIMER_SEC(TC,TMR)    TC_READ_ATSCTIMER_SEC(TC->tsctimers->TMR)
+#endif // GTC_USE_INTERNAL_TIMERS
 
 #ifdef __cplusplus
 }
