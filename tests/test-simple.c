@@ -68,16 +68,13 @@ int main(int argc, char **argv)
   gtc_qtype_t qtype = GtcQueueSDC;
 
 
-  while ((arg = getopt(argc, argv, "BHN")) != -1) {
+  while ((arg = getopt(argc, argv, "BH")) != -1) {
     switch (arg) {
       case 'B':
         qtype = GtcQueueSDC;
         break;
       case 'H':
-        qtype = GtcQueuePortalsHalf;
-        break;
-      case 'N':
-        qtype = GtcQueuePortalsN;
+        qtype = GtcQueueSAWS;
         break;
     }
   }

@@ -166,7 +166,6 @@ void gtc_task_execute(gtc_t gtc, task_t *task) {
 
   // Execute the task's callback on this tc and the task descriptor
   task_class_reg[task->task_class].cb_execute(gtc, task);
-
   tc->ct.tasks_completed++;
   gtc_lprintf(DBGPROCESS, "  task completed\n");
 }

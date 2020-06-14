@@ -239,19 +239,21 @@ void saws_shrb_unlock(saws_shrb_t *rb, int proc) {
 
 
 void saws_shrb_reclaim_space(saws_shrb_t *rb) {
-    //this function hasn't been tested.
-    printf("\n in function reclaim_space()");
+    //printf("\n in function reclaim_space()");
     static long val = -1;
     int oldval = shmem_atomic_swap(&rb->steal_val, val, rb->procid); // Disable steals
 
     long rtail   = oldval & 0x000000000007FFF; // Low 19 bits of val
     long asteals = (val >> 24);
 
-    while (asteals != shmem_atomic_fetch(&rb->completed, rb->procid)) 
-        ;
+    if (asteals != shmem_atomic_fetch(&rb->completed, rb->procid)) 
+        return;
 
-    rb->tail += rtail + pow(2, rb->completed);
-
+    rb->tail += rtail + pow(2, rb->completed) - 1;
+    if(rb->procid % 2 == 0){
+      printf("queue after reclaim\n");
+      saws_shrb_print(rb);
+    }
 }
 
 

@@ -18,6 +18,7 @@ HDRS =  mutex.h        			 \
 
 
 OBJS =  collection-sdc.o     \
+				collection-saws.o	\
 				common.o             \
 				commsynch.o          \
         handle.o             \

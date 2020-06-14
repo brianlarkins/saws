@@ -99,6 +99,7 @@ extern "C" {
 
 // forward refs
 struct task_s;
+struct saws_shrb_s;
 struct sdc_shrb_s;
 struct shrb_s;
 
@@ -145,7 +146,6 @@ struct task_s{
   // uint32_t      count;      // used by steal-half to determine chunk size
   task_class_t  task_class;
   int           created_by;
-  //  int           affinity;
   int           priority;
   char          body[0];
 };
@@ -161,9 +161,7 @@ typedef struct {
 /** queue implementation type */
 enum gtc_qtype_e {
   GtcQueueSDC,
-  GtcQueueSAWS,
-  GtcQueuePortalsN,
-  GtcQueuePortalsHalf
+  GtcQueueSAWS
 };
 typedef enum gtc_qtype_e gtc_qtype_t;
 
@@ -283,7 +281,7 @@ struct tc_s {
 
   struct sdc_shrb_s  *shared_rb;                  // split, deferred copy task queue
   struct shrb_s      *inbox;                      // task inbox
-
+  struct saws_shrb_s *shrb;                       // saws task queue
   // STATISTICS:
   tc_timers_t          *timers;                    // TSC timers used for internal performance monitoring
   tc_counters_t        ct;                         // perf/stat counters
@@ -443,23 +441,24 @@ void    gtc_print_stats_sdc(gtc_t gtc);
 void    gtc_print_gstats_sdc(gtc_t gtc);
 void    gtc_queue_reset_sdc(gtc_t gtc);
 
-// collection-sn.c
-gtc_t   gtc_create_sn(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg_t *cfg);
+// collection-saws.c
+gtc_t   gtc_create_saws(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg_t *cfg);
 gtc_t   gtc_create_sh(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg_t *cfg);
-void    gtc_destroy_sn(gtc_t gtc);
-void    gtc_reset_sn(gtc_t gtc);
-char   *gtc_queue_name_sn(void);
+void    gtc_destroy_saws(gtc_t gtc);
+void    gtc_reset_saws(gtc_t gtc);
+char   *gtc_queue_name_saws(void);
 char   *gtc_queue_name_sh(void);
-void    gtc_progress_sn(gtc_t gtc);
+void    gtc_progress_saws(gtc_t gtc);
 void    gtc_progress_sh(gtc_t gtc);
-int     gtc_tasks_avail_sn(gtc_t gtc);
-int     gtc_get_buf_sn(gtc_t gtc, int priority, task_t *buf);
-int     gtc_add_sn(gtc_t gtc, task_t *task, int proc);
-task_t *gtc_task_inplace_create_and_add_sn(gtc_t gtc, task_class_t tclass);
-void    gtc_task_inplace_create_and_add_finish_sn(gtc_t gtc, task_t *);
-void    gtc_print_stats_sn(gtc_t gtc);
-void    gtc_print_gstats_sn(gtc_t gtc);
-void    gtc_queue_reset_sn(gtc_t gtc);
+int     gtc_tasks_avail_saws(gtc_t gtc);
+int     gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf);
+int     gtc_add_saws(gtc_t gtc, task_t *task, int proc);
+task_t *gtc_task_inplace_create_and_add_saws(gtc_t gtc, task_class_t tclass);
+void    gtc_task_inplace_create_and_add_finish_saws(gtc_t gtc, task_t *);
+void    gtc_print_stats_saws(gtc_t gtc);
+void    gtc_print_gstats_saws(gtc_t gtc);
+void    gtc_queue_reset_saws(gtc_t gtc);
+
 
 // tc-clod.c - common local object routines
 clod_key_t gtc_clo_associate(gtc_t gtc, void *ptr);
