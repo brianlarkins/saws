@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <malloc.h>
 #include <shmem.h>
+#include <shmemx.h>
 
 #include <tc.h>
 
@@ -53,7 +54,8 @@ static void create_task(gtc_t gtc, task_class_t tclass, int target, int my_id, i
 
 int main(int argc, char **argv)
 {
-  int i, sum;
+  static unsigned long sum;
+  int i;
   task_class_t task_class;
   gtc_t gtc;
 
@@ -93,10 +95,10 @@ int main(int argc, char **argv)
 
   // Check if the correct number of tasks were processed
   tc_t *tc = gtc_lookup(gtc);
-  gtc_reduce(&tc->ct.tasks_completed, &sum, GtcReduceOpSum, IntType, 1);
+  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, &sum, &tc->ct.tasks_completed, 1);
 
   if (mythread == 0)
-    printf("Total tasks processed = %d, expected = %d: %s\n", sum, NUM_TASKS,
+    printf("Total tasks processed = %ld, expected = %d: %s\n", sum, NUM_TASKS,
         (sum == NUM_TASKS) ? "SUCCESS" : "FAILURE");
 
   shmem_barrier_all();

@@ -155,7 +155,7 @@ void process_args(int argc, char **argv) {
   int   arg;
   char *endptr;
 
-  while ((arg = getopt(argc, argv, "d:n:r:p:c:i:bvhBHN")) != -1) {
+  while ((arg = getopt(argc, argv, "d:n:r:p:c:i:bvhB")) != -1) {
     switch (arg) {
     case 'd':
       maxdepth = strtol(optarg, &endptr, 10);
@@ -208,14 +208,6 @@ void process_args(int argc, char **argv) {
     case 'B':
       qtype = GtcQueueSDC;
       break;
-
-    case 'H':
-      qtype = GtcQueuePortalsHalf;
-      break;
-
-    case 'N':
-      qtype = GtcQueuePortalsN;
-      break;
       
     case 'h':
       if (me == 0) {
@@ -243,21 +235,21 @@ void process_args(int argc, char **argv) {
 
 
 int main(int argc, char **argv) {
-  int           ntasks     = 0;   // Count the number of tasks executed
-  int           nproducers = 0;   // Count the number of producer tasks executed
-  int           nconsumers = 0;   // Count the number of consumer tasks executed
   int           expected_ntasks;     // Used to check the final result
   int           expected_nproducers;
   int           expected_nconsumers;
   double        ideal_walltime;
-  int           final_ntasks;     // Collective sum of everyone's stats
-  int           final_nproducers;
-  int           final_nconsumers;
   gtc_t         gtc;              // Portable reference to the task collection
   int           ntasks_key;       // Portable references to common local copies of the counters
   int           nproducers_key;
   int           nconsumers_key;
   tc_timer_t   time;
+  static int    ntasks     = 0;   // Count the number of tasks executed
+  static int    nproducers = 0;   // Count the number of producer tasks executed
+  static int    nconsumers = 0;   // Count the number of consumer tasks executed
+  static int    final_ntasks;     // Collective sum of everyone's stats
+  static int    final_nproducers;
+  static int    final_nconsumers;
 
   setenv("SCIOTO_DISABLE_PERNODE_STATS", "1", 1);
   //setenv("GTC_RECLAIM_FREQ", "10", 1);
@@ -321,9 +313,9 @@ int main(int argc, char **argv) {
   // printf("(%d) ntasks: %d, nproducers: %d, nconsumers: %d\n", me, ntasks, nproducers, nconsumers);
 
   // Check if the correct number of tasks were processed
-  gtc_reduce(&ntasks, &final_ntasks, GtcReduceOpSum, IntType, 1);
-  gtc_reduce(&nproducers, &final_nproducers, GtcReduceOpSum, IntType, 1);
-  gtc_reduce(&nconsumers, &final_nconsumers, GtcReduceOpSum, IntType, 1);
+  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, &final_ntasks, &ntasks, 1);
+  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, &final_nproducers, &nproducers, 1);
+  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, &final_nconsumers, &nconsumers, 1);
 
   if (me == 0) {
     printf("\n");

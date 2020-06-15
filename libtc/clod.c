@@ -2,6 +2,10 @@
 #include <stdlib.h>
 #include "clod.h"
 
+/*
+ * Common Local Object Database Implementation
+ */
+
 /** Create a new CLOD.  This is a collective call.
  *  \param max_size Max number of entries in this CLOD.
  */

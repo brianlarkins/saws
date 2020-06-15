@@ -117,13 +117,7 @@ int main(int argc, char **argv) {
     gtc_process(gtc2);
     gtc_reset(gtc2);
 
-
-    // this is a workaround for terrible collectives in openshmem
-    //gtc_allreduce(&counter, &this_iter, GtcReduceOpSum, IntType, 1);
-    static int rcounter;
-    static long pSync[SHMEM_BCAST_SYNC_SIZE];
-    gtc_reduce(&rcounter, &this_iter, GtcReduceOpSum, IntType, 1);
-    shmem_broadcast64(&counter, &rcounter, 1, 0, 0, 0, shmem_n_pes(), pSync);
+    shmemx_sum_reduce(SHMEMX_TEAM_WORLD, &counter, &this_iter, 1);
 
     sum += this_iter;
     

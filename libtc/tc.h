@@ -49,7 +49,6 @@ extern "C" {
 #define GTC_MAX_COUNTERS        10
 #define GTC_MAX_COLLECTIONS      2
 #define GTC_MAX_CHUNKS       10000
-#define GTC_MAX_REDUCE_ELEMS   128
 #define GTC_MAX_CLOD_CLOS      100
 
 #define GTC_USE_INTERNAL_TIMERS
@@ -323,23 +322,6 @@ enum gtc_status_e {
 };
 typedef enum gtc_status_e gtc_status_t;
 
-enum gtc_datatype_e {
-  IntType,
-  LongType,
-  UnsignedLongType,
-  DoubleType,
-  CharType,
-  BoolType
-};
-typedef enum gtc_datatype_e gtc_datatype_t;
-
-enum gtc_reduceop_e {
-  GtcReduceOpSum,
-  GtcReduceOpMin,
-  GtcReduceOpMax
-};
-typedef enum gtc_reduceop_e gtc_reduceop_t;
-
 // Global variables
 extern gtc_context_t *_c;
 extern int gtc_is_initialized;
@@ -408,9 +390,6 @@ task_class_desc_t *gtc_task_class_lookup(task_class_t tclass);
 #define            gtc_task_body_size(TSK) gtc_task_class_lookup((TSK)->task_class)->body_size
 void               gtc_task_execute(gtc_t gtc, task_t *task);
 #define            gtc_task_body(TSK) (&((TSK)->body))
-
-// commsynch.c
-gtc_status_t       gtc_reduce(void *in, void *out, gtc_reduceop_t op, gtc_datatype_t type, int elems);
 
 //util.c
 static struct timespec gtc_get_wtime(void);

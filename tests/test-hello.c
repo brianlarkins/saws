@@ -15,6 +15,7 @@ typedef struct {
 static task_class_t task_class;
 static int mythread, nthreads;
 static long sleep_time = 0;
+static long ideal_time = 0;
 
 void create_task(gtc_t gtc, task_class_t tclass, int my_id, int task_num);
 void task_fcn(gtc_t gtc, task_t *task);
@@ -60,7 +61,6 @@ int main(int argc, char **argv)
 {
   int   i;
   gtc_t gtc;
-  long  ideal_time = 0;
 
   printf("starting run\n"); fflush(stdout);
 
@@ -104,7 +104,8 @@ int main(int argc, char **argv)
 
   // Find the ideal execution time
   //MPI_Reduce(&sleep_time, &ideal_time, 1, MPI_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
-  gtc_reduce(&sleep_time, &ideal_time, GtcReduceOpSum, LongType, 1);
+  //gtc_reduce(&sleep_time, &ideal_time, GtcReduceOpSum, LongType, 1);
+  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, &ideal_time, &sleep_time, 1);
   if (mythread == 0)
     printf("Total sleep time = %f sec, Ideal = %f sec (compare with process time above)\n",
         ideal_time/1e6, ideal_time/1e6/nthreads);

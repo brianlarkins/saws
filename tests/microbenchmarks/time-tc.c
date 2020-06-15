@@ -18,16 +18,16 @@ int main(int argc, char **argv)
 {
   int i;
   //int nsteals;
-  double t_add_l   = 0.0;
+  static double t_add_l   = 0.0;
+  static double t_drain_l = 0.0;
+  static double avg_t_add, avg_t_drain;
+  task_t *task;
+  tc_timer_t addtimer, draintimer;
   //double t_add_u   = 0.0;
-  double t_drain_l = 0.0;
   //double t_drain_u = 0.0;
   //double t_add_r   = 0.0;
   //double t_steal   = 0.0;
-  double avg_t_add, avg_t_drain;
-  task_t *task;
   //void   *tasks;
-  tc_timer_t addtimer, draintimer;
 
   task_class_t task_class;
   gtc_t  gtc;
@@ -71,7 +71,8 @@ int main(int argc, char **argv)
                                                        NITER/TC_READ_ATIMER_SEC(addtimer), 
                                                        TC_READ_ATIMER_USEC(addtimer)/NITER);
   //MPI_Reduce(&t_add_l, &avg_t_add, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-  gtc_reduce(&t_add_l, &avg_t_add, GtcReduceOpSum, DoubleType, 1);
+  //gtc_reduce(&t_add_l, &avg_t_add, GtcReduceOpSum, DoubleType, 1);
+  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, &avg_t_add, &t_add_l, 1);
   shmem_barrier_all();
 
   /**** LOCAL TASK DRAIN ****/
@@ -91,7 +92,8 @@ int main(int argc, char **argv)
                                                        NITER/TC_READ_ATIMER_SEC(draintimer), 
                                                        TC_READ_ATIMER_SEC(draintimer)/NITER);
   //MPI_Reduce(&t_drain_l, &avg_t_drain, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-  gtc_reduce(&t_drain_l, &avg_t_drain, GtcReduceOpSum, DoubleType, 1);
+  //gtc_reduce(&t_drain_l, &avg_t_drain, GtcReduceOpSum, DoubleType, 1);
+  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, &avg_t_drain, &t_drain_l, 1);
   shmem_barrier_all();
   //gtc_print_stats(tc);
   if (mythread == 0) {

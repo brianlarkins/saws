@@ -12,9 +12,9 @@ int main(int argc, char **argv)
 {
   int i, comm_size, comm_rank, NITER = 1;
   int NBARRIER = 1000, ret = 0;
-  double t_td = 0.0;
-  double t_armci_barrier = 0.0;
-  double t_td_max, t_armci_max;
+  static double t_td = 0.0;
+  static double t_armci_barrier = 0.0;
+  static double t_td_max, t_armci_max;
   td_t **tds;
   tc_timer_t tdtime, barriertime;
 
@@ -79,8 +79,10 @@ int main(int argc, char **argv)
   t_td            = TC_READ_ATIMER_MSEC(tdtime);
   t_armci_barrier = TC_READ_ATIMER_MSEC(barriertime);
 
-  gtc_reduce(&t_td, &t_td_max,               GtcReduceOpMax, DoubleType, 1);
-  gtc_reduce(&t_armci_barrier, &t_armci_max, GtcReduceOpMax, DoubleType, 1);
+  shmemx_max_reduce(SHMEMX_TEAM_WORLD, &t_td_max, &t_td, 1);
+  shmemx_max_reduce(SHMEMX_TEAM_WORLD, &t_armci_max, &t_armci_barrier, 1);
+  //gtc_reduce(&t_td, &t_td_max,               GtcReduceOpMax, DoubleType, 1);
+  //gtc_reduce(&t_armci_barrier, &t_armci_max, GtcReduceOpMax, DoubleType, 1);
 
   double perbarrier = t_armci_max / (double)NBARRIER;
   double final = t_td_max - (perbarrier * (double)NITER);

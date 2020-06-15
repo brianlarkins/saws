@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <malloc.h>
 #include <shmem.h>
+#include <shmemx.h>
 
 #include <tc.h>
 
@@ -18,6 +19,7 @@ typedef struct {
 static task_class_t task_class;
 static int mythread, nthreads;
 static long sleep_time = 0;
+static long ideal_time = 0;
 
 void create_task(gtc_t gtc, task_class_t tclass, int my_id, int task_num);
 void task_fcn(gtc_t gtc, task_t *task);
@@ -64,7 +66,6 @@ int main(int argc, char **argv)
 {
   int   i, arg;
   gtc_t gtc;
-  long  ideal_time = 0;
   gtc_qtype_t qtype = GtcQueueSDC;
 
 
@@ -109,7 +110,7 @@ int main(int argc, char **argv)
   shmem_barrier_all();
 
   // Find the ideal execution time
-  gtc_reduce(&sleep_time, &ideal_time, GtcReduceOpSum, LongType, 1);
+  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, &ideal_time, &sleep_time, 1);
   if (mythread == 0)
     printf("Total sleep time = %f sec, Ideal = %f sec (compare with process time above)\n",
         ideal_time/1e6, ideal_time/1e6/nthreads);

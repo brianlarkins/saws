@@ -7,7 +7,6 @@ TC_TOP=..
 include $(TC_TOP)/tc.mk
 
 TARGETS=test-hello          \
-				test-coll           \
 				test-task           \
 				test-rrtask         \
 				test-simple         \
@@ -34,9 +33,6 @@ subs:
 
 test-hello: tclibs test-hello.o
 	$(CC) $(CFLAGS) -o $@ test-hello.o $(TC_LIBS)
-
-test-coll: tclibs test-coll.o
-	$(CC) $(CFLAGS) -o $@ test-coll.o $(TC_LIBS)
 
 test-task: tclibs test-task.o
 	$(CC) $(CFLAGS) -o $@ test-task.o $(TC_LIBS)

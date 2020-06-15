@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018. See COPYRIGHT in top-level directory.
+ * Copyright (C) 2020. See COPYRIGHT in top-level directory.
  */
 
 #include <stdio.h>

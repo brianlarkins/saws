@@ -3,6 +3,7 @@
 #include <string.h>
 #include <math.h>
 #include <shmem.h>
+#include <shmemx.h>
 
 #include <tc.h>
 #include "uts.h"
@@ -42,14 +43,6 @@ int  impl_parseParam(char *param, char *value) {
     switch (value[0]) {
       case 'B':
         qtype = GtcQueueSDC;
-        ret = 0;
-        break;
-      case 'N':
-        qtype = GtcQueuePortalsN;
-        ret = 0;
-        break;
-      case 'H':
-        qtype = GtcQueuePortalsHalf;
         ret = 0;
         break;
       default:
@@ -104,25 +97,22 @@ int main(int argc, char *argv[]) {
 #error Please select a load balancer
 #endif
 
-  counter_t my_nNodes   = UTSIterator::get_nNodes();
-  counter_t my_nLeaves  = UTSIterator::get_nLeaves();
-  counter_t my_maxDepth = UTSIterator::get_maxDepth();
-
-  int nPes;
-  counter_t nNodes, nLeaves, maxDepth;
+  static uint64_t my_nNodes   = UTSIterator::get_nNodes();
+  static uint64_t my_nLeaves  = UTSIterator::get_nLeaves();
+  static uint64_t my_maxDepth = UTSIterator::get_maxDepth();
+  static uint64_t nNodes, nLeaves, maxDepth;
 #if   defined(LDBAL_SEQUENTIAL)
-  nPes     = 1;
+  nproc    = 1;
   nNodes   = my_nNodes;
   nLeaves  = my_nLeaves;
   maxDepth = my_maxDepth;
 #elif defined(LDBAL_SCIOTO)
-  nPes     = nproc;
-  gtc_reduce(&my_nNodes, &nNodes, GtcReduceOpSum, LongType, 1);
-  gtc_reduce(&my_nLeaves, &nLeaves, GtcReduceOpSum, LongType, 1);
-  gtc_reduce(&my_maxDepth, &maxDepth, GtcReduceOpMax, LongType, 1);
+  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, &nNodes, &my_nNodes, 1);
+  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, &nLeaves, &my_nLeaves, 1);
+  shmemx_max_reduce(SHMEMX_TEAM_WORLD, &maxDepth, &my_maxDepth, 1);
 #endif
 
-  if (me == 0) uts_showStats(nPes, 0, t2-t1, nNodes, nLeaves, maxDepth);
+  if (me == 0) uts_showStats(nproc, 0, t2-t1, nNodes, nLeaves, maxDepth);
 
   gtc_fini();
   return 0;

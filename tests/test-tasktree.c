@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <shmem.h>
+#include <shmemx.h>
 
 #include <tc.h>
 
@@ -91,8 +92,8 @@ void task_fcn(gtc_t gtc, task_t *descriptor) {
 
 
 int main(int argc, char **argv) {
-  int           counter = 0;   // Count the number of tasks executed
-  int           sum, expected; // Used to check the final result
+  static int    sum, counter = 0;   // Count the number of tasks executed
+  int           expected; // Used to check the final result
   gtc_t         gtc;           // Portable reference to a task collection
   int           counter_key;   // A portable reference to replicated local copies of counter
   task_class_t  task_class;    // A task class defines a type of task
@@ -101,16 +102,10 @@ int main(int argc, char **argv) {
 
   gtc_init();
 
-  while ((arg  = getopt(argc, argv, "BHN")) != -1) {
+  while ((arg  = getopt(argc, argv, "B")) != -1) {
     switch (arg) {
       case 'B':
         qtype = GtcQueueSDC;
-        break;
-      case 'H':
-        qtype = GtcQueuePortalsHalf;
-        break;
-      case 'N':
-        qtype = GtcQueuePortalsN;
         break;
     }
   }
@@ -138,7 +133,7 @@ int main(int argc, char **argv) {
   gtc_process(gtc);
     printf("thread %d after gtc_process\n", _c->rank);
   // Check if the correct number of tasks were processed
-  gtc_reduce(&counter, &sum, GtcReduceOpSum, IntType, 1);
+  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, &sum, &counter, 1);
   expected = (1 << (MAXDEPTH+1)) - 1; // == 2^(MAXDEPTH + 1) - 1
 
   if (mythread == 0) {
