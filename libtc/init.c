@@ -1,7 +1,7 @@
 /********************************************************/
 /*                                                      */
 /*  init.c - scioto openshmem initialization            */
-/*                                                      */
+/*     (c) 2020 see COPYRIGHT in top-level              */
 /*                                                      */
 /********************************************************/
 
@@ -18,16 +18,12 @@
 
 #include <tc.h>
 
-//#include "shr_ring.h"
-//#include "sdc_shr_ring.h"
-
 int __gtc_marker[5] = { 0, 0, 0, 0, 0};
 
 static void gtc_exit_handler(void);
 
 gtc_context_t *_c;
 int gtc_is_initialized = 0;
-
 
 
 
@@ -104,6 +100,8 @@ void gtc_bthandler(int sig, siginfo_t *si, void *vctx) {
   char **msgs = NULL, *pstr = NULL;
   FILE *fp = NULL;
 
+  UNUSED(si);
+
   size = backtrace(a, 100);
   printf("rank: %d pid : %d signal: %d marker: %d %d %d %d %d\n", _c->rank, getpid(), sig,
       __gtc_marker[0], __gtc_marker[1], __gtc_marker[2], __gtc_marker[3], __gtc_marker[4]);
@@ -112,7 +110,7 @@ void gtc_bthandler(int sig, siginfo_t *si, void *vctx) {
   //backtrace_symbols_fd(a,size, STDERR_FILENO);
   msgs = backtrace_symbols(a, size);
   a[1] = (void *)ctx->uc_mcontext.gregs[REG_RIP];
-  for (int i=1; i<size; i++) {
+  for (size_t i=1; i<size; i++) {
     size_t p = 0;
     while (msgs[i][p] != '(' && msgs[i][p] != ' ' && msgs[i][p] != 0)
       p++;

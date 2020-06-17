@@ -1,6 +1,9 @@
-/*
- * Copyright (C) 2020. See COPYRIGHT in top-level directory.
- */
+/***********************************************************/
+/*                                                         */
+/*  collection-sdc.c - scioto openshmem lock-based TC impl */
+/*    (c) 2020 see COPYRIGHT in top-level                  */
+/*                                                         */
+/***********************************************************/
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,6 +29,9 @@
  */
 gtc_t gtc_create_sdc(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg_t *cfg) {
   tc_t  *tc;
+
+  UNUSED(max_body_size);
+  UNUSED(cfg);
 
   tc  = gtc_lookup(gtc);
 
@@ -169,7 +175,7 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
   int     v, steal_size;
   int     passive = 0;
   int     searching = 0;
-  gtc_vs_state_t vs_state = {0};
+  gtc_vs_state_t vs_state = {0, 0, 0};
   void *rb_buf;
 
   tc->ct.getcalls++;
@@ -419,6 +425,7 @@ task_t *gtc_task_inplace_create_and_add_sdc(gtc_t gtc, task_class_t tclass) {
  */
 void gtc_task_inplace_create_and_add_finish_sdc(gtc_t gtc, task_t *t) {
   tc_t *tc = gtc_lookup(gtc);
+  UNUSED(t);
   // TODO: Maintain a counter of how many are outstanding to avoid corruption at the
   // head of the queue
   TC_START_TIMER(tc,addfinish);

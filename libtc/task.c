@@ -1,18 +1,18 @@
-/*
- * Copyright (C) 2018. See COPYRIGHT in top-level directory.
- */
+/*********************************************************/
+/*                                                       */
+/*  task.c - scioto openshmem task object implementation */
+/*    (c) 2020 see COPYRIGHT in top-level                */
+/*                                                       */
+/*********************************************************/
 
 #include <stdio.h>
 #include <stdlib.h>
 
 #include "tc.h"
 
-#ifdef _USING_TSC
-#define ENABLE_TASK_TIMING
-#endif
-
 static int               task_class_count = 0;             // Number of registered callbacks
 static task_class_desc_t task_class_reg[GTC_MAX_TASK_CLASSES]; // Registry of task class descriptions
+
 
 /**
  * Register a task class with Scioto.  This is a collective call.
@@ -33,6 +33,7 @@ task_class_t gtc_task_class_register(int body_size, void (*cb_execute)(gtc_t gtc
 
   return next;
 }
+
 
 
 /**
@@ -70,12 +71,13 @@ int gtc_task_class_largest_body_size(void) {
 }
 
 
+
 /**
  * Create a new task object.
  */
 task_t *gtc_task_alloc(int body_size) {
   task_t *task;
-  
+
   // printf("size of task_t + body_size: %ld\n", sizeof(task_t) + body_size);
   task = calloc(1, sizeof(task_t) + body_size);
   assert(task != NULL);
@@ -109,6 +111,7 @@ task_t *gtc_task_create(task_class_t tclass) {
 }
 
 
+
 /**
  * Destroy a task.  If there is room in the allocation pool, store the buffer.
  * Otherwise, free it.
@@ -131,8 +134,10 @@ void gtc_task_destroy(task_t *task) {
 void gtc_task_reuse(task_t *task) {
   // This is presently a no-op
   // Reset affinity and priority?
+  UNUSED(task);
   return;
 }
+
 
 
 /**
@@ -143,12 +148,14 @@ void gtc_task_set_class(task_t *task, task_class_t tclass) {
 }
 
 
+
 /**
   * Get a task's execution callback handle.
   */
 task_class_t gtc_task_get_class(task_t *task) {
   return task->task_class;
 }
+
 
 
 /**

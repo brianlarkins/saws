@@ -1,6 +1,9 @@
-/*
- * Copyright (C) 2020. See COPYRIGHT in top-level directory.
- */
+/*********************************************************/
+/*                                                       */
+/*  collection-saws.c - atomic work stealing TC impl     */
+/*    (c) 2020 see COPYRIGHT in top-level                */
+/*                                                       */
+/*********************************************************/
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,6 +27,9 @@
  */
 gtc_t gtc_create_saws(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg_t *cfg) {
   tc_t  *tc;
+
+  UNUSED(max_body_size);
+  UNUSED(cfg);
 
   tc  = gtc_lookup(gtc);
 
@@ -101,7 +107,7 @@ char *gtc_queue_name_saws() {
  *  make progress on communication.
  */
 void gtc_progress_saws(gtc_t gtc) {
-  
+
   tc_t *tc = gtc_lookup(gtc);
   TC_START_TIMER(tc,progress);
 
@@ -173,7 +179,7 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
   int     v, steal_size;
   int     passive = 0;
   int     searching = 0;
-  gtc_vs_state_t vs_state = {0};
+  gtc_vs_state_t vs_state = {0, 0, 0};
   void *rb_buf;
 
   tc->ct.getcalls++;
@@ -353,7 +359,7 @@ int gtc_add_saws(gtc_t gtc, task_t *task, int proc) {
   if (proc == _c->rank) {
     // Local add: put it straight onto the local work list
     saws_shrb_push_head(tc->shrb, _c->rank, task, sizeof(task_t) + gtc_task_body_size(task));
-  } 
+  }
 #if 0 /* no task pushing */
   else {
     // Remote adds: put this in the remote node's inbox
@@ -554,19 +560,19 @@ void gtc_print_gstats_saws(gtc_t gtc) {
       sumtimes[SAWSPerGetMetaTime]/_c->size, mintimes[SAWSPerGetMetaTime], maxtimes[SAWSPerGetMetaTime]);
 
   eprintf("        :   localget   %6lu (%6.2f/%3lu/%3lu)\n",
-      sumcounts[SAWSGetLocalCalls], sumcounts[SAWSGetLocalCalls]/(double)_c->size, 
+      sumcounts[SAWSGetLocalCalls], sumcounts[SAWSGetLocalCalls]/(double)_c->size,
       mincounts[SAWSGetLocalCalls], maxcounts[SAWSGetLocalCalls]);
   eprintf("        :   steals     %6lu (%6.2f/%3lu/%3lu)\n",
-      sumcounts[SAWSNumSteals], sumcounts[SAWSNumSteals]/(double)_c->size, 
+      sumcounts[SAWSNumSteals], sumcounts[SAWSNumSteals]/(double)_c->size,
       mincounts[SAWSNumSteals], maxcounts[SAWSNumSteals]);
   eprintf("        :   fails lock %6lu (%6.2f/%3lu/%3lu)\n",
-      sumcounts[SAWSStealFailsLocked], sumcounts[SAWSStealFailsLocked]/(double)_c->size, 
+      sumcounts[SAWSStealFailsLocked], sumcounts[SAWSStealFailsLocked]/(double)_c->size,
       mincounts[SAWSStealFailsLocked], maxcounts[SAWSStealFailsLocked]);
   eprintf("        :   fails un   %6lu (%6.2f/%3lu/%3lu)\n",
-      sumcounts[SAWSStealFailsUnlocked], sumcounts[SAWSStealFailsUnlocked]/(double)_c->size, 
+      sumcounts[SAWSStealFailsUnlocked], sumcounts[SAWSStealFailsUnlocked]/(double)_c->size,
       mincounts[SAWSStealFailsUnlocked], maxcounts[SAWSStealFailsUnlocked]);
   eprintf("        :   fails ab   %6lu (%6.2f/%3lu/%3lu)\n",
-      sumcounts[SAWSAbortedSteals], sumcounts[SAWSAbortedSteals]/(double)_c->size, 
+      sumcounts[SAWSAbortedSteals], sumcounts[SAWSAbortedSteals]/(double)_c->size,
       mincounts[SAWSAbortedSteals], maxcounts[SAWSAbortedSteals]);
 
   eprintf("        : progress   %6.2f/%3lu/%3lu time %6.2fus/%6.2fus/%6.2fus per %6.2fus/%6.2fus/%6.2fus\n",

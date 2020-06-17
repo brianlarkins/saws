@@ -1,6 +1,9 @@
-/*
- * Copyright (C) 2020. See COPYRIGHT in top-level directory.
- */
+/***********************************************************/
+/*                                                         */
+/*  common.c - scioto openshmem shared TC operations       */
+/*    (c) 2020 see COPYRIGHT in top-level                  */
+/*                                                         */
+/***********************************************************/
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,6 +37,8 @@ static int gtc_is_seeded = 0;
 gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg_t *ldbal_cfg, gtc_qtype_t qtype) {
     gtc_t     gtc;
     tc_t     *tc;
+
+    UNUSED(chunk_size);
 
     // baseline
     // aborting steals and steal half with split queues
@@ -157,7 +162,7 @@ void gtc_destroy(gtc_t gtc) {
     clod_destroy(tc->clod);
     if (tc->steal_buf)
         free(tc->steal_buf);
-    if (tc->timers) 
+    if (tc->timers)
         free(tc->timers);
 
     shmem_free(tc);
@@ -267,7 +272,7 @@ void gtc_print_config(gtc_t gtc) {
  * @param proc     IN Process # whose task collection this task is to be added
  *                    to. Common case is tc->procid
  * @param task  INOUT Task to be added. user manages buffer when call
- *                    returns. This call fills in task field and the contents 
+ *                    returns. This call fills in task field and the contents
  *                    of task will match what is in the queue
  *                    when the call returns.
  * @return 0 on success.
@@ -385,6 +390,7 @@ void gtc_set_external_work_avail(gtc_t gtc, int flag) {
  */
 int gtc_get_local_buf(gtc_t gtc, int priority, task_t *buf) {
     tc_t *tc = gtc_lookup(gtc);
+    UNUSED(priority);
     if (tc->qtype == GtcQueueSAWS)
         return tc->cb.pop_head(tc->shrb, _c->rank, buf);
     return tc->cb.pop_head(tc->shared_rb, _c->rank, buf);
@@ -701,15 +707,15 @@ void gtc_print_gstats(gtc_t gtc) {
     shmem_barrier_all();
 
     if (ext_stats_enabled == NULL) {
-        eprintf("Total  : stolen %3lu, steals %3lu Average: stolen %3lu, steals %3lu\n", 
-                sumcounts[TasksStolen], sumcounts[NumSteals], 
+        eprintf("Total  : stolen %3lu, steals %3lu Average: stolen %3lu, steals %3lu\n",
+                sumcounts[TasksStolen], sumcounts[NumSteals],
                 sumcounts[TasksStolen]/_c->size, sumcounts[NumSteals]/_c->size);
         eprintf("Time   : worst dispersion %8.5fms, worst imbalance %8.5fms, best imbalance %8.5fms,"
                 " avg acquire %8.5fms, avg search %8.5fs (%5.2f %%)\n",
-                maxtimes[DispersionTime]*1000.0, 
+                maxtimes[DispersionTime]*1000.0,
                 maxtimes[ImbalanceTime]*1000.0,
                 mintimes[ImbalanceTime]*1000.0,
-                sumtimes[AcquireTime]/(_c->size*1000.0), 
+                sumtimes[AcquireTime]/(_c->size*1000.0),
                 sumtimes[SearchTime]/(_c->size),
                 sumtimes[SearchTime]/sumtimes[PassiveTime]);
         tc->cb.print_gstats(gtc);
@@ -724,7 +730,7 @@ void gtc_print_gstats(gtc_t gtc) {
     eprintf("SCIOTO : Process time %.5f s, passive time %.5f s (%.2f%%), %lu tasks completed, %.2f tasks/sec (%.2f tasks/sec/PE)\n",
             sumtimes[ProcessTime]/_c->size, sumtimes[PassiveTime]/_c->size,
             (sumtimes[PassiveTime]/(sumtimes[ProcessTime])*100.0),
-            sumcounts[TasksCompleted]/(sumtimes[ProcessTime]/_c->size), 
+            sumcounts[TasksCompleted]/(sumtimes[ProcessTime]/_c->size),
             sumcounts[TasksCompleted]/sumtimes[ProcessTime]);
 
     fflush(NULL);
@@ -817,13 +823,13 @@ void gtc_print_stats(gtc_t gtc) {
             sumtimes[ProcessTime]/_c->size, sumtimes[PassiveTime]/_c->size, (sumtimes[PassiveTime]/sumtimes[ProcessTime])*100.0,
             sumtimes[SearchTime]/_c->size);
     eprintf("        : tasks completed %lu, %.2f tasks/sec (%.2f tasks/sec/PE)\n",
-            sumcounts[TasksCompleted], 
-            sumtimes[TasksCompleted]/(sumtimes[ProcessTime]/_c->size), 
+            sumcounts[TasksCompleted],
+            sumtimes[TasksCompleted]/(sumtimes[ProcessTime]/_c->size),
             sumcounts[TasksCompleted]/sumtimes[ProcessTime]);
 
-    eprintf("        : dispersion %6.2fms/%6.2fms/%6.2fms attempts %6.2f (%6.2f/%6.2f/%6.2f)\n", 
+    eprintf("        : dispersion %6.2fms/%6.2fms/%6.2fms attempts %6.2f (%6.2f/%6.2f/%6.2f)\n",
             sumtimes[DispersionTime]/_c->size, mintimes[DispersionTime], maxtimes[DispersionTime],
-            sumcounts[DispersionAttempts], sumcounts[DispersionAttempts]/_c->size, 
+            sumcounts[DispersionAttempts], sumcounts[DispersionAttempts]/_c->size,
             mincounts[DispersionAttempts], maxcounts[DispersionAttempts]);
 
     eprintf("        : imbalance  %6.2fms/%6.2fms/%6.2fms\n",

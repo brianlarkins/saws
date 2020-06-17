@@ -1,6 +1,9 @@
-/*
- * SAWS - atomic work stealing implementation using OpenSHMEM
- */
+/*************************************************************/
+/*                                                           */
+/*  saws_shrb.c - scioto atomic ring buffer q implementation */
+/*    (c) 2020 see COPYRIGHT in top-level                    */
+/*                                                           */
+/*************************************************************/
 
 #include <sys/types.h>
 #include <stdio.h>
