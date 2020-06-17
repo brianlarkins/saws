@@ -125,16 +125,10 @@ void gtc_progress_saws(gtc_t gtc) {
   // Update the split
   saws_shrb_release(tc->shrb);
   // Attempt to reclaim space
-//  saws_shrb_reclaim_space(tc->shrb);
-    //   printf("**** after reclaim *****:\n");
-     //if (_c->rank == 0)
-     //saws_shrb_print(tc->shrb);
+  //saws_shrb_reclaim_space(tc->shrb);
+     if (_c->rank == 0)
+     saws_shrb_print(tc->shrb);
      //shmem_barrier_all();
-     //if(_c->rank == 1) saws_shrb_print(tc->shrb);
-     //shmem_barrier_all();
-   //if(_c->rank == 3) saws_shrb_print(tc->shrb);
-   //shmem_barrier_all();
-     // Attempt to reclai
   tc->shrb->nprogress++;
   TC_STOP_TIMER(tc,progress);
 }

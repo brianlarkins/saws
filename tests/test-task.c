@@ -7,7 +7,7 @@
 #include <tc.h>
 
 // #define NUM_TASKS 1000
-#define NUM_TASKS 100
+#define NUM_TASKS 4
 
 typedef struct {
   int parent_id;
@@ -68,7 +68,7 @@ int main(int argc, char **argv)
 {
   int   i, arg;
   gtc_t gtc;
-  gtc_qtype_t qtype = GtcQueueSDC;
+  gtc_qtype_t qtype = GtcQueueSAWS;
   int num_tasks = NUM_TASKS;
 
   gtc_init();

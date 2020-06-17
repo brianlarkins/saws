@@ -8,9 +8,9 @@
 
 #define DEBUG 0
 #define GTC_TEST_DEBUG   0
-#define QSIZE   20
-#define NUM     16
-#define NUMREPS 4
+#define QSIZE   4
+#define NUM     4
+#define NUMREPS 1
 #define TAILTARGET  (rb->procid + 1) % rb->nproc /* round robin */
 #define HEADTARGET  rb->procid               /* local only */
 
@@ -121,21 +121,35 @@ int main(int argc, char **argv, char **envp) {
         saws_shrb_push_n_head(rb, HEADTARGET, y, NUM);
 
         saws_shrb_release(rb);
+        //if (rb->procid == 0) saws_shrb_print(rb);
+        assert(saws_shrb_shared_size(rb) >= saws_shrb_local_size(rb));
         if (saws_shrb_shared_size(rb) < saws_shrb_local_size(rb)) {
             errors++;
             printf("*** test failed -- saws_shrb_release()***\n");
         } 
         if (!(rb->steal_val > 0)) errors++;
 
-        saws_shrb_release_all(rb);
-        if (saws_shrb_local_size(rb) != 0) errors++;
-
+        //saws_shrb_release_all(rb);
+        //if (saws_shrb_local_size(rb) != 0) errors++;
+        int nloc = saws_shrb_local_size(rb);
+        printf("nloc %d\n", nloc);
+        for(i = 0; i < nloc; i++) saws_shrb_pop_head(rb, HEADTARGET, x);
+        assert(saws_shrb_local_size(rb) == 0);
         saws_shrb_reacquire(rb);
+        //if (rb->procid == 0) saws_shrb_print(rb);
         if(saws_shrb_shared_size(rb) > saws_shrb_local_size(rb)) {
             errors++;
             printf("*** test failed -- saws_shrb_reaquire()***\n");
         }
+        shmem_barrier_all();
+        i = saws_shrb_pop_tail(rb, TAILTARGET, x);
+        if (rb->procid == 0) printf(" %d tasks was stolen\n", i);
+        if (rb->procid == 0) saws_shrb_print(rb);
+        shmem_barrier_all();
+        printf("calling release\n");
         saws_shrb_release(rb); 
+        //if (rb->procid == 0) saws_shrb_print(rb);
+        if (rb->procid == 0) saws_shrb_print(rb);
         for (i=NUM-1,cnt=0; saws_shrb_pop_head(rb, HEADTARGET, x) > 0; i--,cnt++) {
         }
         shmem_barrier_all();
@@ -199,6 +213,7 @@ int main(int argc, char **argv, char **envp) {
                 saws_shrb_print(rb);
             printf("\n");
         }
+        saws_shrb_reset(rb);
         for (i = NUM, cnt = 0; saws_shrb_pop_head(rb, HEADTARGET, x) > 0; i--,cnt++) {
         }
     }
