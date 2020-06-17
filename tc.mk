@@ -7,7 +7,7 @@
 CC    = oshcc
 CXX   = oshc++
 MPICC = mpicc
-GCFLAGS = -Wall -g3 -rdynamic -O3 -D_XOPEN_SOURCE=700 -D_DEFAULT_SOURCE -msse4.2 # development
+GCFLAGS = -Wno-unused-parameter -Wall -Wextra -Werror -g3 -rdynamic -O3 -D_XOPEN_SOURCE=700 -D_DEFAULT_SOURCE -msse4.2 # development
 #GCFLAGS = -Wall -g3 -rdynamic -O3 -D_XOPEN_SOURCE=700 -D_POSIX_C_SOURCE=200112L -msse4.2 # development
 #GCFLAGS = -fsanitize=address -fsanitize=undefined -Wall --std=c99 -g3 -rdynamic -O3 -D_POSIX_C_SOURCE=200112L -msse4.2 # development
 #GCFLAGS = -fsanitize=address -fsanitize=undefined -fno-sanitize-recover -g3 -Wall -rdynamic -D_POSIX_C_SOURCE=200112L -msse4.2
