@@ -250,15 +250,19 @@ struct tqi_s {
   void     (*progress)(gtc_t gtc);
   int      (*tasks_avail)(gtc_t gtc);
   char*    (*queue_name)(void);
+  void     (*print_stats)(gtc_t gtc);
+  void     (*print_gstats)(gtc_t gtc);
+};
+typedef struct tqi_s tqi_t;
+
+struct tqrbi_s {
   int      (*pop_head)(void *b, int proc, void *buf);
   int      (*pop_n_tail)(void *b, int proc, int n, void *e, int steal_vol);
   int      (*try_pop_n_tail)(void *b, int proc, int n, void *buf, int steal_vol);
   void     (*push_n_head)(void *b, int proc, void *e, int size);
   int      (*work_avail)(void *b);
-  void     (*print_stats)(gtc_t gtc);
-  void     (*print_gstats)(gtc_t gtc);
 };
-typedef struct tqi_s tqi_t;
+typedef struct tqrbi_s tqrbi_t;
 
 
 /*
@@ -266,6 +270,7 @@ typedef struct tqi_s tqi_t;
  */
 struct tc_s {
   tqi_t               cb;                         // implementation callbacks
+  tqrbi_t             rcb;                        // ring buffer implementation callbacks
   gtc_qtype_t         qtype;                      // type discriminator for queue implementation
   size_t              qsize;                      // used for common allocations, clears
   int                 valid;                      // in use flag
@@ -278,9 +283,8 @@ struct tc_s {
 
   td_t               *td;                         // termination detection data
 
-  struct sdc_shrb_s  *shared_rb;                  // split, deferred copy task queue
+  void               *shared_rb;                  // ring buffer for task queue
   struct shrb_s      *inbox;                      // task inbox
-  struct saws_shrb_s *shrb;                       // saws task queue
   // STATISTICS:
   tc_timers_t          *timers;                    // TSC timers used for internal performance monitoring
   tc_counters_t        ct;                         // perf/stat counters

@@ -101,9 +101,8 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
 
     switch (qtype) {
         case GtcQueueSDC:
-            break;
         case GtcQueueSAWS:
-            break;
+          break;
         default:
             gtc_eprintf(DBGERR, "gtc_create: unsupported queue type\n");
             exit(1);
@@ -143,7 +142,6 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
             exit(1);
             break;
     }
-
     return gtc;
 }
 
@@ -391,9 +389,7 @@ void gtc_set_external_work_avail(gtc_t gtc, int flag) {
 int gtc_get_local_buf(gtc_t gtc, int priority, task_t *buf) {
     tc_t *tc = gtc_lookup(gtc);
     UNUSED(priority);
-    if (tc->qtype == GtcQueueSAWS)
-        return tc->cb.pop_head(tc->shrb, _c->rank, buf);
-    return tc->cb.pop_head(tc->shared_rb, _c->rank, buf);
+    return tc->rcb.pop_head(tc->shared_rb, _c->rank, buf);
 }
 
 /**
@@ -416,10 +412,7 @@ int gtc_steal_tail(gtc_t gtc, int target) {
 
     TC_INIT_ATIMER(temp);
     TC_START_ATIMER(temp);
-    if (tc->qtype == GtcQueueSAWS)
-        stealsize = tc->cb.pop_n_tail(tc->shrb, target, req_stealsize, tc->steal_buf, tc->ldbal_cfg.steal_method);
-    else
-        stealsize = tc->cb.pop_n_tail(tc->shared_rb, target, req_stealsize, tc->steal_buf, tc->ldbal_cfg.steal_method);
+    stealsize = tc->rcb.pop_n_tail(tc->shared_rb, target, req_stealsize, tc->steal_buf, tc->ldbal_cfg.steal_method);
     TC_STOP_ATIMER(temp);
 
     // account into success or failed steal timers
@@ -430,9 +423,7 @@ int gtc_steal_tail(gtc_t gtc, int target) {
 
     if (stealsize > 0) {
         gtc_lprintf(DBGGET, "\tthread %d: steal try: %d got: %d tasks from thread %d\n", _c->rank, req_stealsize, stealsize, target);
-        if (tc->qtype == GtcQueueSAWS)
-            tc->cb.push_n_head(tc->shrb, _c->rank, tc->steal_buf, stealsize);
-        else tc->cb.push_n_head(tc->shared_rb, _c->rank, tc->steal_buf, stealsize);
+        tc->rcb.push_n_head(tc->shared_rb, _c->rank, tc->steal_buf, stealsize);
 
     } else if (stealsize < 0) {
         //gtc_lprintf(DBGGET, "\tthread %d: Aborting steal from %d\n", _c->rank, target);
@@ -473,18 +464,13 @@ int gtc_try_steal_tail(gtc_t gtc, int target) {
 
 
 #else
-    if (tc->qtype == GtcQueueSAWS)
-        stealsize = tc->cb.pop_n_tail(tc->shrb, target, req_stealsize, tc->steal_buf, tc->ldbal_cfg.      steal_method);
-    else
-        stealsize = tc->cb.pop_n_tail(tc->shared_rb, target, req_stealsize, tc->steal_buf, tc->ldbal_cfg.         steal_method);
+    stealsize = tc->rcb.pop_n_tail(tc->shared_rb, target, req_stealsize, tc->steal_buf, tc->ldbal_cfg.         steal_method);
 #endif
 
 
     if (stealsize > 0) {
         gtc_lprintf(DBGGET, "  thread %d: Got %d tasks, pushing onto my head\n", _c->rank, stealsize);
-        if (tc->qtype == GtcQueueSAWS)
-            tc->cb.push_n_head(tc->shrb, _c->rank, tc->steal_buf, stealsize);
-        else    tc->cb.push_n_head(tc->shared_rb, _c->rank, tc->steal_buf, stealsize);
+        tc->rcb.push_n_head(tc->shared_rb, _c->rank, tc->steal_buf, stealsize);
     } else if (stealsize < 0) {
         gtc_lprintf(DBGGET, "  thread %d: Aborting steal from %d\n", _c->rank, target);
     }

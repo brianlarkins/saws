@@ -35,7 +35,7 @@ gtc_t gtc_create_saws(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg
 
   // Allocate the shared ring buffer.  Total task size is the size
   // of the header + max_body size.
-  tc->shrb = saws_shrb_create(tc->max_body_size + sizeof(task_t), shrb_size);
+  tc->shared_rb = saws_shrb_create(tc->max_body_size + sizeof(task_t), shrb_size);
   tc->inbox = NULL;
 
   tc->cb.destroy                = gtc_destroy_saws;
@@ -50,11 +50,11 @@ gtc_t gtc_create_saws(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg
   tc->cb.print_stats            = gtc_print_stats_saws;
   tc->cb.print_gstats           = gtc_print_gstats_saws;
 
-  tc->cb.pop_head               = saws_shrb_pop_head;
-  tc->cb.pop_n_tail             = saws_shrb_pop_n_tail;
-  tc->cb.try_pop_n_tail         = saws_shrb_try_pop_n_tail;
-  tc->cb.push_n_head            = saws_shrb_push_n_head;
-  tc->cb.work_avail             = saws_shrb_size;
+  tc->rcb.pop_head               = saws_shrb_pop_head;
+  tc->rcb.pop_n_tail             = saws_shrb_pop_n_tail;
+  tc->rcb.try_pop_n_tail         = saws_shrb_try_pop_n_tail;
+  tc->rcb.push_n_head            = saws_shrb_push_n_head;
+  tc->rcb.work_avail             = saws_shrb_size;
 
   tc->qsize = sizeof(saws_shrb_t);
 
@@ -71,7 +71,7 @@ gtc_t gtc_create_saws(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg
 void gtc_destroy_saws(gtc_t gtc) {
   tc_t *tc = gtc_lookup(gtc);
 
-  saws_shrb_destroy(tc->shrb);
+  saws_shrb_destroy(tc->shared_rb);
   //shrb_destroy(tc->inbox);
 }
 
@@ -84,7 +84,7 @@ void gtc_destroy_saws(gtc_t gtc) {
 void gtc_reset_saws(gtc_t gtc) {
   tc_t *tc = gtc_lookup(gtc);
 
-  saws_shrb_reset(tc->shrb);
+  saws_shrb_reset(tc->shared_rb);
   //shrb_reset(tc->inbox);
 }
 
@@ -94,11 +94,7 @@ void gtc_reset_saws(gtc_t gtc) {
  * String that gives the name of this queue
  */
 char *gtc_queue_name_saws() {
-#ifdef saws_NODC
-  return "Split (NODC)";
-#else
-  return "Split Deferred-Copy";
-#endif
+  return "SAWS Atomic";
 }
 
 
@@ -107,7 +103,6 @@ char *gtc_queue_name_saws() {
  *  make progress on communication.
  */
 void gtc_progress_saws(gtc_t gtc) {
-
   tc_t *tc = gtc_lookup(gtc);
   TC_START_TIMER(tc,progress);
 
@@ -129,7 +124,7 @@ void gtc_progress_saws(gtc_t gtc) {
 #endif /* no task pushing */
 
   // Update the split
-  saws_shrb_release(tc->shrb);
+  saws_shrb_release(tc->shared_rb);
   // Attempt to reclaim space
 //  saws_shrb_reclaim_space(tc->shrb);
     //   printf("**** after reclaim *****:\n");
@@ -141,7 +136,7 @@ void gtc_progress_saws(gtc_t gtc) {
    //if(_c->rank == 3) saws_shrb_print(tc->shrb);
    //shmem_barrier_all();
      // Attempt to reclai
-  tc->shrb->nprogress++;
+  ((saws_shrb_t *)tc->shared_rb)->nprogress++;
   TC_STOP_TIMER(tc,progress);
 }
 
@@ -155,7 +150,7 @@ int gtc_tasks_avail_saws(gtc_t gtc) {
   tc_t *tc = gtc_lookup(gtc);
 
   //return saws_shrb_size(tc->shrb) + shrb_size(tc->inbox);
-  return saws_shrb_size(tc->shrb);
+  return saws_shrb_size(tc->shared_rb);
 }
 
 
@@ -232,7 +227,7 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
 
       TC_START_TIMER(tc,poptail); // this counts as attempting to steal
       // saws_shrb_fetch_remote_trb(tc->shrb, target_rb, v);
-      shmem_getmem(target_rb, tc->shrb, sizeof(saws_shrb_t), v);
+      shmem_getmem(target_rb, tc->shared_rb, sizeof(saws_shrb_t), v);
       TC_STOP_TIMER(tc,poptail);
 
       // Poll the target for work.  In between polls, maintain progress on termination detection.
@@ -245,7 +240,7 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
           for (j = 0; j < steal_attempts*1000; j++)
             gtc_get_dw += 1.0;
         }
-        if (tc->cb.work_avail(target_rb) > 0) {
+        if (tc->rcb.work_avail(target_rb) > 0) {
           tc->state = STATE_STEALING;
 
           if (searching) {
@@ -358,7 +353,7 @@ int gtc_add_saws(gtc_t gtc, task_t *task, int proc) {
 
   if (proc == _c->rank) {
     // Local add: put it straight onto the local work list
-    saws_shrb_push_head(tc->shrb, _c->rank, task, sizeof(task_t) + gtc_task_body_size(task));
+    saws_shrb_push_head(tc->shared_rb, _c->rank, task, sizeof(task_t) + gtc_task_body_size(task));
   }
 #if 0 /* no task pushing */
   else {
@@ -394,7 +389,7 @@ task_t *gtc_task_inplace_create_and_add_saws(gtc_t gtc, task_class_t tclass) {
 
   //assert(gtc_group_steal_ismember(gtc)); // Only masters can do this
 
-  t = (task_t*) saws_shrb_alloc_head(tc->shrb);
+  t = (task_t*) saws_shrb_alloc_head(tc->shared_rb);
   gtc_task_set_class(t, tclass);
 
   t->created_by = _c->rank;
@@ -434,7 +429,7 @@ void gtc_task_inplace_create_and_add_finish_saws(gtc_t gtc, task_t *t) {
  */
 void gtc_print_stats_saws(gtc_t gtc) {
   tc_t *tc = gtc_lookup(gtc);
-  saws_shrb_t *rb = tc->shrb;
+  saws_shrb_t *rb = tc->shared_rb;
 
   uint64_t perget, peradd, perinplace, perfinish, perprogress, perreclaim, perensure, perrelease, perreacquire, perpoptail;
 
@@ -455,11 +450,11 @@ void gtc_print_stats_saws(gtc_t gtc) {
            " %4d -    failed w/lock: %6lu, failed w/o lock: %6lu, aborted steals: %6lu\n"
            " %4d -    ngets: %6lu  (%5.2f usec/get) nxfer: %6lu\n",
       _c->rank,
-        tc->shrb->nrelease, tc->shrb->nreacquire, tc->shrb->nreclaimed, tc->shrb->nwaited, tc->shrb->nprogress,
+        rb->nrelease, rb->nreacquire, rb->nreclaimed, rb->nwaited, rb->nprogress,
       _c->rank,
         tc->ct.failed_steals_locked, tc->ct.failed_steals_unlocked, tc->ct.aborted_steals,
       _c->rank,
-        tc->shrb->ngets, TC_READ_TIMER_USEC(tc, t[0])/(double)tc->shrb->ngets, tc->shrb->nxfer);
+        rb->ngets, TC_READ_TIMER_USEC(tc, t[0])/(double)rb->ngets, rb->nxfer);
     printf(" %4d - TSC: get: %"PRIu64"M (%"PRIu64" x %"PRIu64")  add: %"PRIu64"M (%"PRIu64" x %"PRIu64") inplace: %"PRIu64"M (%"PRIu64")\n",
         _c->rank,
         TC_READ_TIMER_M(tc,getbuf), perget, tc->ct.getcalls,
@@ -491,7 +486,7 @@ void gtc_print_stats_saws(gtc_t gtc) {
  */
 void gtc_print_gstats_saws(gtc_t gtc) {
   tc_t *tc = gtc_lookup(gtc);
-  saws_shrb_t *rb = (saws_shrb_t *)tc->shrb;
+  saws_shrb_t *rb = (saws_shrb_t *)tc->shared_rb;
   double   *times, *mintimes, *maxtimes, *sumtimes;
   uint64_t *counts, *mincounts, *maxcounts, *sumcounts;
 
@@ -617,9 +612,9 @@ void gtc_queue_reset_saws(gtc_t gtc) {
   tc_t *tc = gtc_lookup(gtc);
 
   // Clear out the ring buffer
-  saws_shrb_lock(tc->shrb, _c->rank);
-  saws_shrb_reset(tc->shrb);
-  saws_shrb_unlock(tc->shrb, _c->rank);
+  saws_shrb_lock(tc->shared_rb, _c->rank);
+  saws_shrb_reset(tc->shared_rb);
+  saws_shrb_unlock(tc->shared_rb, _c->rank);
 
 #if 0 /* no task pushing */
   // Clear out the inbox
