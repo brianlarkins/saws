@@ -1,6 +1,9 @@
-/*
- * Copyright (C) 2020. See COPYRIGHT in top-level directory.
- */
+/***********************************************************/
+/*                                                         */
+/*  collection-sdc.c - scioto openshmem lock-based TC impl */
+/*    (c) 2020 see COPYRIGHT in top-level                  */
+/*                                                         */
+/***********************************************************/
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,6 +30,9 @@
 gtc_t gtc_create_sdc(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg_t *cfg) {
   tc_t  *tc;
 
+  UNUSED(max_body_size);
+  UNUSED(cfg);
+
   tc  = gtc_lookup(gtc);
 
   // Allocate the shared ring buffer.  Total task size is the size
@@ -47,11 +53,11 @@ gtc_t gtc_create_sdc(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg_
   tc->cb.print_stats            = gtc_print_stats_sdc;
   tc->cb.print_gstats           = gtc_print_gstats_sdc;
 
-  tc->cb.pop_head               = sdc_shrb_pop_head;
-  tc->cb.pop_n_tail             = sdc_shrb_pop_n_tail;
-  tc->cb.try_pop_n_tail         = sdc_shrb_try_pop_n_tail;
-  tc->cb.push_n_head            = sdc_shrb_push_n_head;
-  tc->cb.work_avail             = sdc_shrb_size;
+  tc->rcb.pop_head               = sdc_shrb_pop_head;
+  tc->rcb.pop_n_tail             = sdc_shrb_pop_n_tail;
+  tc->rcb.try_pop_n_tail         = sdc_shrb_try_pop_n_tail;
+  tc->rcb.push_n_head            = sdc_shrb_push_n_head;
+  tc->rcb.work_avail             = sdc_shrb_size;
 
   tc->qsize = sizeof(sdc_shrb_t);
 
@@ -129,8 +135,8 @@ void gtc_progress_sdc(gtc_t gtc) {
   sdc_shrb_release(tc->shared_rb);
 
   // Attempt to reclaim space
-  sdc_shrb_reclaim_space(tc->shared_rb);
-  tc->shared_rb->nprogress++;
+  sdc_shrb_reclaim_space((sdc_shrb_t *)tc->shared_rb);
+  ((sdc_shrb_t *)tc->shared_rb)->nprogress++;
   //TC_STOP_TIMER(tc,t[0]);
   TC_STOP_TIMER(tc,progress);
 }
@@ -169,7 +175,7 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
   int     v, steal_size;
   int     passive = 0;
   int     searching = 0;
-  gtc_vs_state_t vs_state = {0};
+  gtc_vs_state_t vs_state = {0, 0, 0};
   void *rb_buf;
 
   tc->ct.getcalls++;
@@ -237,7 +243,7 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
             gtc_get_dummy_work += 1.0;
         }
 
-        if (tc->cb.work_avail(target_rb) > 0) {
+        if (tc->rcb.work_avail(target_rb) > 0) {
           tc->state = STATE_STEALING;
 
           if (searching) {
@@ -419,6 +425,7 @@ task_t *gtc_task_inplace_create_and_add_sdc(gtc_t gtc, task_class_t tclass) {
  */
 void gtc_task_inplace_create_and_add_finish_sdc(gtc_t gtc, task_t *t) {
   tc_t *tc = gtc_lookup(gtc);
+  UNUSED(t);
   // TODO: Maintain a counter of how many are outstanding to avoid corruption at the
   // head of the queue
   TC_START_TIMER(tc,addfinish);
@@ -435,7 +442,7 @@ void gtc_task_inplace_create_and_add_finish_sdc(gtc_t gtc, task_t *t) {
  */
 void gtc_print_stats_sdc(gtc_t gtc) {
   tc_t *tc = gtc_lookup(gtc);
-  sdc_shrb_t *rb = tc->shared_rb;
+  sdc_shrb_t *rb = (sdc_shrb_t *)tc->shared_rb;
 
   uint64_t perget, peradd, perinplace, perfinish, perprogress, perreclaim, perensure, perrelease, perreacquire, perpoptail;
 
@@ -444,23 +451,23 @@ void gtc_print_stats_sdc(gtc_t gtc) {
     perget       = tc->ct.getcalls      != 0 ? TC_READ_TIMER(tc,getbuf)    / tc->ct.getcalls      : 0;
     peradd       = tc->ct.tasks_spawned != 0 ? TC_READ_TIMER(tc,add)       / tc->ct.tasks_spawned : 0;
     perinplace   = tc->ct.tasks_spawned != 0 ? TC_READ_TIMER(tc,addinplace)/ tc->ct.tasks_spawned : 0; // borrowed
-    perfinish    = rb->nprogress     != 0 ? TC_READ_TIMER(tc,addfinish) / rb->nprogress     : 0; // borrowed, but why?
-    perprogress  = rb->nprogress     != 0 ? TC_READ_TIMER(tc,progress)  / rb->nprogress     : 0;
-    perreclaim   = rb->nreccalls     != 0 ? TC_READ_TIMER(tc,reclaim)   / rb->nreccalls     : 0;
-    perensure    = rb->nensure       != 0 ? TC_READ_TIMER(tc,ensure)    / rb->nensure       : 0;
-    perrelease   = rb->nrelease      != 0 ? TC_READ_TIMER(tc,release)   / rb->nrelease      : 0;
-    perreacquire = rb->nreacquire    != 0 ? TC_READ_TIMER(tc,reacquire) / rb->nreacquire    : 0;
-    perpoptail   = rb->ngets         != 0 ? TC_READ_TIMER(tc,poptail)   / rb->ngets         : 0;
+    perfinish    = rb->nprogress        != 0 ? TC_READ_TIMER(tc,addfinish) / rb->nprogress     : 0; // borrowed, but why?
+    perprogress  = rb->nprogress        != 0 ? TC_READ_TIMER(tc,progress)  / rb->nprogress     : 0;
+    perreclaim   = rb->nreccalls        != 0 ? TC_READ_TIMER(tc,reclaim)   / rb->nreccalls     : 0;
+    perensure    = rb->nensure          != 0 ? TC_READ_TIMER(tc,ensure)    / rb->nensure       : 0;
+    perrelease   = rb->nrelease         != 0 ? TC_READ_TIMER(tc,release)   / rb->nrelease      : 0;
+    perreacquire = rb->nreacquire       != 0 ? TC_READ_TIMER(tc,reacquire) / rb->nreacquire    : 0;
+    perpoptail   = rb->ngets            != 0 ? TC_READ_TIMER(tc,poptail)   / rb->ngets         : 0;
 
     printf(" %4d - SDC-Q: nrelease %6lu, nreacquire %6lu, nreclaimed %6lu, nwaited %2lu, nprogress %6lu\n"
            " %4d -    failed w/lock: %6lu, failed w/o lock: %6lu, aborted steals: %6lu\n"
            " %4d -    ngets: %6lu  (%5.2f usec/get) nxfer: %6lu\n",
       _c->rank,
-        tc->shared_rb->nrelease, tc->shared_rb->nreacquire, tc->shared_rb->nreclaimed, tc->shared_rb->nwaited, tc->shared_rb->nprogress,
+        rb->nrelease, rb->nreacquire, rb->nreclaimed, rb->nwaited, rb->nprogress,
       _c->rank,
         tc->ct.failed_steals_locked, tc->ct.failed_steals_unlocked, tc->ct.aborted_steals,
       _c->rank,
-        tc->shared_rb->ngets, TC_READ_TIMER_USEC(tc, t[0])/(double)tc->shared_rb->ngets, tc->shared_rb->nxfer);
+        rb->ngets, TC_READ_TIMER_USEC(tc, t[0])/(double)rb->ngets, rb->nxfer);
     printf(" %4d - TSC: get: %"PRIu64"M (%"PRIu64" x %"PRIu64")  add: %"PRIu64"M (%"PRIu64" x %"PRIu64") inplace: %"PRIu64"M (%"PRIu64")\n",
         _c->rank,
         TC_READ_TIMER_M(tc,getbuf), perget, tc->ct.getcalls,

@@ -1,3 +1,9 @@
+/*********************************************************************/
+/*                                                                   */
+/*  sdc_shr_ring.c - scioto lock-based  ring buffer q implementation */
+/*    (c) 2020 see COPYRIGHT in top-level                            */
+/*                                                                   */
+/*********************************************************************/
 #include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -499,7 +505,6 @@ static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, vo
       //                 /* dst */ &myrb->rbs[proc]->itail, &stride, &count, 0, proc);
       // shmem_iput(&(myrb->itail), &itail_inc, stride, stride, count, proc);
 
-      
       // err = ARMCI_Rmw(ARMCI_FETCH_AND_ADD, &oldval, &myrb->rbs[proc]->itail, itail_inc, proc);
       shmem_atomic_fetch_add(&(myrb->itail), itail_inc, proc);
 

@@ -1,6 +1,9 @@
-/*
- * SAWS - atomic work stealing implementation using OpenSHMEM
- */
+/*************************************************************/
+/*                                                           */
+/*  saws_shrb.c - scioto atomic ring buffer q implementation */
+/*    (c) 2020 see COPYRIGHT in top-level                    */
+/*                                                           */
+/*************************************************************/
 
 #include <sys/types.h>
 #include <stdio.h>
@@ -291,11 +294,11 @@ void saws_shrb_release(saws_shrb_t *rb) {
         int nshared  = saws_shrb_local_size(rb)/2 + saws_shrb_local_size(rb) % 2;
         rb->nlocal  -= nshared;
         rb->split    = (rb->split + nshared) % rb->max_size;
-        int asteals  = log_base2(nshared); 
+        int asteals  = log_base2(nshared);
         if (nshared % 2 != 0 || (ceil(log2(nshared) != floor(log2(nshared))))) asteals++;
         long val     = asteals << 24;
         val         |= asteals << 19;
-        val         |= rb->tail;         
+        val         |= rb->tail;
         rb->nrelease++;
 
         shmem_atomic_swap(&rb->steal_val, val, rb->procid);
@@ -304,7 +307,6 @@ void saws_shrb_release(saws_shrb_t *rb) {
 
 
 void saws_shrb_release_all(saws_shrb_t *rb) {
-   
     int amount  = saws_shrb_local_size(rb);
     rb->nlocal -= amount;
     rb->split   = (rb->split + amount) % rb->max_size;
@@ -331,7 +333,6 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
     if (saws_shrb_shared_size(rb) > saws_shrb_local_size(rb)) {
         mytail = curr_val;
         mytail &= 0x00000000007FFFF; // Low 19 bits of val
-        //nlocal  = saws_shrb_shared_size(rb) / 2 + saws_shrb_shared_size(rb) % 2; 
         
         nlocal = pow(2, (curr_val >> 24) - 1) / 2; //number of tasks to reclaim
         if (curr_val == 0) nlocal = 1; //edge case
@@ -468,7 +469,6 @@ int saws_shrb_pop_tail(saws_shrb_t *rb, int proc, void *buf) {
  */
 
 static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, void *e, int steal_vol, int trylock) {
-    
     saws_shrb_t trb;
     // Copy the remote RB's metadata
     shmem_getmem(&trb, myrb, sizeof(saws_shrb_t), proc);
@@ -492,9 +492,9 @@ static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, 
     int ntasks = 0;
     if (n > 0) {//runs as long as there are tasks to steal
         static long val = -1 << 24;
-        long oldval = shmem_atomic_fetch_add(&myrb->steal_val, val, proc); 
+        long oldval = shmem_atomic_fetch_add(&myrb->steal_val, val, proc);
         int rtail = oldval & 0x000000000007FFFF; // Low 19 bits of val
-        int isteals = ((oldval >> 19) & 0x1F);     // 5 bits, shifted  
+        int isteals = ((oldval >> 19) & 0x1F);     // 5 bits, shifted
         int asteals = (oldval >> 24);
 
         if ((rtail < 0) || (asteals < 0))
@@ -507,22 +507,22 @@ static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, 
         //else if (ceil(log2(saws_shrb_shared_size(&trb)) != floor(log2(saws_shrb_shared_size(&trb))))) ntasks = ntasks / 2;
         //needed to steal last task. may cause a race condition.
         if (ntasks == 0 && trb.completed != isteals) ntasks = 1;
-        
+
         //calculate index of first task of steal
-        int start = 0; 
+        int start = 0;
         for (int i = isteals; i > asteals; i--) {
-            start += pow(2, (i - 1)) / 2; 
+            start += pow(2, (i - 1)) / 2;
         }
         if ((&trb)->tail + (ntasks-1) < (&trb)->max_size) { // No need to wrap around
             void* rptr = myrb->q + (rtail + (start * trb.elem_size));
-            shmem_getmem_nbi(e, rptr/*saws_shrb_elem_addr(myrb, proc, (&trb)->tail)*/, ntasks * (&trb)->elem_size, proc);   
+            shmem_getmem_nbi(e, rptr/*saws_shrb_elem_addr(myrb, proc, (&trb)->tail)*/, ntasks * (&trb)->elem_size, proc);
 
         } else { // Need to wrap around
 
             int part_size = (&trb)->max_size - (&trb)->tail;
 
             void* rptr = myrb->q + (rtail + (start * trb.elem_size));
-            
+
             shmem_getmem_nbi(saws_shrb_buff_elem_addr(&trb, e, 0), rptr, part_size * (&trb)->elem_size, proc); // Grab tasks up until end of trb.
             //shmem_getmem_nbi(saws_shrb_buff_elem_addr(&trb, e, part_size), saws_shrb_elem_addr(myrb, proc, 0), (ntasks - part_size) * (&trb)->elem_size, proc); // Wrap
         }
@@ -544,5 +544,3 @@ int saws_shrb_try_pop_n_tail(void *b, int proc, int n, void *e, int steal_vol) {
     saws_shrb_t *myrb = (saws_shrb_t *)b;
     return saws_shrb_pop_n_tail_impl(myrb, proc, n, e, steal_vol, 1);
 }
-
-

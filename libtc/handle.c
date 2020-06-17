@@ -1,11 +1,15 @@
-/*
- * Copyright (C) 2018. See COPYRIGHT in top-level directory.
- */
+/***********************************************************/
+/*                                                         */
+/*  handle.c - scioto openshmem TC handle implementation   */
+/*    (c) 2020 see COPYRIGHT in top-level                  */
+/*                                                         */
+/***********************************************************/
 
 #include <stdio.h>
 #include <stdlib.h>
 
 #include "tc.h"
+
 
 /** Register a task collection and return a portable handle.  Collective operation.
   * @param  tc Pointer to the task collection.
@@ -31,6 +35,7 @@ gtc_t gtc_handle_register(tc_t *tc) {
 
   return gtc;
 }
+
 
 
 /** Free a GTC handle.  Collective operation.

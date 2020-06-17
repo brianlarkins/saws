@@ -1,3 +1,9 @@
+/*********************************************************/
+/*                                                       */
+/*  mutex.c - scioto openshmem mutex lock implementation */
+/*    (c) 2020 see COPYRIGHT in top-level                */
+/*                                                       */
+/*********************************************************/
 #include <stdio.h>
 #include <assert.h>
 
