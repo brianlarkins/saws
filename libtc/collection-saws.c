@@ -126,16 +126,7 @@ void gtc_progress_saws(gtc_t gtc) {
   // Update the split
   saws_shrb_release(tc->shared_rb);
   // Attempt to reclaim space
-//  saws_shrb_reclaim_space(tc->shrb);
-    //   printf("**** after reclaim *****:\n");
-     //if (_c->rank == 0)
-     //saws_shrb_print(tc->shrb);
-     //shmem_barrier_all();
-     //if(_c->rank == 1) saws_shrb_print(tc->shrb);
-     //shmem_barrier_all();
-   //if(_c->rank == 3) saws_shrb_print(tc->shrb);
-   //shmem_barrier_all();
-     // Attempt to reclai
+  saws_shrb_reclaim_space(tc->shared_rb);
   ((saws_shrb_t *)tc->shared_rb)->nprogress++;
   TC_STOP_TIMER(tc,progress);
 }
@@ -251,11 +242,13 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
           }
 
           // Perform a steal/try_steal
-          if (tc->ldbal_cfg.steals_can_abort)
-            steal_size = gtc_try_steal_tail(gtc, v);
-          else
-            steal_size = gtc_steal_tail(gtc, v);
+          if (tc->ldbal_cfg.steals_can_abort){
 
+            //printf("(%d) attempting steal on proc: %d\n",_c->rank, v);
+            steal_size = gtc_try_steal_tail(gtc, v);
+          } else {
+            steal_size = gtc_steal_tail(gtc, v);
+          }
           // Steal succeeded: Got some work from remote node
           if (steal_size > 0) {
             tc->ct.tasks_stolen += steal_size;
@@ -287,6 +280,7 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
         // Locking is only needed here if we allow pushing.
         // TODO: New TD should not require locking.  Remove locks and test.
         if (gtc_tasks_avail(gtc) == 0 && !tc->external_work_avail) {
+            //printf("tasks spawned: %ld  tasks completed %ld\n", tc->ct.tasks_spawned, tc->ct.tasks_completed);
             td_set_counters(tc->td, tc->ct.tasks_spawned, tc->ct.tasks_completed);
             tc->terminated = td_attempt_vote(tc->td);
 
@@ -367,7 +361,6 @@ int gtc_add_saws(gtc_t gtc, task_t *task, int proc) {
 
   ++tc->ct.tasks_spawned;
   TC_STOP_TIMER(tc,add);
-
   return 0;
 }
 
