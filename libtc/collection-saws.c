@@ -124,7 +124,8 @@ void gtc_progress_saws(gtc_t gtc) {
 #endif /* no task pushing */
 
   // Update the split
-  saws_shrb_release(tc->shared_rb);
+  if (saws_shrb_size(tc->shared_rb) > 1)
+    saws_shrb_release(tc->shared_rb);
   // Attempt to reclaim space
   saws_shrb_reclaim_space(tc->shared_rb);
   ((saws_shrb_t *)tc->shared_rb)->nprogress++;

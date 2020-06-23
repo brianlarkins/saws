@@ -103,20 +103,19 @@ saws_shrb_t *saws_shrb_create(int elem_size, int max_size) {
 
 void saws_shrb_reset(saws_shrb_t *rb) {
 
-    rb->nlocal    = 0;
-    rb->tail      = 0;
-    rb->completed = 0;
-    rb->steal_val = 0;
-    rb->itail     = 0;
-    rb->vtail     = 0;
-    rb->split     = 0;
-
-    rb->waiting   = 0;
+    rb->nlocal     = 0;
+    rb->tail       = 0;
+    rb->completed  = 0;
+    rb->steal_val  = 0;
+    rb->split      = 0;
+    rb->steal_base = 0;
+    rb->waiting    = 0;
 
     rb->nrelease   = 0;
     rb->nreacquire = 0;
     rb->nwaited    = 0;
     rb->nreclaimed = 0;
+
 }
 
 
@@ -244,7 +243,7 @@ void saws_shrb_unlock(saws_shrb_t *rb, int proc) {
 void saws_shrb_reclaim_space(saws_shrb_t *rb) {
 
     //if (DBG) printf("(%d), reclaim_space()\n", rb->procid); //saws_shrb_print(rb);
-
+    
     static uint64_t val = -1;
     int curr_val = shmem_atomic_swap(&rb->tail, val, rb->procid); // Disable steals
 
@@ -252,36 +251,40 @@ void saws_shrb_reclaim_space(saws_shrb_t *rb) {
     long asteals = (rb->steal_val >> 24);
     long isteals = (rb->steal_val >> 19) & 0x1F;
 
+    
+    if (rb->completed != isteals || asteals == isteals)
+        // can't fuck with it right now.
+        shmem_atomic_set(&rb->tail, rtail, rb->procid);
+    
+     else // if (asteals == isteals) {
+        shmem_atomic_set(&rb->tail, rb->split, rb->procid);
+       
 
-    if (isteals == rb->completed) {
-        rb->tail = rb->split;
-    
-    } else if (asteals == isteals) {
-        rb->tail = rtail;
-    
-    }  else {
+    /*} else {
     
         if (DBG) printf("(%d) reclaiming space() loop\n", rb->procid); // saws_shrb_print(rb);
 
         while ((isteals - asteals) != shmem_atomic_fetch(&rb->completed, rb->procid)) { 
             ;
         }
-        if (DBG) printf ("passed loop\n");
         //update tail value
         int  temp = (rtail + (pow(2, abs(isteals - rb->completed)) /2));
         // I swear there was a good reason for this at some point...
         if (rb->split - rtail > 2)
             temp = (rtail + (pow(2, abs((isteals - 1) - rb->completed)) /2));
         
-        rb->tail = temp % rb->max_size;
+        temp = temp % rb->max_size;
+        shmem_atomic_set(&rb->tail, temp, rb->procid);    
         
         assert(rb->tail >= 0);
         
         printf("new tail %ld\n", rb->tail);
+        printf("rtail %ld\n", rtail);
         if(DBG) {printf("(%d) queue after reclaim\n", rb->procid); saws_shrb_print(rb);}
         
         rb->nreclaimed++;
-    }
+    }*/
+     shmem_quiet();
     assert(rb->tail >= 0);
 }
 
@@ -311,14 +314,15 @@ void saws_shrb_release(saws_shrb_t *rb) {
     // available this scheme will put it in the shared portion.
 
     if (saws_shrb_local_size(rb) > 0 && (saws_shrb_shared_size(rb) == 0)) {
-        if (DBG) {printf("(%d) release()\n", rb->procid); saws_shrb_print(rb);}
+        //if (DBG) {printf("(%d) release()\n", rb->procid); saws_shrb_print(rb);}
         assert(saws_shrb_shared_size(rb) == 0);
 
         if (rb->steal_val >> 24 == 0) rb->tail = rb->split;
         int nshared  = saws_shrb_local_size(rb) / 2 + saws_shrb_local_size(rb) % 2;
         rb->nlocal  -= nshared;
         rb->split    = (rb->split + nshared) % rb->max_size;
-        printf("(%d) nshared%d\n",rb->procid, nshared);
+        if (DBG) printf("(%d) releasing %d tasks\n",rb->procid, nshared);
+        
         int asteals  = log_base2(nshared);
         if (nshared) 
             assert(asteals > 0);
@@ -330,11 +334,12 @@ void saws_shrb_release(saws_shrb_t *rb) {
         val         |= rb->tail;
 
         rb->completed = 0;
+        //rb->steal_base = rb->tail;
         rb->nrelease++;
-
+        
         shmem_atomic_set(&rb->steal_val, val, rb->procid);
         shmem_fence();
-        if  (DBG) {printf("after release\n"); saws_shrb_print(rb);}
+        if (DBG) {printf("after release\n"); saws_shrb_print(rb);}
     } assert (rb->tail >= 0);
 }
 
@@ -361,9 +366,15 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
     // Favor placing work in the local portion -- if there is only one task
     // available this scheme will put it in the local portioni.
     int nlocal = 0;
+    shmem_quiet();
+    uint64_t lock = -1;
+    lock = lock << 24;
     if (saws_shrb_shared_size(rb) > saws_shrb_local_size(rb)) {
         
-        int curr_val = shmem_atomic_swap(&rb->steal_val, STEAL_DECRIMENT, rb->procid);  // Disable steals
+        int curr_val = shmem_atomic_swap(&rb->steal_val, lock, rb->procid);  // Disable steals
+        
+        shmem_quiet(); // delete this and everything breaks.
+        
         uint64_t rtail = curr_val;
         rtail &= 0x00000000007FFFF; // Low 19 bits of val
 
@@ -390,9 +401,8 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
         rb->completed = 0;
         shmem_atomic_set(&rb->steal_val, val, rb->procid);
     } 
-
     assert(rb->tail >= 0);
-    
+    if (DBG) {printf("after reacquire:\n"); saws_shrb_print(rb);}    
     if(!(!saws_shrb_local_isempty(rb) || (saws_shrb_isempty(rb) && saws_shrb_local_isempty(rb))))
         saws_shrb_print(rb);
     assert(!saws_shrb_local_isempty(rb) || (saws_shrb_isempty(rb) && saws_shrb_local_isempty(rb)));
@@ -515,25 +525,6 @@ int saws_shrb_pop_tail(saws_shrb_t *rb, int proc, void *buf) {
  */
 
 static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, void *e, int steal_vol, int trylock) {
-    saws_shrb_t trb;
-    // Copy the remote RB's metadata
-    shmem_getmem(&trb, myrb, sizeof(saws_shrb_t), proc);
-
-    switch (steal_vol) {
-        case STEAL_HALF:
-            n = MIN(saws_shrb_shared_size(&trb)/2 + saws_shrb_shared_size(&trb) % 2, n);
-            break;
-        case STEAL_ALL:
-            n = MIN(saws_shrb_shared_size(&trb), n);
-            break;
-        case STEAL_CHUNK:
-            n = MIN(n, saws_shrb_shared_size(&trb));
-            break;
-        default:
-            printf("Error: Unknown steal volume heuristic.\n");
-            assert(0);
-    }
-
 
     int ntasks = 0;
     if (n > 0) {
@@ -544,7 +535,11 @@ static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, 
         int isteals = ((oldval >> 19) & 0x1F);     // 5 bits, shifted
         int asteals = (oldval >> 24);
 
-        //stealing is currently disabled
+        // stealing is currently disabled
+        //if ((rtail < 0) || (asteals <= 0)) 
+         //   return 0;
+        
+       //stealing is currently disabled
         if ((rtail < 0) || (asteals <= 0)) {
 
             // another process got here first.
@@ -561,56 +556,37 @@ static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, 
             return 0;
         }
 
-        if (1) {printf("(%d) stealing from\n", _c->rank); saws_shrb_print(&trb);}
-        
-        //compute steal volume
-        if (asteals == 1)
+        // calculate the steal volume
+        ntasks = pow(2, asteals - 1) / 2;
+        if (ntasks == 0) // patch for last task
             ntasks = 1;
-        else if (isteals == asteals){
-            ntasks = saws_shrb_shared_size(&trb) / 2;
-        }else {
-            int offset = 1;
-            int available = saws_shrb_shared_size(&trb);
-            //printf("available initially = %d\n", available);
-            for (int i = isteals; i > asteals; i--) {
-                assert(asteals > 0 && isteals > 0);
-                available -= (log_base2(saws_shrb_shared_size(&trb) / (2 * offset )));
-              //  printf("available %d\n", available);
-                offset++;
-            }
-            ntasks = available / 2; 
-            if (ntasks == 0) ntasks = 1; //just trust me on this one.
-        }
 
         //calculate index of first task of steal
-        int variable = saws_shrb_shared_size(&trb);
-        //printf("trb tail %ld rtail %d\n", trb.tail, rtail);
-        //
-        //this is broken again.
-        int start = trb.tail;
-        for (int i = 0; i < trb.completed; i++) {
-            start += variable / 2;
-            variable -= variable / 2;
+        int initial = pow(2, isteals) / 2;
+        if (DBG) printf("initial queue size: %d\n", initial);
+        
+        int start = rtail;
+        for (int i = 0; i < (isteals - asteals); i++) {
+            start += initial / 2;
+            initial -= initial / 2;
         }
-        start -= start % saws_shrb_shared_size(&trb);
-        start = start % trb.max_size;      
-        //printf("start 2 %d\n", start);
-        assert(start >= 0 && start < trb.max_size);
 
-        printf("(%d) attempting to steal %d tasks from proc %d starting at index %d\n", _c->rank, ntasks, trb.procid, start);
 
-        if ((&trb)->tail + (ntasks - 1) < (&trb)->max_size) { // No wrap
-            void* rptr = &myrb->q[0] + (rtail + (start * trb.elem_size));
-            shmem_getmem_nbi(e, rptr, ntasks * (&trb)->elem_size, proc);
+        printf("(%d) attempting to steal %d tasks starting at index %d\n", _c->rank, ntasks, start);
+
+        if (rtail + (ntasks - 1) < myrb->max_size) { // No wrap
+            void* rptr = &myrb->q[0] + (rtail + (start * myrb->elem_size));
+            shmem_getmem_nbi(e, rptr, ntasks * myrb->elem_size, proc);
 
         } else { // wrap
-            printf("*** wraping steal***\n");
-            int part_size = (&trb)->max_size - (&trb)->tail;
+            printf("*** wraping steali   unimplemented ***\n");
+            /*int part_size = (&trb)->max_size - (&trb)->tail;
             printf("part size: %d\n", part_size);
             void* rptr = &myrb->q[0] + (rtail + (start * trb.elem_size));
 
             shmem_getmem_nbi(saws_shrb_buff_elem_addr(&trb, e, 0), rptr, part_size * (&trb)->elem_size, proc); 
             shmem_getmem_nbi(saws_shrb_buff_elem_addr(&trb, e, part_size), saws_shrb_elem_addr(myrb, proc, 0), (ntasks - part_size) * (&trb)->elem_size, proc); // Wrap
+        */
         }
 
         shmem_atomic_inc(&myrb->completed, proc);

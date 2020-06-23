@@ -7,7 +7,7 @@
 #include <tc.h>
 
 // #define NUM_TASKS 1000
-#define NUM_TASKS 4
+#define NUM_TASKS 8
 
 typedef struct {
   int parent_id;
@@ -30,10 +30,10 @@ void task_fcn(gtc_t gtc, task_t *task) {
   int timeout;
   mytask_t *t = (mytask_t*) gtc_task_body(task);
 
-  if (rand() < RAND_MAX/2) {
-    // 50% Chance of spawning a new task
-    create_task(gtc, task_class, mythread, t->task_num+1);
-  }
+  //if (rand() < RAND_MAX/2) {
+  // 50% Chance of spawning a new task
+  // create_task(gtc, task_class, mythread, t->task_num+1);
+  //}
 
   timeout = (gtimeout > 0) ? gtimeout : rand() % 1000000;
   usleep(timeout);
