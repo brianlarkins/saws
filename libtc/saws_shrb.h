@@ -41,14 +41,19 @@ typedef enum {
     SAWSReleaseCalls
 } gtc_sdc_gcountstats_e;
 
+/*
+typedef enum {
+    FullQueue,
+    EmptyQueue,
+} saws_q_state;
+*/
 struct saws_shrb_s {
-    int             itail;     // Index of the intermediate tail (between vtail and tail)
+    
     long            tail;      // Index of tail element (between 0 and rb_size-1)
-    int             completed; // Number of completed steals
+    uint64_t        completed; // Number of completed steals
     uint64_t        steal_val; // Concatenation of tail, isteals, and asteals
-
+    uint32_t        *states; 
     int             nlocal;    // Number of elements in the local portion of the queue
-    int             vtail;     // Index of the virtual tail
     int             split;     // index of split between local-only and local-shared elements
 
     synch_mutex_t   lock;      // lock for shared portion of this queue
@@ -58,7 +63,6 @@ struct saws_shrb_s {
     int             nproc;
     int             max_size;  // Max size in number of elements
     int             elem_size; // Size of an element in bytes
-
     tc_counter_t    nwaited;   // How many times did I have to wait
     tc_counter_t    nreclaimed;// How many times did I reclaim space from the public portion of the queue
     tc_counter_t    nreccalls; // How many times did I even try to reclaim
@@ -91,7 +95,7 @@ int         saws_shrb_local_isempty(saws_shrb_t *rb);
 int         saws_shrb_shared_isempty(saws_shrb_t *rb);
 int         saws_shrb_local_size(saws_shrb_t *rb);
 int         saws_shrb_shared_size(saws_shrb_t *rb);
-int         saws_shrb_reserved_size(saws_shrb_t *rb);
+int         saws_shrb_isempty(saws_shrb_t *rb);
 int         saws_shrb_public_size(saws_shrb_t *rb);
 
 void        saws_shrb_release(saws_shrb_t *rb);
