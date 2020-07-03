@@ -41,18 +41,13 @@ typedef enum {
     SAWSReleaseCalls
 } gtc_sdc_gcountstats_e;
 
-/*
-typedef enum {
-    FullQueue,
-    EmptyQueue,
-} saws_q_state;
-*/
+
 struct saws_shrb_s {
     
     long            tail;      // Index of tail element (between 0 and rb_size-1)
     uint64_t        completed; // Number of completed steals
     uint64_t        steal_val; // Concatenation of tail, isteals, and asteals
-    uint32_t        *states; 
+    uint32_t        *targets; 
     int             nlocal;    // Number of elements in the local portion of the queue
     int             split;     // index of split between local-only and local-shared elements
 
@@ -118,7 +113,7 @@ int         saws_shrb_empty(saws_shrb_t *rb);
 
 void        saws_shrb_print(saws_shrb_t *rb);
 
-#define saws_shrb_elem_addr(MYRB, PROC, IDX) ((MYRB)->q + (IDX)*(MYRB)->elem_size)
+#define saws_shrb_elem_addr(MYRB, PROC, IDX) ((&MYRB->q[0]) + (IDX)*(MYRB)->elem_size)
 #define saws_shrb_buff_elem_addr(RB, E, IDX) ((u_int8_t*)(E) + (IDX)*(RB)->elem_size)
 
 // ARMCI allocated buffers should be faster/pinned

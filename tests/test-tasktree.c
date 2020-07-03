@@ -21,7 +21,7 @@
 #include <tc.h>
 
 #define NCHILDREN  2
-#define MAXDEPTH   4
+#define MAXDEPTH   5
 #define SLEEP_TIME 100
 #define VERBOSE    0
 
@@ -102,10 +102,13 @@ int main(int argc, char **argv) {
 
   gtc_init();
 
-  while ((arg  = getopt(argc, argv, "B")) != -1) {
+  while ((arg  = getopt(argc, argv, "BH")) != -1) {
     switch (arg) {
       case 'B':
         qtype = GtcQueueSDC;
+        break;
+      case 'H':
+        qtype = GtcQueueSAWS;
         break;
     }
   }

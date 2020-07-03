@@ -16,11 +16,9 @@
 #include "tc.h"
 #include "saws_shrb.h"
 
-#define STEAL_DECRIMENT 0xffffffffff000000 
-//make this pretty later
+#define LOCKQUEUE 0x000000000000000
 #define FullQueue 1
 #define EmptyQueue 0
-#define DBG 0
 
 /**
  * Portals Steal-N Queue Implementation
@@ -40,7 +38,7 @@
  *
  * A Portals ME is created for each group of N tasks, where N is defined at creation
  *
- * The ring buffer can in in several states:
+ * The ring buffer can in in several targets:
  *
  * 1. Empty.  In this case we have nlocal == 0, tail == split, and vtail == itail == tail
  *
@@ -74,7 +72,7 @@ saws_shrb_t *saws_shrb_create(int elem_size, int max_size) {
     saws_shrb_t  *rb;
     saws_shrb_t **rbs;
     int procid, nproc;
-    uint32_t *states;
+    uint32_t *targets;
     setbuf(stdout, NULL);
 
     procid = shmem_my_pe();
@@ -89,14 +87,14 @@ saws_shrb_t *saws_shrb_create(int elem_size, int max_size) {
 
     rb = rbs[procid];
 
-    states = (uint32_t *)malloc(nproc * sizeof(uint32_t));
+    targets = (uint32_t *)malloc(nproc * sizeof(uint32_t));
 
     rb->procid    = procid;
     rb->nproc     = nproc;
     rb->elem_size = elem_size;
     rb->max_size  = max_size;
     rb->rbs       = rbs;
-    rb->states    = states;
+    rb->targets   = targets;
 
     saws_shrb_reset(rb);
 
@@ -123,7 +121,7 @@ void saws_shrb_reset(saws_shrb_t *rb) {
     rb->nreclaimed = 0;
 
     for(int i = 0; i < rb->nproc; i++)
-        rb->states[i] = FullQueue;
+        rb->targets[i] = FullQueue;
 
 }
 
@@ -168,7 +166,7 @@ static inline int initial_steals(uint64_t itasks) {
 }
 
 
-static inline int log2_floor (uint64_t x) {
+static inline int log2_ceil(uint64_t x) {
 
     int rv = -1;
     while (x) { rv++ ; x = x >> 1; }
@@ -210,7 +208,7 @@ int saws_shrb_local_isempty(saws_shrb_t *rb) {
 
 
 int saws_shrb_shared_isempty(saws_shrb_t *rb) {
-    return rb->tail == rb->split;// || (rb->steal_val >> 37 <= 0);
+    return rb->tail == rb->split;
 }
 
 
@@ -274,39 +272,34 @@ void saws_shrb_unlock(saws_shrb_t *rb, int proc) {
 
 void saws_shrb_reclaim_space(saws_shrb_t *rb) {
 
-    static uint64_t val = 0;
-    val = val << 39;
-    uint64_t valid = 1;
-    uint64_t curr_val = shmem_atomic_swap(&rb->steal_val, val, rb->procid); // Disable steals
-    shmem_quiet();
-    uint64_t asteals    = (curr_val >> 39)   & 0x000000001FFFFFF;
-    uint64_t itasks     = (curr_val >> 19)   & 0x00000000007FFFF;
-    uint64_t isteals = log2_floor(itasks);
-    uint64_t rtail      = curr_val      & 0x00000000007FFFF;
+    uint64_t steal_val = 0, asteals, isteals, itasks, rtail, valid = 1;
+    uint64_t curr_val = shmem_atomic_swap(&rb->steal_val, LOCKQUEUE, rb->procid); // Disable steals
 
-    //wait for in-progress steals to be completed
+    asteals    = (curr_val >> 39)   & 0x000000001FFFFFF;
+    itasks     = (curr_val >> 19)   & 0x00000000007FFFF;
+    rtail      = curr_val           & 0x00000000007FFFF;
+
+    isteals    = log2_ceil(itasks);
+    
     uint64_t completed = shmem_atomic_fetch(&rb->completed, rb->procid);
-
-    //while((completed = shmem_atomic_fetch(&rb->completed, rb->procid)) != isteals - asteals)
-    //    ;
 
     if (completed == isteals || isteals == 0) {
         rb->completed = 0;
-        uint64_t newval = 0;
-        newval |= rb->split; //update tail
-        shmem_atomic_set(&rb->steal_val, newval, rb->procid);
-        rb->tail = rb->split;
-    } else {
-        uint64_t newval = asteals << 39;
-        newval |= valid << 38;
-        newval |= itasks << 19;
-        newval |= rtail;
+        steal_val |= rb->split; //update tail
 
-        shmem_atomic_set(&rb->steal_val, newval, rb->procid);
+        shmem_atomic_set(&rb->steal_val, steal_val, rb->procid);
+        rb->tail = rb->split;
+    
+    } else {
+        steal_val  = asteals << 39;
+        steal_val |= valid << 38;
+        steal_val |= itasks << 19;
+        steal_val |= rtail;
+
+        shmem_atomic_set(&rb->steal_val, steal_val, rb->procid);
         rb->tail = rtail;
     }
     shmem_quiet();
-    assert(rb->tail >= 0);
 
 }
 
@@ -338,27 +331,22 @@ void saws_shrb_release(saws_shrb_t *rb) {
 
         rb->nlocal  -= nshared;
         rb->split    = (rb->split + nshared) % rb->max_size;
-        assert(rb->split >= 0 && rb->split < rb->max_size);
         
-        gtc_lprintf(DBGSHRB, "(%d) releasing %d tasks\n",rb->procid, nshared);
-        //printf("new split %d\n", rb->split);
-        uint64_t steals  = log2_floor(nshared);
+        gtc_lprintf(DBGSHRB, "releasing %d tasks\n", nshared);
+        uint64_t steals  = log2_ceil(nshared);
 
-        uint64_t  val     = steals << 39;
-        uint64_t valid = 1;
-        val    |= valid << 38;
-        val    |= nshared << 19;
-        val    |= rb->tail;
+        uint64_t  steal_val, valid = 1;
+        steal_val   = steals << 39;
+        steal_val    |= valid << 38;
+        steal_val    |= nshared << 19;
+        steal_val    |= rb->tail;
 
         rb->completed = 0;
         rb->nrelease++;
 
-        shmem_atomic_set(&rb->steal_val, val, rb->procid);
-        //if (1) {printf("after release\n"); saws_shrb_print(rb);}
+        shmem_atomic_set(&rb->steal_val, steal_val, rb->procid);
 
-        shmem_quiet();
-
-    } assert (rb->tail >= 0 && rb->tail < rb->max_size);
+    } //assert (rb->tail >= 0 && rb->tail < rb->max_size);
 }
 
 
@@ -368,7 +356,7 @@ void saws_shrb_release_all(saws_shrb_t *rb) {
     int amount  = saws_shrb_local_size(rb);
     rb->nlocal -= amount;
     rb->split   = (rb->split + amount) % rb->max_size;
-    uint64_t asteals = log2_floor(amount + saws_shrb_shared_size(rb)) - 1;
+    uint64_t asteals = log2_ceil(amount + saws_shrb_shared_size(rb)) - 1;
 
     unsigned long val = asteals << 39;
     uint64_t valid = 1;
@@ -386,55 +374,53 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
 
     if ((saws_shrb_shared_size(rb) > rb->nlocal) && (rb->nlocal == 0)) {
 
-        //if (DBG) printf("before reacquire\n");
-        //if (DBG) saws_shrb_print(rb);
-        int ntasks, nlocal = 0;
-        uint64_t steal_val, nsteals, valid = 1, stolen = 0, lock = 0;
+        int ntasks, stolen, nlocal = 0;
+        uint64_t steal_val, asteals, isteals, itasks, rtail, nsteals, valid = 1;
 
-        unsigned long curr_val = shmem_atomic_swap(&rb->steal_val, lock, rb->procid);  // Disable steals
+        unsigned long curr_val = shmem_atomic_swap(&rb->steal_val, LOCKQUEUE, rb->procid);  // Disable steals
 
-        shmem_quiet(); // delete this and everything breaks.
+        shmem_quiet(); 
 
-        uint64_t asteals = curr_val >> 39;
-        uint64_t itasks = (curr_val >> 19) & 0x00000000007FFFF;
-        uint64_t rtail = curr_val;
-        rtail &= 0x00000000007FFFF; 
+        asteals = curr_val >> 39;
+        itasks = (curr_val >> 19) & 0x00000000007FFFF;
+        rtail = curr_val & 0x00000000007FFFF; 
 
-        uint64_t isteals = log2_floor(itasks);      
+        isteals = log2_ceil(itasks);      
 
-        // all tasks have already been stolen
+        // all tasks have already been stolen or are in progress
         if (asteals > isteals || asteals <= 0)
             return;
 
         // calculate amount of tasks aleady stolen
         ntasks = itasks;
+        stolen = 0;
+        uint64_t tasks_left = itasks;
         for (uint32_t i = isteals; i > asteals; i--) {
             stolen += (ntasks >> 1) + ntasks % 2;
             ntasks = ntasks >> 1;
         } 
-        uint64_t remaining = itasks - stolen;
-        nlocal = ((remaining >> 1) + remaining % 2);
-        remaining -= nlocal;    
+        tasks_left -= stolen;
+        nlocal = ((tasks_left >> 1) + tasks_left % 2);
+        tasks_left -= nlocal;    
 
-        gtc_lprintf(DBGSHRB, "(%d) reacquiring %d out of %ld remaining tasks.\n" ,rb->procid, nlocal, remaining + nlocal);
+        gtc_lprintf(DBGSHRB, "reacquiring %d out of %ld remaining tasks.\n" , nlocal, tasks_left + nlocal);
 
         rb->nlocal += nlocal;
         rb->split = rb->split - nlocal;
-        assert(rb->split >= 0 && rb->split < rb->max_size);
+        //assert(rb->split >= 0 && rb->split < rb->max_size);
 
-        nsteals    = log2_floor(remaining);
+        nsteals      = log2_ceil(tasks_left);
 
         steal_val    = nsteals << 39;
         steal_val   |= valid << 38;
-        steal_val   |= remaining << 19;
+        steal_val   |= tasks_left << 19;
         steal_val   |= rtail;
 
         rb->completed = 0;
         shmem_atomic_set(&rb->steal_val, steal_val, rb->procid);
 
-        if (DBG) {printf("after reacquire:\n"); saws_shrb_print(rb);}    
+        shmem_quiet();
     } 
-    assert(rb->tail >= 0);
     assert(!saws_shrb_local_isempty(rb) || (saws_shrb_isempty(rb) && saws_shrb_local_isempty(rb)));
 
 }
@@ -516,7 +502,7 @@ int saws_shrb_pop_head(void *b, int proc, void *buf) {
     // If we are out of local work, try to reacquire
     if (saws_shrb_local_isempty(rb))
         saws_shrb_reacquire(rb);
-    shmem_quiet();
+    
     if (saws_shrb_local_size(rb) > 0) {
         old_head = saws_shrb_head(rb);
 
@@ -524,9 +510,6 @@ int saws_shrb_pop_head(void *b, int proc, void *buf) {
         rb->nlocal--;
         buf_valid = 1;
     }
-
-    // Assertion: !buf_valid => saws_shrb_isempty(rb)
-    assert(buf_valid || (!buf_valid && saws_shrb_isempty(rb)));
 
     return buf_valid;
 }
@@ -553,73 +536,70 @@ int saws_shrb_pop_tail(saws_shrb_t *rb, int proc, void *buf) {
  */
 static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, void *e, int steal_vol, int trylock) {
 
-    int valid, rtail, ntasks = 0;
-    uint64_t val, asteals, isteals,itasks, decriment = -1;
+    int valid, rtail, ntasks = 0, stolen = 0;
+    uint64_t steal_val, asteals, isteals, itasks, decriment = -1;
     decriment = decriment << 39;
 
-    try:
+    test:
 
-    if (myrb->states[proc] == FullQueue)
-        val = shmem_atomic_fetch_add(&myrb->steal_val, decriment, proc);
+    if (myrb->targets[proc] == FullQueue)
+        steal_val = shmem_atomic_fetch_add(&myrb->steal_val, decriment, proc);
     else
-        val = shmem_atomic_fetch(&myrb->steal_val, proc);
-    shmem_quiet();
+        steal_val = shmem_atomic_fetch(&myrb->steal_val, proc);
 
-    asteals    =    (val >> 39)  & 0x000000001FFFFFF;
-    valid      =    (val >> 38)  & 0x000000000000001;
-    itasks     =    ((val >> 19) & 0x000000000007FFFF);     
-    rtail      =    val & 0x000000000007FFFF; 
+    asteals    =    (steal_val >> 39)  & 0x000000001FFFFFF;
+    valid      =    (steal_val >> 38)  & 0x000000000000001;
+    itasks     =    (steal_val >> 19)  & 0x000000000007FFFF;     
+    rtail      =    steal_val          & 0x000000000007FFFF; 
 
-    isteals    =    log2_floor(itasks);
+    isteals    =    log2_ceil(itasks);
 
     // queue is busy
     if (!valid) 
         return 0;
 
-    if (asteals > isteals || asteals <= 0 || rtail < 0) {
-        myrb->states[proc] = EmptyQueue;
+    if (asteals > isteals || asteals <= 0) {
+        myrb->targets[proc] = EmptyQueue;
         return 0;
-    } else if (myrb->states[proc] == EmptyQueue) {
-        myrb->states[proc] = FullQueue;
-        goto try;
+    } else if (myrb->targets[proc] == EmptyQueue) {
+        myrb->targets[proc] = FullQueue;
+        goto test;
     }
 
-    assert(itasks > 0);
     
-    gtc_lprintf(DBGSHRB, "(%d) Calculating steal volume, isteals %ld, asteals %ld itasks %ld\n", _c->rank, isteals, asteals, itasks);
+   // gtc_lprintf(DBGSHRB, "Calculating steal volume, isteals %ld, asteals %ld itasks %ld\n", isteals, asteals, itasks);
 
     // calculate steal volume
-    ntasks = (itasks / 2 + itasks % 2);
-    int start = rtail;
-    int intermediate = ntasks; 
-    for (uint32_t i = isteals; i > asteals; i--) {
-        start += ntasks;
-        intermediate = itasks - ntasks;
-        ntasks = (intermediate / 2) + (intermediate % 2);
-        itasks -= intermediate;
+    ntasks = itasks;
+    stolen = 0;
+    int remaining = itasks;
+    for (ntasks = itasks; isteals > asteals; isteals--) {
+        remaining = ntasks >> 1;
+        ntasks = (ntasks >> 1) + ntasks % 2;
+        stolen += ntasks;
+        ntasks = remaining;
     }
-
-    start = start % myrb->max_size;
-
-    gtc_lprintf(DBGSHRB, "(%d) stealing %d tasks from (%d) starting at index %d\n", _c->rank,  ntasks, proc, start);
-
-    void* rptr = &myrb->q[0] + (rtail + (start * myrb->elem_size));
+    ntasks = (itasks - stolen) / 2 + (itasks - stolen) % 2;
     
-    if (rtail + (ntasks - 1) < myrb->max_size) { // No wrap
+    gtc_lprintf(DBGSHRB, "stealing %d tasks from (%d), starting at index %d\n", ntasks, proc, rtail + stolen);
+
+    void* rptr = &myrb->q[0] + ((rtail + stolen) * myrb->elem_size);
+    
+    if (rtail + ntasks < myrb->max_size) { // No wrap
         shmem_getmem_nbi(e, rptr, ntasks * myrb->elem_size, proc);
 
     } else { // wrap
-        printf("*** wraping steal ***\n");
         int part_size = myrb->max_size - myrb->tail;
-        printf("part size: %d\n", part_size);
+        //printf("part size: %d\n", part_size);
 
         shmem_getmem_nbi(saws_shrb_buff_elem_addr(myrb, e, 0), rptr, part_size * myrb->elem_size, proc); 
         shmem_getmem_nbi(saws_shrb_buff_elem_addr(myrb, e, part_size), saws_shrb_elem_addr(myrb, proc, 0), (ntasks - part_size) * myrb->elem_size, proc); // Wrap
     }
 
     shmem_atomic_inc(&myrb->completed, proc);
-    shmem_quiet(); // touch this and everything breaks
+    shmem_quiet();
     return ntasks;
+
 }
 
 

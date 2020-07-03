@@ -588,7 +588,6 @@ void gtc_process(gtc_t gtc) {
         // Run the task we just got
         gtc_task_execute(gtc, &xtask->task);
     }
-    printf("\nthread %d out of task processing loop\n", _c->rank);
     free(xtask);
     tc->state = STATE_TERMINATED;
     TC_STOP_TIMER(tc, process);
