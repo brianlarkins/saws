@@ -81,13 +81,13 @@ saws_shrb_t *saws_shrb_create(int elem_size, int max_size) {
     gtc_lprintf(DBGSHRB, "  Thread %d: saws_shrb_create()\n", procid);
 
     // Allocate the struct and the buffer contiguously in shared space
-    rbs = malloc(sizeof(saws_shrb_t*) * nproc);
+    rbs = shmem_malloc(sizeof(saws_shrb_t*) * nproc);
     assert(rbs != NULL);
     rbs[procid] = shmem_malloc(sizeof(saws_shrb_t) + elem_size*max_size);
 
     rb = rbs[procid];
 
-    targets = (uint32_t *)malloc(nproc * sizeof(uint32_t));
+    targets = (uint32_t *) malloc(nproc * sizeof(uint32_t));
 
     rb->procid    = procid;
     rb->nproc     = nproc;
@@ -127,7 +127,8 @@ void saws_shrb_reset(saws_shrb_t *rb) {
 
 
 void saws_shrb_destroy(saws_shrb_t *rb) {
-    free(rb->rbs);
+    shmem_free(rb->rbs);
+    free(rb->targets);
     shmem_free(rb);
 }
 

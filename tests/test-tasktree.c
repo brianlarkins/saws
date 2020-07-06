@@ -147,9 +147,9 @@ int main(int argc, char **argv) {
   }
   shmem_barrier_all();
 
-  int *foo = NULL;
+  //int *foo = NULL;
 
-  if (mythread == 0) *foo = 10;
+  //if (mythread == 0) *foo = 10;
   
   gtc_print_stats(gtc);
   gtc_destroy(gtc);
