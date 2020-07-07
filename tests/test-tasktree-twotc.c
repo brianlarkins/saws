@@ -5,20 +5,20 @@
 #include <tc.h>
 
 #define NCHILDREN   2
-#define MAXDEPTH   14
+#define MAXDEPTH   10
 #define SLEEP_TIME 10
 #define VERBOSE    1
 
 static int mythread, nthreads;
 
 typedef struct {
-  int        which_tc;
-  int        level;
-  int        index;
-  int        counter_key1;
-  int        counter_key2;
-  gtc_t gtc1;
-  gtc_t gtc2;
+    int        which_tc;
+    int        level;
+    int        index;
+    int        counter_key1;
+    int        counter_key2;
+    gtc_t gtc1;
+    gtc_t gtc2;
 } treetask_t;
 
 
@@ -27,9 +27,9 @@ typedef struct {
  * the context of that collection.
  **/
 static void add_task(task_t *task) {
-  treetask_t *tt = (treetask_t*) gtc_task_body(task);
+    treetask_t *tt = (treetask_t*) gtc_task_body(task);
 
-  gtc_add((tt->which_tc == 0) ? tt->gtc1 : tt->gtc2, task, mythread);
+    gtc_add((tt->which_tc == 0) ? tt->gtc1 : tt->gtc2, task, mythread);
 }
 
 
@@ -38,101 +38,115 @@ static void add_task(task_t *task) {
  * for each new task.
  **/
 void task_fcn(gtc_t gtc, task_t *descriptor) {
-  int         i, level, index;
-  treetask_t *tt = (treetask_t *) gtc_task_body(descriptor);
-  int        *ctr= (int *) gtc_clo_lookup(gtc, tt->which_tc == 0 ? tt->counter_key1 : tt->counter_key2); 
+    int         i, level, index;
+    treetask_t *tt = (treetask_t *) gtc_task_body(descriptor);
+    int        *ctr= (int *) gtc_clo_lookup(gtc, tt->which_tc == 0 ? tt->counter_key1 : tt->counter_key2); 
 
-  if (VERBOSE) printf("  Task (%2d, %3d) processed by worker %d\n", tt->level, tt->index, mythread);
+    if (VERBOSE) printf("  Task (%2d, %3d) processed by worker %d\n", tt->level, tt->index, mythread);
 
-  level = tt->level;
-  index = tt->index;
+    level = tt->level;
+    index = tt->index;
 
-  for (i = 0; i < NCHILDREN && level < MAXDEPTH; i++) {
-    tt->level    = level + 1;
-    tt->index    = 2*index + i;
-    tt->which_tc = i%2;
-    if (VERBOSE) printf("  Task (%2d, %3d) created by worker %d\n", tt->level, tt->index, mythread);
-    add_task(descriptor);
-  }
+    for (i = 0; i < NCHILDREN && level < MAXDEPTH; i++) {
+        tt->level    = level + 1;
+        tt->index    = 2*index + i;
+        tt->which_tc = i%2;
+        if (VERBOSE) printf("  Task (%2d, %3d) created by worker %d\n", tt->level, tt->index, mythread);
+        add_task(descriptor);
+    }
 
-  usleep(SLEEP_TIME);
+    usleep(SLEEP_TIME);
 
-  ++(*ctr);
+    ++(*ctr);
 }
 
 
 int main(int argc, char **argv) {
-  int sum, expected;
-  static int this_iter, counter;
-  task_class_t task_class;
-  int        counter_key1;
-  int        counter_key2;
-  gtc_t gtc1;
-  gtc_t gtc2;
+    int sum, expected;
+    static int this_iter, counter;
+    task_class_t task_class;
+    int        counter_key1;
+    int        counter_key2;
+    gtc_qtype_t qtype = GtcQueueSDC;
 
-  gtc_init();
+    int arg;
+    while ((arg  = getopt(argc, argv, "BH")) != -1) {
+        switch (arg) {
+            case 'B':
+                qtype = GtcQueueSDC;
+                break;
+            case 'H':
+                qtype = GtcQueueSAWS;
+                break;
+        }
+    }
 
-  gtc1 = gtc_create(sizeof(treetask_t), 10, 10000, NULL, GtcQueueSDC);
-  gtc2 = gtc_create(sizeof(treetask_t), 10, 10000, NULL, GtcQueueSDC);
+    gtc_t gtc1;
+    gtc_t gtc2;
 
-  mythread = _c->rank;
-  nthreads = _c->size;
+    gtc_init();
 
-  task_class   = gtc_task_class_register(sizeof(treetask_t), task_fcn); // Register the task class in GTC1
+    gtc1 = gtc_create(sizeof(treetask_t), 10, 10000, NULL, qtype);
+    gtc2 = gtc_create(sizeof(treetask_t), 10, 10000, NULL, qtype);
 
-  counter_key1 = gtc_clo_associate(gtc1, &counter); // Create a CLO association for the counter in GTC1
-  counter_key2 = gtc_clo_associate(gtc2, &counter); // Create a CLO association for the counter in GTC2
+    mythread = _c->rank;
+    nthreads = _c->size;
 
-  // Create the root task and place it on process 0 in GTC1
-  if (mythread == 0) {
-    task_t   *task = gtc_task_create(task_class);
-    treetask_t *tt = (treetask_t *) gtc_task_body(task);
+    task_class   = gtc_task_class_register(sizeof(treetask_t), task_fcn); // Register the task class in GTC1
 
-    printf("Starting multiple task collection tree test with %d threads\n", nthreads);
-    printf("Thread 0: Putting root task in my queue.\n");
+    counter_key1 = gtc_clo_associate(gtc1, &counter); // Create a CLO association for the counter in GTC1
+    counter_key2 = gtc_clo_associate(gtc2, &counter); // Create a CLO association for the counter in GTC2
 
-    tt->which_tc     = 0;
-    tt->level        = 0;
-    tt->index        = 0;
-    tt->counter_key1 = counter_key1;
-    tt->counter_key2 = counter_key2;
-    tt->gtc1         = gtc1;
-    tt->gtc2         = gtc2;
+    // Create the root task and place it on process 0 in GTC1
+    if (mythread == 0) {
+        task_t   *task = gtc_task_create(task_class);
+        treetask_t *tt = (treetask_t *) gtc_task_body(task);
 
-    add_task(task);
+        printf("Starting multiple task collection tree test with %d threads\n", nthreads);
+        printf("Thread 0: Putting root task in my queue.\n");
 
-    gtc_task_destroy(task); // Free the task.  Copy-in/out semantics
+        tt->which_tc     = 0;
+        tt->level        = 0;
+        tt->index        = 0;
+        tt->counter_key1 = counter_key1;
+        tt->counter_key2 = counter_key2;
+        tt->gtc1         = gtc1;
+        tt->gtc2         = gtc2;
 
-    printf("Tree test starting...\n");
-  }
+        add_task(task);
 
-  // Process GTC1 and GTC2 iteratively until there is no more work
-  for (this_iter = 1, sum = 0; this_iter > 0; ) {
-    counter = 0;
+        gtc_task_destroy(task); // Free the task.  Copy-in/out semantics
 
-    if (mythread == 0) printf(" + processing gtc 1\n");
-    gtc_process(gtc1);
-    gtc_reset(gtc1);
-    if (mythread == 0) printf(" + processing gtc 2\n");
-    gtc_process(gtc2);
-    gtc_reset(gtc2);
+        printf("Tree test starting...\n");
+    }
 
-    shmemx_sum_reduce(SHMEMX_TEAM_WORLD, &counter, &this_iter, 1);
+    // Process GTC1 and GTC2 iteratively until there is no more work
+    for (this_iter = 1, sum = 0; this_iter > 0; ) {
+        counter = 0;
 
-    sum += this_iter;
-    
-    if (mythread == 0) printf(" - this round = %4d, total = %4d\n", this_iter, sum);
-  }
+        if (mythread == 0) printf(" + processing gtc 1\n");
+        gtc_process(gtc1);
+        gtc_reset(gtc1);
+        if (mythread == 0) printf(" + processing gtc 2\n");
+        gtc_process(gtc2);
+        gtc_reset(gtc2);
 
-  expected = (1 << (MAXDEPTH+1)) - 1; //  == 2^(MAXDEPTH + 1) - 1
+        shmemx_sum_reduce(SHMEMX_TEAM_WORLD, &this_iter, &counter, 1);
+        shmem_quiet();
+        sum += this_iter;
 
-  if (mythread == 0)
-    printf("Total tasks processed = %d, expected = %d: %s\n", sum, expected,
-        (sum == expected) ? "SUCCESS" : "FAILURE");
+        if (mythread == 0) printf(" - this round = %4d, total = %4d\n", this_iter, sum);
+    }
 
-  gtc_destroy(gtc1);
-  gtc_destroy(gtc2);
-  gtc_fini();
+    expected = (1 << (MAXDEPTH+1)) - 1; //  == 2^(MAXDEPTH + 1) - 1
 
-  return 0;
+    if (mythread == 0)
+        printf("Total tasks processed = %d, expected = %d: %s\n", sum, expected,
+                (sum == expected) ? "SUCCESS" : "FAILURE");
+
+    gtc_destroy(gtc1);
+    gtc_destroy(gtc2);
+    gtc_fini();
+
+    return 0;
 }

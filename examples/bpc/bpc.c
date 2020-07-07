@@ -30,7 +30,7 @@ static task_class_t  producer_tclass, consumer_tclass;
 
 static const double work_time = 0.001;   //  1 ms
 //static const int    busy_val  = 1090000; // ~1ms on Chinook pathscale compiler with -O3
-static const int    busy_val    =  400000; // ~1ms on senna gcc compiler with -O3
+//static const int    busy_val    =  400000; // ~1ms on senna gcc compiler with -O3
 //static const int    busy_val    = 109000; // ~1ms on comet with -O3
 
 static double consumer_work_units = 10;
@@ -41,7 +41,7 @@ static int nchildren = 10;
 static int maxdepth  = 5000;
 static int bouncing  = 0;
 static int verbose   = 0;
-static gtc_qtype_t qtype = GtcQueueSDC;
+static gtc_qtype_t qtype = GtcQueueSAWS;
 
 static struct timespec psleep = { 0, 1000000L };      // 1  ms
 static struct timespec csleep = { 0, 10 * 1000000L }; // 10 ms
@@ -67,6 +67,7 @@ typedef struct {
  * @param ntasks_key The CLO key that is used to look up the counter
 **/
 void create_task(gtc_t gtc, task_class_t tclass, int level, int index, int ntasks_key, int nproducers_key, int nconsumers_key) {
+    //printf("(%d) here\n", _c->rank);
 #ifdef NO_INPLACE
   task_t   *task = gtc_task_create(tclass);        
 #else

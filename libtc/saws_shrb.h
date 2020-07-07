@@ -49,6 +49,7 @@ struct saws_shrb_s {
     uint64_t        steal_val; // Concatenation of tail, isteals, and asteals
     uint32_t        *targets; 
     int             nlocal;    // Number of elements in the local portion of the queue
+    int             nshared;
     int             split;     // index of split between local-only and local-shared elements
 
     synch_mutex_t   lock;      // lock for shared portion of this queue
