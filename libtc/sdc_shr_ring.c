@@ -64,7 +64,6 @@
 
 sdc_shrb_t *sdc_shrb_create(int elem_size, int max_size) {
   sdc_shrb_t  *rb;
-  sdc_shrb_t **rbs;
   int procid, nproc;
 
   setbuf(stdout, NULL);
@@ -75,17 +74,12 @@ sdc_shrb_t *sdc_shrb_create(int elem_size, int max_size) {
   gtc_lprintf(DBGSHRB, "  Thread %d: sdc_shrb_create()\n", procid);
 
   // Allocate the struct and the buffer contiguously in shared space
-  rbs = malloc(sizeof(sdc_shrb_t*) * nproc);
-  assert(rbs != NULL);
-  rbs[procid] = shmem_malloc(sizeof(sdc_shrb_t) + elem_size*max_size);
-
-  rb = rbs[procid];
+  rb = shmem_malloc(sizeof(sdc_shrb_t) + elem_size*max_size);
 
   rb->procid  = procid;
   rb->nproc  = nproc;
   rb->elem_size = elem_size;
   rb->max_size  = max_size;
-  rb->rbs       = rbs;
   sdc_shrb_reset(rb);
 
   // Initialize the lock
@@ -116,7 +110,6 @@ void sdc_shrb_reset(sdc_shrb_t *rb) {
 
 
 void sdc_shrb_destroy(sdc_shrb_t *rb) {
-  free(rb->rbs);
   shmem_free(rb);
 }
 
@@ -500,17 +493,8 @@ static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, vo
         itail_inc = n;
       else
         itail_inc = n - (&trb)->max_size;
-      // printf("n: %d, itail_inc: %d, max_size: %d\n", n, itail_inc, (&trb)->max_size);
-      // err = ARMCI_AccS(ARMCI_ACC_INT, &scale, /* src */ &itail_inc, &stride,
-      //                 /* dst */ &myrb->rbs[proc]->itail, &stride, &count, 0, proc);
-      // shmem_iput(&(myrb->itail), &itail_inc, stride, stride, count, proc);
-
-      // err = ARMCI_Rmw(ARMCI_FETCH_AND_ADD, &oldval, &myrb->rbs[proc]->itail, itail_inc, proc);
       shmem_atomic_fetch_add(&(myrb->itail), itail_inc, proc);
 
-      // int newval = (&trb)->itail + itail_inc;
-      // err = ARMCI_Put(&newval, &myrb->rbs[proc]->itail, sizeof(int), proc);
-      // shmem_putmem(&(myrb->itail), &newval, sizeof(int), proc);
       shmem_quiet();
     }
 #else

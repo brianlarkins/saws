@@ -44,12 +44,14 @@ typedef enum {
 
 struct saws_shrb_s {
     
-    long            tail;      // Index of tail element (between 0 and rb_size-1)
+    int64_t         tail;      // Index of tail element (between 0 and rb_size-1)
+    int64_t         itail;     // Index of intermediate tail element (in-progress steals)
+    int64_t         vtail;     // Index of public tail element
     uint64_t        completed; // Number of completed steals
     uint64_t        steal_val; // Concatenation of tail, isteals, and asteals
-    uint32_t        *targets; 
+    uint32_t       *targets; 
     int             nlocal;    // Number of elements in the local portion of the queue
-    int             split;     // index of split between local-only and local-shared elements
+    int64_t         split;     // index of split between local-only and local-shared elements
 
     synch_mutex_t   lock;      // lock for shared portion of this queue
     int             waiting;   // Am I currently waiting for transactions to complete?
