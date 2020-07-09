@@ -198,10 +198,10 @@ static inline void saws_update_claimed(saws_shrb_t *rb, uint64_t itasks) {
 
   memset(rb->claimed, 0, sizeof(rb->claimed));
 
-  remaining = itasks;
-  for (int i=0; remaining > 0; i++) {
-    rb->claimed[i] = remaining / 2;
-    remaining -= rb->claimed[i];
+  rb->claimed[0] = remaining = itasks;
+  for (int i=1; remaining > 0; i++) {
+    rb->claimed[i] = rb->claimed[i-1] + remaining / 2;
+    remaining -= remaining / 2;
   }
 }
 
