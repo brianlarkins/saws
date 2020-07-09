@@ -37,7 +37,7 @@ gtc_t gtc_create_sdc(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg_
 
   // Allocate the shared ring buffer.  Total task size is the size
   // of the header + max_body size.
-  tc->shared_rb = sdc_shrb_create(tc->max_body_size + sizeof(task_t), shrb_size);
+  tc->shared_rb = sdc_shrb_create(tc->max_body_size + sizeof(task_t), shrb_size, tc);
   //tc->inbox = shrb_create(tc->max_body_size + sizeof(task_t), shrb_size);
   tc->inbox = NULL;
 

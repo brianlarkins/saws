@@ -42,6 +42,7 @@ int main(int argc, char **argv, char **envp) {
   int i, j, rep;
   int cnt, total;
   sdc_shrb_t *rb;
+  tc_t tc;
 
   elem_t *e;
   elem_t x;
@@ -52,7 +53,9 @@ int main(int argc, char **argv, char **envp) {
   // just need this to setup Portals world
   gtc_init();
 
-  rb = sdc_shrb_create(sizeof(elem_t), QSIZE);
+  memset(&tc, 0, sizeof(tc_t));
+
+  rb = sdc_shrb_create(sizeof(elem_t), QSIZE, &tc);
   
 
   if (rb->procid == 0) printf("\nPortals Split deferred-copy shared ring buffer test: Started with %d threads\n", rb->nproc);

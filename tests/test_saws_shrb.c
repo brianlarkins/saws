@@ -53,13 +53,16 @@ uint64_t log_2(long val) {
 
 
 void test_release() {
+  tc_t tc;
+
+  memset(&tc, 0, sizeof(tc_t));
 
     eprintf("\nUNIT TEST: saws_shrb_release()\n");
     saws_shrb_t *rb; 
     elem_t *x;
     for(int rep = 0; rep < NUM; rep++) {
         eprintf("testing with queue of %d\n\n", tests[rep]); 
-        rb = saws_shrb_create(sizeof(elem_t), tests[rep]);
+        rb = saws_shrb_create(sizeof(elem_t), tests[rep], &tc);
         x = saws_shrb_malloc(tests[rep], sizeof(elem_t));
         saws_shrb_reset(rb);
         saws_shrb_push_n_head(rb, HEADTARGET, y, tests[rep]);
@@ -90,6 +93,9 @@ void test_release() {
 
 
 void test_reacquire() {
+  tc_t tc;
+
+  memset(&tc, 0, sizeof(tc_t));
 
     eprintf("\nUNIT TEST: saws_shrb_reacquire()\n\n");
     
@@ -99,7 +105,7 @@ void test_reacquire() {
 
         eprintf("   testing with queue of %d\n\n", tests[rep]); 
         
-        rb = saws_shrb_create(sizeof(elem_t), tests[rep]);
+        rb = saws_shrb_create(sizeof(elem_t), tests[rep], &tc);
         elem_t *x;
         x = saws_shrb_malloc(tests[rep], sizeof(elem_t));
         saws_shrb_reset(rb);
@@ -128,6 +134,9 @@ void test_reacquire() {
 
 
 void test_steals() {
+  tc_t tc;
+
+  memset(&tc, 0, sizeof(tc_t));
 
     eprintf("\nUNIT TEST: saws_shrb_ pop_tail()\n\n");
 
@@ -137,7 +146,7 @@ void test_steals() {
     for(int rep = 0; rep < NUM; rep++) {
 
         eprintf("testing with queue of %d\n", tests[rep]); 
-        rb = saws_shrb_create(sizeof(elem_t), tests[rep]);
+        rb = saws_shrb_create(sizeof(elem_t), tests[rep], &tc);
         x = saws_shrb_malloc(tests[rep], sizeof(elem_t));
         shmem_barrier_all();
 

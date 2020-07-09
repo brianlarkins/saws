@@ -25,6 +25,7 @@ int main(int argc, char **argv, char **envp) {
   char *tasks;
   sdc_shrb_t *rb;
   tc_timer_t time;
+  tc_t       tc;
 
   niter    = 5000;
   ntasks   = 10;
@@ -63,7 +64,8 @@ int main(int argc, char **argv, char **envp) {
   tasks = calloc(frac*ntasks, tasksize); // allocate "tasks"
   assert(tasks);
 
-  rb = sdc_shrb_create(tasksize, (frac*ntasks+1));
+  memset(&tc, 0, sizeof(tc_t));
+  rb = sdc_shrb_create(tasksize, (frac*ntasks+1), &tc);
 
   if (rb->procid == 0) printf("\nPortals SDC get timing test: Started with %d threads\n", rb->nproc);
 

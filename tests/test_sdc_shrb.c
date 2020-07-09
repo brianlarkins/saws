@@ -40,6 +40,7 @@ int main(int argc, char **argv, char **envp) {
   int i, j, rep;
   int cnt, total;		
   sdc_shrb_t *rb;		// Ring buffer
+  tc_t *tc = calloc(1,sizeof(tc_t));
 
   elem_t *e;
   elem_t x;
@@ -51,7 +52,7 @@ int main(int argc, char **argv, char **envp) {
 
   shmem_barrier_all();
 
-  rb = sdc_shrb_create(sizeof(elem_t), QSIZE);
+  rb = sdc_shrb_create(sizeof(elem_t), QSIZE, tc);
 
   if (rb->procid == 0) 
     printf("\nSHMEM Split deferred-copy shared ring buffer test: Started with %d threads\n", rb->nproc);
@@ -186,6 +187,7 @@ int main(int argc, char **argv, char **envp) {
 
   // shmem_finalize();         // Finalize OpenSHMEM
   gtc_fini();
+  free(tc);
 
   return 0;
 }
