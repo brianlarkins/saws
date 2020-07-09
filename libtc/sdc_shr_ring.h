@@ -57,6 +57,8 @@ struct sdc_shrb_s {
   int             max_size;  // Max size in number of elements
   int             elem_size; // Size of an element in bytes
 
+  tc_t           *tc;        // task collection associated with queue (for stats)
+
   tc_counter_t    nwaited;   // How many times did I have to wait
   tc_counter_t    nreclaimed;// How many times did I reclaim space from the public portion of the queue
   tc_counter_t    nreccalls; // How many times did I even try to reclaim
@@ -77,7 +79,7 @@ struct sdc_shrb_s {
 
 typedef struct sdc_shrb_s sdc_shrb_t;
 
-sdc_shrb_t *sdc_shrb_create(int elem_size, int max_size);
+sdc_shrb_t *sdc_shrb_create(int elem_size, int max_size, tc_t *tc);
 void        sdc_shrb_destroy(sdc_shrb_t *rb);
 void        sdc_shrb_reset(sdc_shrb_t *rb);
 

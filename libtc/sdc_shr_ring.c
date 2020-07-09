@@ -62,7 +62,7 @@
  */
 
 
-sdc_shrb_t *sdc_shrb_create(int elem_size, int max_size) {
+sdc_shrb_t *sdc_shrb_create(int elem_size, int max_size, tc_t *tc) {
   sdc_shrb_t  *rb;
   int procid, nproc;
 
@@ -81,6 +81,8 @@ sdc_shrb_t *sdc_shrb_create(int elem_size, int max_size) {
   rb->elem_size = elem_size;
   rb->max_size  = max_size;
   sdc_shrb_reset(rb);
+
+  rb->tc = tc;
 
   // Initialize the lock
   synch_mutex_init(&rb->lock);
@@ -214,6 +216,7 @@ int sdc_shrb_reclaim_space(sdc_shrb_t *rb) {
   int vtail = rb->vtail;
   int itail = rb->itail; // Capture these values since we are doing this
   int tail  = rb->tail;  // without a lock
+  TC_START_TIMER(rb->tc, reclaim);
 
   if (vtail != tail && itail == tail) {
     rb->vtail = tail;
@@ -226,6 +229,7 @@ int sdc_shrb_reclaim_space(sdc_shrb_t *rb) {
     rb->nreclaimed++;
   }
 
+  TC_STOP_TIMER(rb->tc, reclaim);
   return reclaimed;
 }
 
@@ -234,6 +238,7 @@ int sdc_shrb_reclaim_space(sdc_shrb_t *rb) {
 void sdc_shrb_ensure_space(sdc_shrb_t *rb, int n) {
   // Ensure that there is enough free space in the queue.  If there isn't
   // wait until others finish their deferred copies so we can reclaim space.
+  TC_START_TIMER(rb->tc, ensure);
   if (rb->max_size - (sdc_shrb_local_size(rb) + sdc_shrb_public_size(rb)) < n) {
     sdc_shrb_lock(rb, rb->procid);
     {
@@ -251,18 +256,22 @@ void sdc_shrb_ensure_space(sdc_shrb_t *rb, int n) {
     }
     sdc_shrb_unlock(rb, rb->procid);
   }
+  TC_STOP_TIMER(rb->tc, ensure);
 }
+
 
 
 void sdc_shrb_release(sdc_shrb_t *rb) {
   // Favor placing work in the shared portion -- if there is only one task
   // available this scheme will put it in the shared portion.
+  TC_START_TIMER(rb->tc, release);
   if (sdc_shrb_local_size(rb) > 0 && sdc_shrb_shared_size(rb) == 0) {
     int amount  = sdc_shrb_local_size(rb)/2 + sdc_shrb_local_size(rb) % 2;
     rb->nlocal -= amount;
     rb->split   = (rb->split + amount) % rb->max_size;
     rb->nrelease++;
   }
+  TC_STOP_TIMER(rb->tc, release);
 }
 
 
@@ -277,6 +286,7 @@ void sdc_shrb_release_all(sdc_shrb_t *rb) {
 int sdc_shrb_reacquire(sdc_shrb_t *rb) {
   int amount = 0;
 
+  TC_START_TIMER(rb->tc, reacquire);
   // Favor placing work in the local portion -- if there is only one task
   // available this scheme will put it in the local portion.
   sdc_shrb_lock(rb, rb->procid);
@@ -295,6 +305,7 @@ int sdc_shrb_reacquire(sdc_shrb_t *rb) {
     assert(!sdc_shrb_local_isempty(rb) || (sdc_shrb_isempty(rb) && sdc_shrb_local_isempty(rb)));
   }
   sdc_shrb_unlock(rb, rb->procid);
+  TC_STOP_TIMER(rb->tc, reacquire);
 
   return amount;
 }
@@ -309,6 +320,7 @@ static inline void sdc_shrb_push_n_head_impl(sdc_shrb_t *rb, int proc, void *e, 
   assert(size <= rb->elem_size);
   assert(size == rb->elem_size || n == 1);  // n > 1 ==> size == rb->elem_size
   assert(proc == rb->procid);
+  TC_START_TIMER(rb->tc, pushhead);
 
   // Make sure there is enough space for n elements
   sdc_shrb_ensure_space(rb, n);
@@ -329,6 +341,7 @@ static inline void sdc_shrb_push_n_head_impl(sdc_shrb_t *rb, int proc, void *e, 
     memcpy(sdc_shrb_elem_addr(rb, proc, old_head+1), e, part_size*size);
     memcpy(sdc_shrb_elem_addr(rb, proc, 0), sdc_shrb_buff_elem_addr(rb, e, part_size), (n - part_size)*size);
   }
+  TC_STOP_TIMER(rb->tc, pushhead);
 }
 
 void sdc_shrb_push_head(sdc_shrb_t *rb, int proc, void *e, int size) {
@@ -419,6 +432,7 @@ int sdc_shrb_pop_tail(sdc_shrb_t *rb, int proc, void *buf) {
 
 static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, void *e, int steal_vol, int trylock) {
   sdc_shrb_t trb;
+  TC_START_TIMER(myrb->tc, poptail);
 
   // Attempt to get the lock
   if (trylock) {
@@ -426,7 +440,7 @@ static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, vo
       return -1;
     }
   } else {
-     sdc_shrb_lock(myrb, proc);
+    sdc_shrb_lock(myrb, proc);
   }
 
   // Copy the remote RB's metadata
@@ -502,11 +516,12 @@ static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, vo
     sdc_shrb_unlock(myrb, proc);
 #endif
 
-    } else /* (n <= 0) */ {
-       sdc_shrb_unlock(myrb, proc);
-    }
+  } else /* (n <= 0) */ {
+    sdc_shrb_unlock(myrb, proc);
+  }
+  TC_STOP_TIMER(myrb->tc, poptail);
 
-    return n;
+  return n;
 }
 
 int sdc_shrb_pop_n_tail(void *b, int proc, int n, void *e, int steal_vol) {
