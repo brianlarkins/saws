@@ -7,6 +7,9 @@
 #include <mutex.h>
 #include <tc.h>
 
+#define SAWS_MAX_EPOCHS            2
+#define SAWS_MAX_STEALS_PER_EPOCH 30
+
 typedef enum {
   SAWSPopTailTime,
   SAWSPerPopTailTime,
@@ -41,42 +44,54 @@ typedef enum {
   SAWSReleaseCalls
 } gtc_sdc_gcountstats_e;
 
+struct saws_completion_s {
+  uint64_t itasks;                             // initial number of available tasks
+  int64_t  vtail;                              // initial tail for this steal epoch
+  int      done;                               // true if all outstanding steals are complete
+  int      maxsteals;                          // maximum number of steal operations for itasks tasks
+  int      status[SAWS_MAX_STEALS_PER_EPOCH];  // ordered completion status for all steals in this epoch
+};
+typedef struct saws_completion_s saws_completion_t;
+
 
 struct saws_shrb_s {
 
-  int64_t         tail;      // Index of tail element (between 0 and rb_size-1)
-  int64_t         itail;     // Index of intermediate tail element (in-progress steals)
-  int64_t         vtail;     // Index of public tail element
-  uint64_t        steal_val; // Concatenation of tail, isteals, and asteals
-  uint32_t       *targets; 
-  int64_t         split;     // index of split between local-only and local-shared elements
-  int             nlocal;    // Number of elements in the local portion of the queue
-  int             nshared;
+  int64_t           tail;      // Index of tail element (between 0 and rb_size-1)
+  int64_t           itail;     // Index of intermediate tail element (in-progress steals)
+  int64_t           vtail;     // Index of public tail element
+  uint64_t          steal_val; // Concatenation of tail, isteals, and asteals
+  uint32_t         *targets; 
+  int64_t           split;     // index of split between local-only and local-shared elements
+  int               nlocal;    // Number of elements in the local portion of the queue
+  int               nshared;
 
-  synch_mutex_t   lock;      // lock for shared portion of this queue
-  int             waiting;   // Am I currently waiting for transactions to complete?
+  synch_mutex_t     lock;      // lock for shared portion of this queue
+  int               waiting;   // Am I currently waiting for transactions to complete?
 
-  int             procid;
-  int             nproc;
-  int             max_size;  // Max size in number of elements
-  int             elem_size; // Size of an element in bytes 
-  int             claimed[30]; // # claimed task lookup table
+  int               procid;
+  int               nproc;
+  int               max_size;  // Max size in number of elements
+  int               elem_size; // Size of an element in bytes 
+  int               claimed[SAWS_MAX_STEALS_PER_EPOCH]; // # claimed task lookup table
+  saws_completion_t completed[SAWS_MAX_EPOCHS];         // completion arrays
+  int               cur;                                // index of current completion array
+  int               last;                               // index of last completion array
 
-  tc_t           *tc;        // task collection associated with queue (for stats)
+  tc_t             *tc;        // task collection associated with queue (for stats)
 
-  tc_counter_t    nwaited;   // How many times did I have to wait
-  tc_counter_t    nreclaimed;// How many times did I reclaim space from the public portion of the queue
-  tc_counter_t    nreccalls; // How many times did I even try to reclaim
-  tc_counter_t    nrelease;  // Number of times work was released from local->public
-  tc_counter_t    nprogress; // Number of otimes we called the progress routine
-  tc_counter_t    nreacquire;// Number of times work was reacquired from public->local
-  tc_counter_t    ngets;     // Number of times we attempted a steal
-  tc_counter_t    nensure;   // Number of times we call reclaim space
-  tc_counter_t    nxfer;     // xferred bytes
-  tc_counter_t    nsteals;   // number of successful steals
-  tc_counter_t    nmeta;     // number of successful steals
+  tc_counter_t      nwaited;   // How many times did I have to wait
+  tc_counter_t      nreclaimed;// How many times did I reclaim space from the public portion of the queue
+  tc_counter_t      nreccalls; // How many times did I even try to reclaim
+  tc_counter_t      nrelease;  // Number of times work was released from local->public
+  tc_counter_t      nprogress; // Number of otimes we called the progress routine
+  tc_counter_t      nreacquire;// Number of times work was reacquired from public->local
+  tc_counter_t      ngets;     // Number of times we attempted a steal
+  tc_counter_t      nensure;   // Number of times we call reclaim space
+  tc_counter_t      nxfer;     // xferred bytes
+  tc_counter_t      nsteals;   // number of successful steals
+  tc_counter_t      nmeta;     // number of successful steals
 
-  u_int8_t        q[0];      // (shared)  ring buffer data.  This will be allocated
+  u_int8_t          q[0];      // (shared)  ring buffer data.  This will be allocated
   // contiguous with the rb_s so allocating an rb_s will
   // require "sizeof(struct rb_s) + elem_size*rb_size"
 };
