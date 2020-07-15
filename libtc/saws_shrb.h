@@ -7,7 +7,7 @@
 #include <mutex.h>
 #include <tc.h>
 
-#define SAWS_MAX_EPOCHS            2
+#define SAWS_MAX_EPOCHS           2L
 #define SAWS_MAX_STEALS_PER_EPOCH 30
 
 typedef enum {
@@ -57,7 +57,6 @@ typedef struct saws_completion_s saws_completion_t;
 struct saws_shrb_s {
 
   int64_t           tail;      // Index of tail element (between 0 and rb_size-1)
-  int64_t           itail;     // Index of intermediate tail element (in-progress steals)
   int64_t           vtail;     // Index of public tail element
   uint64_t          steal_val; // Concatenation of tail, isteals, and asteals
   uint32_t         *targets; 
