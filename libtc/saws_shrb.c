@@ -407,6 +407,7 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
   int64_t vtail;
   int tasks_left, stolen;
 
+<<<<<<< HEAD
   if ((saws_shrb_shared_size(rb) <= rb->nlocal) || rb->nlocal != 0)
     return;
 
@@ -448,7 +449,6 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
   if (tasks_left == 1) amount = 1;
   else amount = tasks_left / 2 + tasks_left % 2;
 
-  // update split point
   rb->nlocal += amount;
   rb->split   = (rb->split - amount);
   if (rb->split < 0)
@@ -499,7 +499,11 @@ static inline void saws_shrb_push_n_head_impl(saws_shrb_t *rb, int proc, void *e
   assert(size <= rb->elem_size);
   assert(size == rb->elem_size || n == 1);  // n > 1 ==> size == rb->elem_size
   assert(proc == rb->procid);
+<<<<<<< HEAD
   //TC_START_TIMER(rb->tc, pushhead);
+=======
+  TC_START_TIMER(rb->tc, pushhead);
+>>>>>>> c148b3c1fd737c4481ab366efd9e7d447cb84b54
 
   // Make sure there is enough space for n elements
   saws_shrb_ensure_space(rb, n);
@@ -520,7 +524,11 @@ static inline void saws_shrb_push_n_head_impl(saws_shrb_t *rb, int proc, void *e
     memcpy(saws_shrb_elem_addr(rb, proc, old_head+1), e, part_size*size);
     memcpy(saws_shrb_elem_addr(rb, proc, 0), saws_shrb_buff_elem_addr(rb, e, part_size), (n - part_size)*size);
   }
+<<<<<<< HEAD
   //TC_START_TIMER(rb->tc, pushhead);
+=======
+  TC_STOP_TIMER(rb->tc, pushhead);
+>>>>>>> c148b3c1fd737c4481ab366efd9e7d447cb84b54
 }
 
 
