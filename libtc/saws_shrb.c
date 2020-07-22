@@ -445,14 +445,6 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
     }
   }
 
-  //print_epoch(rb);
-  // switch epochs
-  rb->cur  = (rb->cur + 1)  % SAWS_MAX_EPOCHS;
-  rb->last = (rb->last + 1) % SAWS_MAX_EPOCHS;
-  //print_epoch(rb);
-
-  memset(&rb->completed[rb->cur], 0, sizeof(rb->completed[rb->cur]));
-
   // determine the number of unclaimed tasks available in queue
   int temp = asteals;
   for (stolen = 0, tasks_left = itasks; temp > 0; temp--) {
@@ -463,40 +455,55 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
   if (tasks_left == 1) amount = 1;
   else amount = tasks_left / 2 + tasks_left % 2;
 
-  rb->nlocal += amount;
-  rb->split   = (rb->split - amount);
-  if (rb->split < 0)
-    rb->split += rb->max_size;
+  // any tasks to acquire?
+  if (tasks_left > 0) {
+    gtc_lprintf(DBGSHRB, "reacquiring %d tasks of %d\n", amount, tasks_left);
 
-  gtc_lprintf(DBGSHRB, "Reacquiring %d tasks of %d\n", amount, tasks_left);
+    // update local side and split point
+    rb->nlocal += amount;
+    rb->split   = (rb->split - amount);
+    if (rb->split < 0)
+      rb->split += rb->max_size;
 
-  // update tail wrt completed steals
-  temp = rb->completed[rb->last].vtail;
-  for (int i = 0; i < rb->completed[rb->last].maxsteals; i++) {
-    gtc_dprintf("c[%d] = %d ", i, rb->completed[rb->last].status[i]);
-    if (rb->completed[rb->last].status[i] == 0)
-      break;
-    temp += rb->completed[rb->last].status[i];
+    // switch epochs
+    rb->cur  = (rb->cur + 1)  % SAWS_MAX_EPOCHS;
+    rb->last = (rb->last + 1) % SAWS_MAX_EPOCHS;
+
+    // reset current epoch
+    memset(&rb->completed[rb->cur], 0, sizeof(rb->completed[rb->cur]));
+
+
+    // update tail wrt completed steals
+    temp = rb->completed[rb->last].vtail;
+    for (int i = 0; i < rb->completed[rb->last].maxsteals; i++) {
+      gtc_dprintf("c[%d] = %d ", i, rb->completed[rb->last].status[i]);
+      if (rb->completed[rb->last].status[i] == 0)
+        break;
+      temp += rb->completed[rb->last].status[i];
+    }
+    rb->tail = temp % rb->max_size; // double check this...
+    gtc_dprintf(" -- temp: %d tail %d\n", temp, rb->tail);
+
+    // correct old epoch incase there's outstanding steals
+    rb->completed[rb->last].itasks = stolen;
+    rb->completed[rb->last].maxsteals = asteals;
+
+    // set current epoch
+    rb->completed[rb->cur].itasks = tasks_left - amount;
+    rb->completed[rb->cur].maxsteals = saws_max_steals(tasks_left - amount);
+    gtc_dprintf("tail: %d split: %d itasks: %d computed: %d\n", rb->tail,
+        rb->split, rb->completed[rb->cur].itasks, rb->split - rb->completed[rb->cur].itasks);
+    //assert( (uint32_t )rb->tail == (rb->split - rb->completed[rb->cur].itasks));
+    rb->completed[rb->cur].done = 0;
+    rb->completed[rb->cur].vtail = rb->tail;
+
+    steal_val = saws_set_stealval(rb->cur, tasks_left - amount, rb->completed[rb->cur].vtail);
+
+  } else {
+    gtc_lprintf(DBGSHRB, "reacquire found no tasks\n", amount, tasks_left);
+    steal_val = saws_set_stealval(rb->cur, 0, rb->tail);
   }
-  rb->tail = temp % rb->max_size; // double check this...
-  gtc_dprintf(" -- temp: %d tail %d\n", temp, rb->tail);
 
-  // correct old epoch incase there's outstanding steals
-  rb->completed[rb->last].itasks = stolen;
-  rb->completed[rb->last].maxsteals = asteals;
-
-  // set current epoch
-  rb->completed[rb->cur].itasks = tasks_left - amount;
-  rb->completed[rb->cur].maxsteals = saws_max_steals(tasks_left - amount);
-  gtc_dprintf("tail: %d split: %d itasks: %d computed: %d\n", rb->tail,
-      rb->split, rb->completed[rb->cur].itasks, rb->split - rb->completed[rb->cur].itasks);
-  //assert( (uint32_t )rb->tail == (rb->split - rb->completed[rb->cur].itasks));
-  rb->completed[rb->cur].done = 0;
-  rb->completed[rb->cur].vtail = rb->tail;
-
-  //if (rb->procid == 0)
-  //    print_epoch(rb);
-  steal_val = saws_set_stealval(rb->cur, tasks_left - amount, rb->completed[rb->cur].vtail);
   shmem_atomic_set(&rb->steal_val, steal_val, rb->procid);
 
   //gtc_dprintf("local isempty: %d shared isempty: %d\n", saws_shrb_local_isempty(rb), saws_shrb_isempty(rb));
