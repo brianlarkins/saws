@@ -7,7 +7,7 @@
 #define NCHILDREN   2
 #define MAXDEPTH   10
 #define SLEEP_TIME 10
-#define VERBOSE    1
+#define VERBOSE    0
 
 static int mythread, nthreads;
 

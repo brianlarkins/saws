@@ -171,6 +171,7 @@ ag:
 }
 
 static inline uint64_t saws_set_stealval(int64_t valid, uint64_t itasks, int64_t tail) {
+  gtc_dprintf("setting steal_val: valid: %d itasks: %d tail: %d\n", valid, itasks, tail);
   uint64_t steal_val = 0;
   steal_val   |= valid << 38;
   steal_val   |= itasks << 19;
@@ -294,31 +295,37 @@ void saws_shrb_unlock(saws_shrb_t *rb, int proc) {
 /*==================== SPLIT MOVEMENT ====================*/
 
 int saws_shrb_reclaim_space(saws_shrb_t *rb) {
-
-  TC_START_TIMER(rb->tc, reclaim);
   uint64_t asteals, itasks;
-  int64_t vtail, valid;
+  int64_t vtail, valid, sv;
   int reclaimed = 0;
   uint32_t sum = 0;
 
+  TC_START_TIMER(rb->tc, reclaim);
+
   // copy stealval
-  // something's wrong here...
-  uint64_t sv = shmem_atomic_fetch(&rb->steal_val, rb->procid);
+#ifdef SAWS_USE_EXPENSIVE_ATOMIC_A_LOT
+  sv = shmem_atomic_fetch(&rb->steal_val, rb->procid);
+#else
+  sv = rb->steal_val; // take a copy
+#endif // SAWS_USE_EXPENSIVE_ATOMIC_A_LOT
+
   valid = saws_get_stealval(sv, &asteals, &itasks, &vtail);
   assert(valid < SAWS_MAX_EPOCHS);
+
   // check if any steals from the last epoch have been completed
-  // if so, update tail index accordingly.
   if (!rb->completed[rb->last].done) {
     for (int i = 0; i < rb->completed[rb->last].maxsteals; i++)
       sum += rb->completed[rb->last].status[i];
 
+    // if so, update tail index accordingly.
     if (sum == rb->completed[rb->last].itasks) {
       rb->tail = rb->completed[rb->cur].vtail;
-      memset(&rb->completed[rb->last], 0,  sizeof(rb->completed[rb->last]));
       rb->completed[rb->last].done = 1;
+      memset(&rb->completed[rb->last], 0,  sizeof(rb->completed[rb->last])); // XXX necessary?
     }
   }
 
+  // find longest sequence of completed steals in current epoch
   sum = 0;
   for (int i = 0; i < rb->completed[rb->cur].maxsteals; i++) {
     if (rb->completed[rb->cur].status[i] == 0)
@@ -327,14 +334,20 @@ int saws_shrb_reclaim_space(saws_shrb_t *rb) {
   }
   if (sum == rb->completed[rb->cur].itasks) {
     rb->completed[rb->cur].done = 1;
-
   }
-  if (sum > 0) {
+
+  // only advance tail if last epoch is complete
+  if (rb->completed[rb->last].done && (sum > 0)) {
     rb->tail = rb->completed[rb->cur].vtail + sum % rb->max_size;
   }
+
+  // sanity checks
+  gtc_dprintf("empty: %d cur done: %d  last done: %d split: %d tail: %d\n", saws_shrb_shared_isempty(rb),
+      rb->completed[rb->cur].done, rb->completed[rb->last].done, rb->split, rb->tail);
   assert(saws_shrb_shared_isempty(rb) || rb->completed[rb->cur].done != 1 || rb->completed[rb->last].done != 1);
+  assert(rb->tail < rb->max_size);
+
   rb->nreccalls++;
-  assert(rb->tail <= rb->max_size);
   TC_STOP_TIMER(rb->tc, reclaim);
   return reclaimed;
 }
@@ -361,12 +374,12 @@ void saws_shrb_ensure_space(saws_shrb_t *rb, int n) {
 
 
 void saws_shrb_release(saws_shrb_t *rb) {
+  uint64_t  steal_val;
+  uint64_t nshared;
 
   TC_START_TIMER(rb->tc, release);
 
   if (saws_shrb_local_size(rb) > 0 && (saws_shrb_shared_size(rb) == 0)) {
-    uint64_t  steal_val;
-    uint64_t nshared;
     nshared  = rb->nlocal / 2 + rb->nlocal % 2;
     rb->nlocal  -= nshared;
     rb->split    = (rb->split + nshared) % rb->max_size;
@@ -407,7 +420,6 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
   int64_t vtail;
   int tasks_left, stolen;
 
-<<<<<<< HEAD
   if ((saws_shrb_shared_size(rb) <= rb->nlocal) || rb->nlocal != 0)
     return;
 
@@ -416,7 +428,9 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
   // disable steals and determine shared queue state
   steal_val = saws_disable_steals(rb);
   saws_get_stealval(steal_val, &asteals, &itasks, &vtail);
-  gtc_dprintf("steals disabled : tail %d split: %d itasks: %d asteals: %d\n", rb->tail, rb->split, itasks, asteals);
+  gtc_dprintf("steals disabled : tail %d split: %d itasks: %d asteals: %d : shared size: %d nlocal: %d\n", 
+      rb->tail, rb->split, itasks, asteals, saws_shrb_shared_size(rb), rb->nlocal);
+  gtc_dprintf("epochs: cur: %d last: %d\n", rb->cur, rb->last);
 
   // assert that all steals from the last epoch have completed.
   if (!rb->completed[rb->last].done) {
@@ -431,13 +445,13 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
     }
   }
 
-  memset(&rb->completed[rb->last], 0, sizeof(rb->completed[rb->last]));
-
   //print_epoch(rb);
   // switch epochs
   rb->cur  = (rb->cur + 1)  % SAWS_MAX_EPOCHS;
   rb->last = (rb->last + 1) % SAWS_MAX_EPOCHS;
   //print_epoch(rb);
+
+  memset(&rb->completed[rb->cur], 0, sizeof(rb->completed[rb->cur]));
 
   // determine the number of unclaimed tasks available in queue
   int temp = asteals;
@@ -485,7 +499,9 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
   steal_val = saws_set_stealval(rb->cur, tasks_left - amount, rb->completed[rb->cur].vtail);
   shmem_atomic_set(&rb->steal_val, steal_val, rb->procid);
 
-  assert(!saws_shrb_local_isempty(rb) || (saws_shrb_isempty(rb) && saws_shrb_local_isempty(rb)));
+  //gtc_dprintf("local isempty: %d shared isempty: %d\n", saws_shrb_local_isempty(rb), saws_shrb_isempty(rb));
+  //assert(!saws_shrb_local_isempty(rb) || (saws_shrb_isempty(rb) && saws_shrb_local_isempty(rb)));
+
   TC_STOP_TIMER(rb->tc, reacquire);
 }
 
@@ -499,11 +515,7 @@ static inline void saws_shrb_push_n_head_impl(saws_shrb_t *rb, int proc, void *e
   assert(size <= rb->elem_size);
   assert(size == rb->elem_size || n == 1);  // n > 1 ==> size == rb->elem_size
   assert(proc == rb->procid);
-<<<<<<< HEAD
-  //TC_START_TIMER(rb->tc, pushhead);
-=======
   TC_START_TIMER(rb->tc, pushhead);
->>>>>>> c148b3c1fd737c4481ab366efd9e7d447cb84b54
 
   // Make sure there is enough space for n elements
   saws_shrb_ensure_space(rb, n);
@@ -524,11 +536,7 @@ static inline void saws_shrb_push_n_head_impl(saws_shrb_t *rb, int proc, void *e
     memcpy(saws_shrb_elem_addr(rb, proc, old_head+1), e, part_size*size);
     memcpy(saws_shrb_elem_addr(rb, proc, 0), saws_shrb_buff_elem_addr(rb, e, part_size), (n - part_size)*size);
   }
-<<<<<<< HEAD
-  //TC_START_TIMER(rb->tc, pushhead);
-=======
   TC_STOP_TIMER(rb->tc, pushhead);
->>>>>>> c148b3c1fd737c4481ab366efd9e7d447cb84b54
 }
 
 
@@ -644,7 +652,7 @@ test:
 
   shmem_quiet();
   if (valid >= SAWS_MAX_EPOCHS) {
-    printf("\n%din steals  valid %d\n", proc, valid);
+    gtc_lprintf(DBGSHRB, "remote queue invalid PE: %d : valid: %d\n", proc, valid);
     return 0;
   }
   maxsteals = saws_max_steals(itasks);
