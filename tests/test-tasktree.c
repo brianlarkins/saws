@@ -21,7 +21,7 @@
 #include <tc.h>
 
 #define NCHILDREN  2
-#define MAXDEPTH   5
+#define MAXDEPTH   10
 #define SLEEP_TIME 100
 #define VERBOSE    0
 

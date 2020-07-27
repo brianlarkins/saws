@@ -6,8 +6,7 @@
 
 #include <tc.h>
 
-// #define NUM_TASKS 1000
-#define NUM_TASKS 8
+#define NUM_TASKS 1000
 
 typedef struct {
   int parent_id;

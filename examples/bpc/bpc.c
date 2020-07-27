@@ -38,7 +38,7 @@ static double producer_work_units = 1;
 
 static int initial_producers = 1;
 static int nchildren = 10;
-static int maxdepth  = 5000;
+static int maxdepth  = 2000;
 static int bouncing  = 0;
 static int verbose   = 0;
 static gtc_qtype_t qtype = GtcQueueSAWS;

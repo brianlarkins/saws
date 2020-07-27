@@ -132,7 +132,7 @@ int         saws_shrb_empty(saws_shrb_t *rb);
 
 void        saws_shrb_print(saws_shrb_t *rb);
 
-#define saws_shrb_elem_addr(MYRB, PROC, IDX) ((&MYRB->q[0]) + (IDX)*(MYRB)->elem_size)
+#define saws_shrb_elem_addr(MYRB, PROC, IDX) ((MYRB->q) + (IDX)*(MYRB)->elem_size)
 #define saws_shrb_buff_elem_addr(RB, E, IDX) ((u_int8_t*)(E) + (IDX)*(RB)->elem_size)
 
 // ARMCI allocated buffers should be faster/pinned
