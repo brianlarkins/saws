@@ -45,6 +45,10 @@ int  impl_parseParam(char *param, char *value) {
         qtype = GtcQueueSDC;
         ret = 0;
         break;
+      case 'H':
+        qtype = GtcQueueSAWS;
+        ret = 0;
+        break;
       default:
         printf("-Q: unknown queue type must be one of 'B' 'N' or 'H'\n");
         break;
