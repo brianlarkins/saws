@@ -316,6 +316,7 @@ int saws_shrb_reclaim_space(saws_shrb_t *rb) {
     // if so, update tail index accordingly.
     if (sum == rb->completed[rb->last].itasks) {
       rb->tail = rb->completed[rb->cur].vtail;
+      memset(&rb->completed[rb->last], 0, sizeof(rb->completed[rb->last]));
       rb->completed[rb->last].done = 1;
     }
   }
@@ -407,7 +408,7 @@ void saws_shrb_release_all(saws_shrb_t *rb) {
 
 void saws_shrb_reacquire(saws_shrb_t *rb) {
   uint64_t steal_val, asteals, itasks, amount;
-  uint64_t sum = 0;
+  uint64_t sum;
   int64_t vtail;
   int tasks_left, stolen;
 
@@ -424,12 +425,16 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
 
   // assert that all steals from the last epoch have completed.
   if (!rb->completed[rb->last].done) {
-
+    retry:
+    sum = 0;  
     for (int i = 0; i < rb->completed[rb->last].maxsteals; i++) {
       sum += rb->completed[rb->last].status[i];
     }
-
+    //printf("(%d) sum: %ld\n", _c->rank, sum);
     if (sum != rb->completed[rb->last].itasks) {
+      //saws_shrb_print(rb);
+      //print_epoch(rb);
+      goto retry;
       gtc_dprintf("incomplete tasks over multiple epochs -- dying now\n");
       exit(1);
     }
