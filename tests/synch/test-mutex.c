@@ -1,4 +1,4 @@
-#define _BSD_SOURCE
+//#define _BSD_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
