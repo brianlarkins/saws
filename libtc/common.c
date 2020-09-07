@@ -682,13 +682,13 @@ void gtc_print_gstats(gtc_t gtc) {
     counts[TasksStolen]        = tc->ct.tasks_stolen;
     counts[NumSteals]          = tc->ct.num_steals;
 
-    shmemx_min_reduce(SHMEMX_TEAM_WORLD, mintimes, times, ntimes);
-    shmemx_max_reduce(SHMEMX_TEAM_WORLD, maxtimes, times, ntimes);
-    shmemx_sum_reduce(SHMEMX_TEAM_WORLD, sumtimes, times, ntimes);
+    shmem_min_reduce(SHMEM_TEAM_WORLD, mintimes, times, ntimes);
+    shmem_max_reduce(SHMEM_TEAM_WORLD, maxtimes, times, ntimes);
+    shmem_sum_reduce(SHMEM_TEAM_WORLD, sumtimes, times, ntimes);
 
-    shmemx_min_reduce(SHMEMX_TEAM_WORLD, mincounts, counts, ncounts);
-    shmemx_max_reduce(SHMEMX_TEAM_WORLD, maxcounts, counts, ncounts);
-    shmemx_sum_reduce(SHMEMX_TEAM_WORLD, sumcounts, counts, ncounts);
+    shmem_min_reduce(SHMEM_TEAM_WORLD, mincounts, counts, ncounts);
+    shmem_max_reduce(SHMEM_TEAM_WORLD, maxcounts, counts, ncounts);
+    shmem_sum_reduce(SHMEM_TEAM_WORLD, sumcounts, counts, ncounts);
     shmem_barrier_all();
 
     if (ext_stats_enabled == NULL) {
@@ -791,13 +791,13 @@ void gtc_print_stats(gtc_t gtc) {
     counts[NumSteals]          = tc->ct.num_steals;
     counts[DispersionAttempts] = tc->ct.dispersion_attempts_locked + tc->ct.dispersion_attempts_unlocked;
 
-    shmemx_min_reduce(SHMEMX_TEAM_WORLD, mintimes, times, ntimes);
-    shmemx_max_reduce(SHMEMX_TEAM_WORLD, maxtimes, times, ntimes);
-    shmemx_sum_reduce(SHMEMX_TEAM_WORLD, sumtimes, times, ntimes);
+    shmem_min_reduce(SHMEM_TEAM_WORLD, mintimes, times, ntimes);
+    shmem_max_reduce(SHMEM_TEAM_WORLD, maxtimes, times, ntimes);
+    shmem_sum_reduce(SHMEM_TEAM_WORLD, sumtimes, times, ntimes);
 
-    shmemx_min_reduce(SHMEMX_TEAM_WORLD, mincounts, counts, ncounts);
-    shmemx_max_reduce(SHMEMX_TEAM_WORLD, maxcounts, counts, ncounts);
-    shmemx_sum_reduce(SHMEMX_TEAM_WORLD, sumcounts, counts, ncounts);
+    shmem_min_reduce(SHMEM_TEAM_WORLD, mincounts, counts, ncounts);
+    shmem_max_reduce(SHMEM_TEAM_WORLD, maxcounts, counts, ncounts);
+    shmem_sum_reduce(SHMEM_TEAM_WORLD, sumcounts, counts, ncounts);
     shmem_barrier_all();
 
 

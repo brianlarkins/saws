@@ -79,8 +79,8 @@ int main(int argc, char **argv)
   t_td            = TC_READ_ATIMER_MSEC(tdtime);
   t_armci_barrier = TC_READ_ATIMER_MSEC(barriertime);
 
-  shmemx_max_reduce(SHMEMX_TEAM_WORLD, &t_td_max, &t_td, 1);
-  shmemx_max_reduce(SHMEMX_TEAM_WORLD, &t_armci_max, &t_armci_barrier, 1);
+  shmem_max_reduce(SHMEM_TEAM_WORLD, &t_td_max, &t_td, 1);
+  shmem_max_reduce(SHMEM_TEAM_WORLD, &t_armci_max, &t_armci_barrier, 1);
   //gtc_reduce(&t_td, &t_td_max,               GtcReduceOpMax, DoubleType, 1);
   //gtc_reduce(&t_armci_barrier, &t_armci_max, GtcReduceOpMax, DoubleType, 1);
 

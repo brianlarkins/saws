@@ -131,7 +131,7 @@ int main(int argc, char **argv) {
         gtc_process(gtc2);
         gtc_reset(gtc2);
 
-        shmemx_sum_reduce(SHMEMX_TEAM_WORLD, &this_iter, &counter, 1);
+        shmem_sum_reduce(SHMEM_TEAM_WORLD, &this_iter, &counter, 1);
         shmem_quiet();
         sum += this_iter;
 

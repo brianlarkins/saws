@@ -105,7 +105,7 @@ int main(int argc, char **argv)
   // Find the ideal execution time
   //MPI_Reduce(&sleep_time, &ideal_time, 1, MPI_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
   //gtc_reduce(&sleep_time, &ideal_time, GtcReduceOpSum, LongType, 1);
-  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, &ideal_time, &sleep_time, 1);
+  shmem_sum_reduce(SHMEM_TEAM_WORLD, &ideal_time, &sleep_time, 1);
   if (mythread == 0)
     printf("Total sleep time = %f sec, Ideal = %f sec (compare with process time above)\n",
         ideal_time/1e6, ideal_time/1e6/nthreads);

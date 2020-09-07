@@ -6,7 +6,7 @@
 
 #include <tc.h>
 
-#define NUM_TASKS 1000
+#define NUM_TASKS 512
 
 typedef struct {
   int parent_id;
@@ -118,7 +118,7 @@ int main(int argc, char **argv)
   shmem_barrier_all();
 
   // Find the ideal execution time
-  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, &ideal_time, &sleep_time, 1);
+  shmem_sum_reduce(SHMEM_TEAM_WORLD, &ideal_time, &sleep_time, 1);
   //gtc_reduce(&sleep_time, &ideal_time, GtcReduceOpSum, LongType, 1);
   if (mythread == 0)
     printf("Total sleep time = %f sec, Ideal = %f sec (compare with process time above)\n",

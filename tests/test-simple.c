@@ -110,7 +110,7 @@ int main(int argc, char **argv)
   shmem_barrier_all();
 
   // Find the ideal execution time
-  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, &ideal_time, &sleep_time, 1);
+  shmem_sum_reduce(SHMEM_TEAM_WORLD, &ideal_time, &sleep_time, 1);
   if (mythread == 0)
     printf("Total sleep time = %f sec, Ideal = %f sec (compare with process time above)\n",
         ideal_time/1e6, ideal_time/1e6/nthreads);

@@ -545,13 +545,13 @@ void gtc_print_gstats_sdc(gtc_t gtc) {
   counts[SDCReacquireCalls]     = rb->nreacquire;
   counts[SDCReleaseCalls]       = rb->nrelease;
 
-  shmemx_min_reduce(SHMEMX_TEAM_WORLD, mintimes, times, ntimes);
-  shmemx_max_reduce(SHMEMX_TEAM_WORLD, maxtimes, times, ntimes);
-  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, sumtimes, times, ntimes);
+  shmem_min_reduce(SHMEM_TEAM_WORLD, mintimes, times, ntimes);
+  shmem_max_reduce(SHMEM_TEAM_WORLD, maxtimes, times, ntimes);
+  shmem_sum_reduce(SHMEM_TEAM_WORLD, sumtimes, times, ntimes);
 
-  shmemx_min_reduce(SHMEMX_TEAM_WORLD, mincounts, counts, ncounts);
-  shmemx_max_reduce(SHMEMX_TEAM_WORLD, maxcounts, counts, ncounts);
-  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, sumcounts, counts, ncounts);
+  shmem_min_reduce(SHMEM_TEAM_WORLD, mincounts, counts, ncounts);
+  shmem_max_reduce(SHMEM_TEAM_WORLD, maxcounts, counts, ncounts);
+  shmem_sum_reduce(SHMEM_TEAM_WORLD, sumcounts, counts, ncounts);
   shmem_barrier_all();
 
   eprintf("        : gets         %6lu (%6.2f/%3lu/%3lu) time %6.2fms/%6.2fms/%6.2fms per %6.2fms/%6.2fms/%6.2fms\n",

@@ -21,7 +21,7 @@
 #include <tc.h>
 
 #define NCHILDREN  2
-#define MAXDEPTH   10
+#define MAXDEPTH   20
 #define SLEEP_TIME 100
 #define VERBOSE    0
 
@@ -136,7 +136,7 @@ int main(int argc, char **argv) {
   gtc_process(gtc);
     printf("thread %d after gtc_process\n", _c->rank);
   // Check if the correct number of tasks were processed
-  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, &sum, &counter, 1);
+  shmem_sum_reduce(SHMEM_TEAM_WORLD, &sum, &counter, 1);
   expected = (1 << (MAXDEPTH+1)) - 1; // == 2^(MAXDEPTH + 1) - 1
 
   if (mythread == 0) {

@@ -314,9 +314,9 @@ int main(int argc, char **argv) {
   // printf("(%d) ntasks: %d, nproducers: %d, nconsumers: %d\n", me, ntasks, nproducers, nconsumers);
 
   // Check if the correct number of tasks were processed
-  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, &final_ntasks, &ntasks, 1);
-  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, &final_nproducers, &nproducers, 1);
-  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, &final_nconsumers, &nconsumers, 1);
+  shmem_sum_reduce(SHMEM_TEAM_WORLD, &final_ntasks, &ntasks, 1);
+  shmem_sum_reduce(SHMEM_TEAM_WORLD, &final_nproducers, &nproducers, 1);
+  shmem_sum_reduce(SHMEM_TEAM_WORLD, &final_nconsumers, &nconsumers, 1);
 
   if (me == 0) {
     printf("\n");

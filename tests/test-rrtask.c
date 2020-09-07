@@ -95,7 +95,7 @@ int main(int argc, char **argv)
 
   // Check if the correct number of tasks were processed
   tc_t *tc = gtc_lookup(gtc);
-  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, &sum, &tc->ct.tasks_completed, 1);
+  shmem_sum_reduce(SHMEM_TEAM_WORLD, &sum, &tc->ct.tasks_completed, 1);
 
   if (mythread == 0)
     printf("Total tasks processed = %ld, expected = %d: %s\n", sum, NUM_TASKS,
