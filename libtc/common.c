@@ -822,6 +822,10 @@ void gtc_print_stats(gtc_t gtc) {
 
     tc->cb.print_gstats(gtc);
 
+    eprintf("%lu      %.5f %lu %.2f %.2f %.2f\n", _c->size, sumtimes[ProcessTime]/_c->size, 
+        sumcounts[TasksCompleted], sumtimes[TasksCompleted]/(sumtimes[ProcessTime]/_c->size),
+        sumtimes[DispersionTime]/_c->size, sumcounts[DispersionAttempts]/_c->size);
+
     shmem_free(times);
     shmem_free(mintimes);
     shmem_free(maxtimes);
