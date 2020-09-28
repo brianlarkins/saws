@@ -204,15 +204,6 @@ static inline int saws_max_steals(uint64_t itasks) {
   return cnt;
 }
 
-//prints binary representation of an integer
-void itobin(int v) {
-  unsigned int mask=1<<((sizeof(int)<<3)-1);
-
-  while(mask) {
-    printf("%d", (v&mask ? 1 : 0));
-    mask >>= 1;
-  }
-}
 
 
 /*==================== STATE QUERIES ====================*/
@@ -300,19 +291,20 @@ int saws_shrb_reclaim_space(saws_shrb_t *rb) {
   uint32_t sum = 0;
   TC_START_TIMER(rb->tc, reclaim);
   // copy stealval
-#ifdef SAWS_USE_EXPENSIVE_ATOMIC_A_LOT
-  sv = shmem_atomic_fetch(&rb->steal_val, rb->procid);
-#else
   sv = rb->steal_val; // take a copy
-#endif // SAWS_USE_EXPENSIVE_ATOMIC_A_LOT
 
   saws_get_stealval(sv, &asteals, &itasks, &vtail);
   assert(vtail < rb->max_size);
   // check if any steals from the last epoch have been completed
-  if (!rb->completed[rb->last].done) {
-    for (int i = 0; i < rb->completed[rb->last].maxsteals; i++)
-      sum += rb->completed[rb->last].status[i];
+  
+  if ((asteals == 0) && (itasks != 0)) return reclaimed;
 
+  TC_START_TIMER(rb->tc, t[0]);
+  if (!rb->completed[rb->last].done) {
+    for (int i = 0; i < rb->completed[rb->last].maxsteals; i++){
+	if (rb->completed[rb->last].status[i] == 0) break;
+	sum += rb->completed[rb->last].status[i];
+}
     // if so, update tail index accordingly.
     if (sum == rb->completed[rb->last].itasks) {
       rb->tail = rb->completed[rb->cur].vtail;
@@ -320,7 +312,7 @@ int saws_shrb_reclaim_space(saws_shrb_t *rb) {
       rb->completed[rb->last].done = 1;
     }
   }
-
+  TC_STOP_TIMER(rb->tc, t[0]);
   // find longest sequence of completed steals in current epoch
   sum = 0;
   for (int i = 0; i < rb->completed[rb->cur].maxsteals; i++) {
@@ -338,7 +330,6 @@ int saws_shrb_reclaim_space(saws_shrb_t *rb) {
   }
   // sanity checks
   assert(saws_shrb_shared_isempty(rb) || rb->completed[rb->cur].done != 1 || rb->completed[rb->last].done != 1);
-  if (!(rb->tail < rb->max_size)) {saws_shrb_print(rb); print_epoch(rb); exit(1);}
   rb->nreccalls++;
   TC_STOP_TIMER(rb->tc, reclaim);
   return reclaimed;
@@ -424,6 +415,7 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
       rb->tail, rb->split, itasks, asteals, saws_shrb_shared_size(rb), rb->nlocal);
 
   // assert that all steals from the last epoch have completed.
+  TC_START_TIMER(rb->tc, t[1]);
   if (!rb->completed[rb->last].done) {
     retry:
     sum = 0;  
@@ -439,6 +431,7 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
       exit(1);
     }
   }
+  TC_STOP_TIMER(rb->tc, t[1]);
 
   // determine the number of unclaimed tasks available in queue
   int temp = asteals;

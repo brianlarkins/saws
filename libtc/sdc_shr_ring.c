@@ -217,7 +217,6 @@ int sdc_shrb_reclaim_space(sdc_shrb_t *rb) {
   int itail = rb->itail; // Capture these values since we are doing this
   int tail  = rb->tail;  // without a lock
   TC_START_TIMER(rb->tc, reclaim);
-
   if (vtail != tail && itail == tail) {
     rb->vtail = tail;
     if (tail > vtail)
@@ -226,9 +225,10 @@ int sdc_shrb_reclaim_space(sdc_shrb_t *rb) {
       reclaimed = rb->max_size - vtail + tail;
 
     assert(reclaimed > 0);
-    rb->nreclaimed++;
+    //rb->nreclaimed++;
   }
 
+  rb->nreccalls++;
   TC_STOP_TIMER(rb->tc, reclaim);
   return reclaimed;
 }

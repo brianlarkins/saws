@@ -70,7 +70,7 @@ gtc_t gtc_create_saws(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg
  */
 void gtc_destroy_saws(gtc_t gtc) {
   tc_t *tc = gtc_lookup(gtc);
-
+  
   saws_shrb_destroy(tc->shared_rb);
   //shrb_destroy(tc->inbox);
 }
@@ -83,7 +83,6 @@ void gtc_destroy_saws(gtc_t gtc) {
  */
 void gtc_reset_saws(gtc_t gtc) {
   tc_t *tc = gtc_lookup(gtc);
-
   saws_shrb_reset(tc->shared_rb);
   //shrb_reset(tc->inbox);
 }
@@ -124,8 +123,8 @@ void gtc_progress_saws(gtc_t gtc) {
 #endif /* no task pushing */
 
   // Update the split
-  if (saws_shrb_size(tc->shared_rb) > 1)
-    saws_shrb_release(tc->shared_rb);
+  //if (saws_shrb_size(tc->shared_rb) > 1)
+  saws_shrb_release(tc->shared_rb);
   // Attempt to reclaim space
   saws_shrb_reclaim_space(tc->shared_rb);
   ((saws_shrb_t *)tc->shared_rb)->nprogress++;
@@ -484,7 +483,7 @@ void gtc_print_gstats_saws(gtc_t gtc) {
   double   *times, *mintimes, *maxtimes, *sumtimes;
   uint64_t *counts, *mincounts, *maxcounts, *sumcounts;
 
-  int ntimes = 14;
+  int ntimes = 16;
   times     = shmem_calloc(ntimes, sizeof(double));
   mintimes  = shmem_calloc(ntimes, sizeof(double));
   maxtimes  = shmem_calloc(ntimes, sizeof(double));
@@ -511,7 +510,8 @@ void gtc_print_gstats_saws(gtc_t gtc) {
   times[SAWSPerEnsureTime]      = rb->nensure       != 0 ? TC_READ_TIMER_USEC(tc,ensure)    / rb->nensure       : 0.0;
   times[SAWSPerReacquireTime]   = rb->nreacquire    != 0 ? TC_READ_TIMER_MSEC(tc,reacquire) / rb->nreacquire    : 0.0;
   times[SAWSPerReleaseTime]     = rb->nrelease      != 0 ? TC_READ_TIMER_USEC(tc,release)   / rb->nrelease      : 0.0;
-
+  times[14]			= TC_READ_TIMER_USEC(tc, t[0]);
+  times[15]			= TC_READ_TIMER_USEC(tc, t[1]);
   counts[SAWSNumGets]            = rb->ngets;
   counts[SAWSGetCalls]           = tc->ct.getcalls;
   counts[SAWSNumMeta]            = rb->nmeta;
@@ -584,6 +584,16 @@ void gtc_print_gstats_saws(gtc_t gtc) {
       sumcounts[SAWSReleaseCalls]/(double)_c->size, mincounts[SAWSReleaseCalls], maxcounts[SAWSReleaseCalls],
       sumtimes[SAWSReleaseTime]/_c->size, mintimes[SAWSReleaseTime], maxtimes[SAWSReleaseTime],
       sumtimes[SAWSPerReleaseTime]/_c->size, mintimes[SAWSPerReleaseTime], maxtimes[SAWSPerReleaseTime]);
+   eprintf("        : bullshit 0    %6.2f/%3lu/%3lu time %6.2fus/%6.2fus/%6.2fus per %6.2fus/%6.2fus/%6.2fus\n",
+      sumcounts[14]/(double)_c->size, mincounts[14], maxcounts[14],
+      sumtimes[14]/_c->size, mintimes[14], maxtimes[14],
+      sumtimes[14]/_c->size, mintimes[14], maxtimes[14]);
+   eprintf("        : bullshit 1    %6.2f/%3lu/%3lu time %6.2fus/%6.2fus/%6.2fus per %6.2fus/%6.2fus/%6.2fus\n",
+      sumcounts[15]/(double)_c->size, mincounts[15], maxcounts[15],
+      sumtimes[15]/_c->size, mintimes[15], maxtimes[15],
+      sumtimes[15]/_c->size, mintimes[15], maxtimes[15]);
+
+
 
   shmem_free(times);
   shmem_free(mintimes);

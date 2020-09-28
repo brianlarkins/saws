@@ -86,7 +86,6 @@ void gtc_destroy_sdc(gtc_t gtc) {
  */
 void gtc_reset_sdc(gtc_t gtc) {
   tc_t *tc = gtc_lookup(gtc);
-
   sdc_shrb_reset(tc->shared_rb);
   //shrb_reset(tc->inbox);
 }
@@ -135,7 +134,7 @@ void gtc_progress_sdc(gtc_t gtc) {
   sdc_shrb_release(tc->shared_rb);
 
   // Attempt to reclaim space
-  sdc_shrb_reclaim_space((sdc_shrb_t *)tc->shared_rb);
+  sdc_shrb_reclaim_space(tc->shared_rb);
   ((sdc_shrb_t *)tc->shared_rb)->nprogress++;
   //TC_STOP_TIMER(tc,t[0]);
   TC_STOP_TIMER(tc,progress);
