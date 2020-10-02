@@ -95,7 +95,9 @@ extern "C" {
 #define offsetof(type, member)  __builtin_offsetof (type, member)
 #endif // offsetof
 
-#define __GTC_MAX_STEAL_SIZE                 500000  // max # of tasks to steal when doing work sp
+#define __GTC_MAX_STEAL_SIZE                 500000   // max # of tasks to steal when doing work sp
+//#define __GTC_RECLAIM_POLLFREQ                    1 // how often do we call ensure()/reclaim()?
+#define __GTC_RECLAIM_POLLFREQ                     20 // use for UTS
 
 // forward refs
 struct task_s;

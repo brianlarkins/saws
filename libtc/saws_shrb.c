@@ -68,6 +68,7 @@ saws_shrb_t *saws_shrb_create(int elem_size, int max_size, tc_t *tc) {
   saws_shrb_t  *rb;
   int procid, nproc;
   uint32_t *targets;
+  char *rec = NULL;
   setbuf(stdout, NULL);
 
   procid = shmem_my_pe();
@@ -80,12 +81,17 @@ saws_shrb_t *saws_shrb_create(int elem_size, int max_size, tc_t *tc) {
 
   targets = (uint32_t *) calloc(nproc, sizeof(uint32_t));
 
-  rb->procid    = procid;
-  rb->nproc     = nproc;
-  rb->elem_size = elem_size;
-  rb->max_size  = max_size;
-  rb->targets   = targets;
-  rb->tc        = tc;
+  rb->procid      = procid;
+  rb->nproc       = nproc;
+  rb->elem_size   = elem_size;
+  rb->max_size    = max_size;
+  rb->reclaimfreq = __GTC_RECLAIM_POLLFREQ;
+  rec = getenv("GTC_RECLAIM_FREQ");
+  if (rec)
+    rb->reclaimfreq = atoi(rec);
+
+  rb->targets     = targets;
+  rb->tc          = tc;
 
   saws_shrb_reset(rb);
 
@@ -296,15 +302,15 @@ int saws_shrb_reclaim_space(saws_shrb_t *rb) {
   saws_get_stealval(sv, &asteals, &itasks, &vtail);
   assert(vtail < rb->max_size);
   // check if any steals from the last epoch have been completed
-  
+
   if ((asteals == 0) && (itasks != 0)) return reclaimed;
 
   TC_START_TIMER(rb->tc, t[0]);
   if (!rb->completed[rb->last].done) {
     for (int i = 0; i < rb->completed[rb->last].maxsteals; i++){
-	if (rb->completed[rb->last].status[i] == 0) break;
-	sum += rb->completed[rb->last].status[i];
-}
+      if (rb->completed[rb->last].status[i] == 0) break;
+      sum += rb->completed[rb->last].status[i];
+    }
     // if so, update tail index accordingly.
     if (sum == rb->completed[rb->last].itasks) {
       rb->tail = rb->completed[rb->cur].vtail;
@@ -405,20 +411,20 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
 
   if ((saws_shrb_shared_size(rb) <= rb->nlocal) || rb->nlocal != 0)
     return;
-  
+
   TC_START_TIMER(rb->tc, reacquire);
 
   // disable steals and determine shared queue state
   steal_val = saws_disable_steals(rb);
   saws_get_stealval(steal_val, &asteals, &itasks, &vtail);
-  gtc_lprintf(DBGSHRB, "steals disabled : tail %d split: %d itasks: %d asteals: %d : shared size: %d nlocal: %d\n", 
+  gtc_lprintf(DBGSHRB, "steals disabled : tail %d split: %d itasks: %d asteals: %d : shared size: %d nlocal: %d\n",
       rb->tail, rb->split, itasks, asteals, saws_shrb_shared_size(rb), rb->nlocal);
 
   // assert that all steals from the last epoch have completed.
   TC_START_TIMER(rb->tc, t[1]);
   if (!rb->completed[rb->last].done) {
     retry:
-    sum = 0;  
+    sum = 0;
     for (int i = 0; i < rb->completed[rb->last].maxsteals; i++) {
       sum += rb->completed[rb->last].status[i];
     }
@@ -436,7 +442,7 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
   // determine the number of unclaimed tasks available in queue
   int temp = asteals;
   tasks_left = itasks;
-    
+
   for (stolen = 0, tasks_left = itasks; temp > 0; temp--) {
     tasks_left  = (tasks_left != 1) ? tasks_left >> 1 : 1; // # of stolen tasks for this steal
     stolen += tasks_left;                                  // add to total amount stolen
@@ -537,13 +543,14 @@ static inline void saws_shrb_push_n_head_impl(saws_shrb_t *rb, int proc, void *e
 
 
 void saws_shrb_push_head(saws_shrb_t *rb, int proc, void *e, int size) {
-
   int old_head;
+  static int cc = 0; // may want to damp ensure calls
 
   assert(size <= rb->elem_size);
   assert(proc == rb->procid);
 
-  saws_shrb_ensure_space(rb, 1);
+  if ((cc++ % rb->reclaimfreq) == 0)
+    saws_shrb_ensure_space(rb, 1);
 
   old_head    = saws_shrb_head(rb);
   rb->nlocal += 1;
@@ -701,7 +708,7 @@ test:
     {
         void * new_start = &myrb->q[0] + (abs(part_size) * myrb->elem_size);
         //gtc_lprintf(DBGSTEAL, "starting steal from indes %d\n", new_start);
-    
+
         shmem_getmem_nbi(e, new_start, ntasks * myrb->elem_size, proc);
     }
   }

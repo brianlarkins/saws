@@ -70,7 +70,7 @@ gtc_t gtc_create_saws(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg
  */
 void gtc_destroy_saws(gtc_t gtc) {
   tc_t *tc = gtc_lookup(gtc);
-  
+
   saws_shrb_destroy(tc->shared_rb);
   //shrb_destroy(tc->inbox);
 }
@@ -103,6 +103,7 @@ char *gtc_queue_name_saws() {
  */
 void gtc_progress_saws(gtc_t gtc) {
   tc_t *tc = gtc_lookup(gtc);
+  static int cc = 0;
   TC_START_TIMER(tc,progress);
 
 #if 0 /* no task pushing */
@@ -125,8 +126,10 @@ void gtc_progress_saws(gtc_t gtc) {
   // Update the split
   //if (saws_shrb_size(tc->shared_rb) > 1)
   saws_shrb_release(tc->shared_rb);
+
   // Attempt to reclaim space
-  saws_shrb_reclaim_space(tc->shared_rb);
+  if ((cc++ % ((saws_shrb_t *)tc->shared_rb)->reclaimfreq) == 0)
+    saws_shrb_reclaim_space(tc->shared_rb);
   ((saws_shrb_t *)tc->shared_rb)->nprogress++;
   TC_STOP_TIMER(tc,progress);
 }

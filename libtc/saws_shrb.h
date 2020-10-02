@@ -71,6 +71,7 @@ struct saws_shrb_s {
   int               nproc;
   int               max_size;  // Max size in number of elements
   int               elem_size; // Size of an element in bytes 
+  int               reclaimfreq;                        // reclaim dampening frequency
   int               claimed[SAWS_MAX_STEALS_PER_EPOCH]; // # claimed task lookup table
   saws_completion_t completed[SAWS_MAX_EPOCHS];         // completion arrays
   int               cur;                                // index of current completion array

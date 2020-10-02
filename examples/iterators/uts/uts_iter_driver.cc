@@ -111,9 +111,9 @@ int main(int argc, char *argv[]) {
   nLeaves  = my_nLeaves;
   maxDepth = my_maxDepth;
 #elif defined(LDBAL_SCIOTO)
-  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, &nNodes, &my_nNodes, 1);
-  shmemx_sum_reduce(SHMEMX_TEAM_WORLD, &nLeaves, &my_nLeaves, 1);
-  shmemx_max_reduce(SHMEMX_TEAM_WORLD, &maxDepth, &my_maxDepth, 1);
+  shmem_sum_reduce(SHMEM_TEAM_WORLD, &nNodes, &my_nNodes, 1);
+  shmem_sum_reduce(SHMEM_TEAM_WORLD, &nLeaves, &my_nLeaves, 1);
+  shmem_max_reduce(SHMEM_TEAM_WORLD, &maxDepth, &my_maxDepth, 1);
 #endif
 
   if (me == 0) uts_showStats(nproc, 0, t2-t1, nNodes, nLeaves, maxDepth);
