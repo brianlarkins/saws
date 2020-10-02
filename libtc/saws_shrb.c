@@ -303,7 +303,7 @@ int saws_shrb_reclaim_space(saws_shrb_t *rb) {
   assert(vtail < rb->max_size);
   // check if any steals from the last epoch have been completed
 
-  if ((asteals == 0) && (itasks != 0)) return reclaimed;
+  if ((asteals == 0) && (itasks != 0)) goto recdone;
 
   TC_START_TIMER(rb->tc, t[0]);
   if (!rb->completed[rb->last].done) {
@@ -334,6 +334,8 @@ int saws_shrb_reclaim_space(saws_shrb_t *rb) {
   if (rb->completed[rb->last].done && (sum > 0)) {
     rb->tail = (rb->completed[rb->cur].vtail + sum) % rb->max_size;
   }
+
+recdone:
   // sanity checks
   assert(saws_shrb_shared_isempty(rb) || rb->completed[rb->cur].done != 1 || rb->completed[rb->last].done != 1);
   rb->nreccalls++;
