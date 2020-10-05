@@ -296,7 +296,7 @@ int saws_shrb_reclaim_space(saws_shrb_t *rb) {
   int reclaimed = 0;
   uint32_t sum = 0;
   TC_START_TIMER(rb->tc, reclaim);
-  // copy stealval
+  
   sv = rb->steal_val; // take a copy
 
   saws_get_stealval(sv, &asteals, &itasks, &vtail);
@@ -305,10 +305,8 @@ int saws_shrb_reclaim_space(saws_shrb_t *rb) {
 
   if ((asteals == 0) && (itasks != 0)) goto recdone;
 
-  TC_START_TIMER(rb->tc, t[0]);
   if (!rb->completed[rb->last].done) {
     for (int i = 0; i < rb->completed[rb->last].maxsteals; i++){
-      if (rb->completed[rb->last].status[i] == 0) break;
       sum += rb->completed[rb->last].status[i];
     }
     // if so, update tail index accordingly.
@@ -318,7 +316,6 @@ int saws_shrb_reclaim_space(saws_shrb_t *rb) {
       rb->completed[rb->last].done = 1;
     }
   }
-  TC_STOP_TIMER(rb->tc, t[0]);
   // find longest sequence of completed steals in current epoch
   sum = 0;
   for (int i = 0; i < rb->completed[rb->cur].maxsteals; i++) {
@@ -423,23 +420,18 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
       rb->tail, rb->split, itasks, asteals, saws_shrb_shared_size(rb), rb->nlocal);
 
   // assert that all steals from the last epoch have completed.
-  TC_START_TIMER(rb->tc, t[1]);
   if (!rb->completed[rb->last].done) {
     retry:
     sum = 0;
     for (int i = 0; i < rb->completed[rb->last].maxsteals; i++) {
       sum += rb->completed[rb->last].status[i];
     }
-    //printf("(%d) sum: %ld\n", _c->rank, sum);
     if (sum != rb->completed[rb->last].itasks) {
-      //saws_shrb_print(rb);
-      //print_epoch(rb);
       goto retry;
       gtc_dprintf("incomplete tasks over multiple epochs -- dying now\n");
       exit(1);
     }
   }
-  TC_STOP_TIMER(rb->tc, t[1]);
 
   // determine the number of unclaimed tasks available in queue
   int temp = asteals;
@@ -465,7 +457,6 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
     // switch epochs
     rb->cur  = (rb->cur + 1)  % SAWS_MAX_EPOCHS;
     rb->last = (rb->last + 1) % SAWS_MAX_EPOCHS;
-
     // reset current epoch
     memset(&rb->completed[rb->cur], 0, sizeof(rb->completed[rb->cur]));
 
@@ -498,13 +489,13 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
 
   } else {
     gtc_lprintf(DBGSHRB, "reacquire found no tasks\n", amount, tasks_left);
-    assert(rb->cur < SAWS_MAX_EPOCHS);
+    //assert(rb->cur < SAWS_MAX_EPOCHS);
     steal_val = saws_set_stealval(rb->cur, 0, rb->tail);
   }
 
   shmem_atomic_set(&rb->steal_val, steal_val, rb->procid);
   //assert(!saws_shrb_local_isempty(rb) || (saws_shrb_isempty(rb) && saws_shrb_local_isempty(rb)));
-  assert(rb->tail >= 0 && rb->tail < rb->max_size);
+  //assert(rb->tail >= 0 && rb->tail < rb->max_size);
   TC_STOP_TIMER(rb->tc, reacquire);
 }
 

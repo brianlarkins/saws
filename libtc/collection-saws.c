@@ -124,8 +124,8 @@ void gtc_progress_saws(gtc_t gtc) {
 #endif /* no task pushing */
 
   // Update the split
-  //if (saws_shrb_size(tc->shared_rb) > 1)
-  saws_shrb_release(tc->shared_rb);
+  if (saws_shrb_size(tc->shared_rb) > 1)
+    saws_shrb_release(tc->shared_rb);
 
   // Attempt to reclaim space
   if ((cc++ % ((saws_shrb_t *)tc->shared_rb)->reclaimfreq) == 0)
@@ -162,12 +162,25 @@ int gtc_tasks_avail_saws(gtc_t gtc) {
  */
 double gtc_get_dw = 0.0;
 
+//static inline int max_steals(uint64_t itasks) {
+//  uint32_t curr,cnt, total = 0;
+
+//  for (cnt = 0, curr = itasks; total != itasks; cnt++) {
+//    curr = (curr != 1) ? curr >> 1 : 1;
+//    total += curr;
+//    curr = itasks - total;
+//  }
+//  return cnt;
+//}
+
+
 int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
     tc_t   *tc = gtc_lookup(gtc);
   int     got_task = 0;
   int     v, steal_size;
   int     passive = 0;
   int     searching = 0;
+  //uint64_t asteals, itasks;
   gtc_vs_state_t vs_state = {0, 0, 0};
   void *rb_buf;
 
@@ -204,7 +217,7 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
     // Keep searching until we find work or detect termination
     while (!got_task && !tc->terminated) {
       int      max_steal_attempts, steal_attempts, steal_done;
-      void *target_rb;
+//      void *target_rb;
 
       tc->state = STATE_SEARCHING;
 
@@ -217,11 +230,13 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
       v = gtc_select_target(gtc, &vs_state);
 
       max_steal_attempts = tc->ldbal_cfg.max_steal_attempts_remote;
-      target_rb = rb_buf;
+      //target_rb = rb_buf;
 
       TC_START_TIMER(tc,poptail); // this counts as attempting to steal
       // saws_shrb_fetch_remote_trb(tc->shrb, target_rb, v);
-      shmem_getmem(target_rb, tc->shared_rb, sizeof(saws_shrb_t), v);
+      saws_shrb_t *target = (saws_shrb_t *)tc->shared_rb;
+      uint64_t steal_val = shmem_atomic_fetch(&target->steal_val, v);
+
       TC_STOP_TIMER(tc,poptail);
 
       // Poll the target for work.  In between polls, maintain progress on termination detection.
@@ -234,7 +249,10 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
           for (j = 0; j < steal_attempts*1000; j++)
             gtc_get_dw += 1.0;
         }
-        if (tc->rcb.work_avail(target_rb) > 0) {
+	//itasks = (steal_val >> 19)  & 0x000000000007FFFF;
+	//asteals =  (steal_val >> 40)  & 0x0000000000FFFFFF;
+	//uint64_t max = max_steals(itasks);
+        if (((steal_val >> 19)  & 0x000000000007FFFF) > 0) { //  && (asteals < max)) {
           tc->state = STATE_STEALING;
 
           if (searching) {
@@ -245,13 +263,13 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
           }
 
           // Perform a steal/try_steal
-          if (tc->ldbal_cfg.steals_can_abort){
+          //if (tc->ldbal_cfg.steals_can_abort){
 
             //printf("(%d) attempting steal on proc: %d\n",_c->rank, v);
-            steal_size = gtc_try_steal_tail(gtc, v);
-          } else {
+            //steal_size = gtc_try_steal_tail(gtc, v);
+          //} else {
             steal_size = gtc_steal_tail(gtc, v);
-          }
+          //}
           // Steal succeeded: Got some work from remote node
           if (steal_size > 0) {
             tc->ct.tasks_stolen += steal_size;
@@ -260,15 +278,15 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
             tc->last_target = v;
 
           // Steal failed: Got the lock, no longer any work on remote node
-          } else if (steal_size == 0) {
+          } else {
             tc->ct.failed_steals_locked++;
             steal_done = 1;
 
           // Steal aborted: Didn't get the lock, refresh target metadata and try again
-          } else {
-            if (steal_attempts + 1 == max_steal_attempts)
-              tc->ct.aborted_steals++;
-            vs_state.target_retry = 1;
+          //} else {
+          //  if (steal_attempts + 1 == max_steal_attempts)
+          //    tc->ct.aborted_steals++;
+          //  vs_state.target_retry = 1;
           }
 
         } else /* ! (QUEUE_WORK_AVAIL(target_rb) > 0) */ {
@@ -283,7 +301,6 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
         // Locking is only needed here if we allow pushing.
         // TODO: New TD should not require locking.  Remove locks and test.
         if (gtc_tasks_avail(gtc) == 0 && !tc->external_work_avail) {
-            //printf("tasks spawned: %ld  tasks completed %ld\n", tc->ct.tasks_spawned, tc->ct.tasks_completed);
             td_set_counters(tc->td, tc->ct.tasks_spawned, tc->ct.tasks_completed);
             tc->terminated = td_attempt_vote(tc->td);
 
@@ -328,7 +345,7 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
  * Add task to the task collection.  Task is copied in and task buffer is available
  * to the user when call returns.  Non-collective call.
  *
- * @param tc       IN Ptr to task collection
+ * @param tc      IN Ptr to task collection
  * @param proc     IN Process # whose task collection this task is to be added
  *                    to. Common case is tc->procid
  * @param task  INOUT Task to be added. user manages buffer when call
@@ -587,14 +604,6 @@ void gtc_print_gstats_saws(gtc_t gtc) {
       sumcounts[SAWSReleaseCalls]/(double)_c->size, mincounts[SAWSReleaseCalls], maxcounts[SAWSReleaseCalls],
       sumtimes[SAWSReleaseTime]/_c->size, mintimes[SAWSReleaseTime], maxtimes[SAWSReleaseTime],
       sumtimes[SAWSPerReleaseTime]/_c->size, mintimes[SAWSPerReleaseTime], maxtimes[SAWSPerReleaseTime]);
-   eprintf("        : bullshit 0    %6.2f/%3lu/%3lu time %6.2fus/%6.2fus/%6.2fus per %6.2fus/%6.2fus/%6.2fus\n",
-      sumcounts[14]/(double)_c->size, mincounts[14], maxcounts[14],
-      sumtimes[14]/_c->size, mintimes[14], maxtimes[14],
-      sumtimes[14]/_c->size, mintimes[14], maxtimes[14]);
-   eprintf("        : bullshit 1    %6.2f/%3lu/%3lu time %6.2fus/%6.2fus/%6.2fus per %6.2fus/%6.2fus/%6.2fus\n",
-      sumcounts[15]/(double)_c->size, mincounts[15], maxcounts[15],
-      sumtimes[15]/_c->size, mintimes[15], maxtimes[15],
-      sumtimes[15]/_c->size, mintimes[15], maxtimes[15]);
 
 
 

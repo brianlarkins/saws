@@ -156,7 +156,7 @@ void process_args(int argc, char **argv) {
   int   arg;
   char *endptr;
 
-  while ((arg = getopt(argc, argv, "d:n:r:p:c:i:bvhB")) != -1) {
+  while ((arg = getopt(argc, argv, "d:n:r:p:c:i:bvhBH")) != -1) {
     switch (arg) {
     case 'd':
       maxdepth = strtol(optarg, &endptr, 10);
@@ -209,7 +209,10 @@ void process_args(int argc, char **argv) {
     case 'B':
       qtype = GtcQueueSDC;
       break;
-      
+    case 'H':
+      qtype = GtcQueueSAWS;
+      break;
+
     case 'h':
       if (me == 0) {
         printf("SCIOTO Producer-Consumer Microbenchmark\n");
