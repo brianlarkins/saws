@@ -603,6 +603,9 @@ void gtc_print_gstats_sdc(gtc_t gtc) {
       sumtimes[SDCReleaseTime]/_c->size, mintimes[SDCReleaseTime], maxtimes[SDCReleaseTime],
       sumtimes[SDCPerReleaseTime]/_c->size, mintimes[SDCPerReleaseTime], maxtimes[SDCPerReleaseTime]);
 
+  eprintf("&&&  %6.2f %6.2f ", sumtimes[SDCPopTailTime]/_c->size, sumtimes[SDCReacquireTime]/_c->size);
+
+
   shmem_free(times);
   shmem_free(mintimes);
   shmem_free(maxtimes);

@@ -822,9 +822,12 @@ void gtc_print_stats(gtc_t gtc) {
 
     tc->cb.print_gstats(gtc);
 
-    eprintf("%lu      %.5f %lu %.2f %.2f %.2f\n", _c->size, sumtimes[ProcessTime]/_c->size, 
-        sumcounts[TasksCompleted], sumtimes[TasksCompleted]/(sumtimes[ProcessTime]/_c->size),
-        sumtimes[DispersionTime]/_c->size, sumcounts[DispersionAttempts]/_c->size);
+    //this is the graph data.
+    // num_processes, average_time, passive_time, search_time, average_dispersion_time, dispersion_attempts, tasks_completed, idk
+    eprintf("&&&&  %lu      %.5f %lu %.5f %.5f %6.2f %6.2f %.2f %.2f\n", _c->size, sumtimes[ProcessTime]/_c->size,      
+        sumtimes[PassiveTime]/_c->size, sumtimes[SearchTime]/_c->size, sumtimes[DispersionTime]/_c->size,
+        sumcounts[DispersionAttempts]/_c->size,
+        sumcounts[TasksCompleted], sumtimes[TasksCompleted]/(sumtimes[ProcessTime]/_c->size));
 
     shmem_free(times);
     shmem_free(mintimes);

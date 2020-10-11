@@ -604,8 +604,8 @@ void gtc_print_gstats_saws(gtc_t gtc) {
       sumcounts[SAWSReleaseCalls]/(double)_c->size, mincounts[SAWSReleaseCalls], maxcounts[SAWSReleaseCalls],
       sumtimes[SAWSReleaseTime]/_c->size, mintimes[SAWSReleaseTime], maxtimes[SAWSReleaseTime],
       sumtimes[SAWSPerReleaseTime]/_c->size, mintimes[SAWSPerReleaseTime], maxtimes[SAWSPerReleaseTime]);
-
-
+  
+  eprintf("&&&  %6.2f %6.2f ", sumtimes[SAWSPopTailTime]/_c->size, sumtimes[SAWSReacquireTime]/_c->size);
 
   shmem_free(times);
   shmem_free(mintimes);

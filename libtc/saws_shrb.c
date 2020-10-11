@@ -291,20 +291,11 @@ void saws_shrb_unlock(saws_shrb_t *rb, int proc) {
 /*==================== SPLIT MOVEMENT ====================*/
 
 int saws_shrb_reclaim_space(saws_shrb_t *rb) {
-  uint64_t asteals, itasks;
-  int64_t vtail, sv;
+  
   int reclaimed = 0;
   uint32_t sum = 0;
+ 
   TC_START_TIMER(rb->tc, reclaim);
-  
-  sv = rb->steal_val; // take a copy
-
-  saws_get_stealval(sv, &asteals, &itasks, &vtail);
-  assert(vtail < rb->max_size);
-  // check if any steals from the last epoch have been completed
-
-  if ((asteals == 0) && (itasks != 0)) goto recdone;
-
   if (!rb->completed[rb->last].done) {
     for (int i = 0; i < rb->completed[rb->last].maxsteals; i++){
       sum += rb->completed[rb->last].status[i];
@@ -332,9 +323,7 @@ int saws_shrb_reclaim_space(saws_shrb_t *rb) {
     rb->tail = (rb->completed[rb->cur].vtail + sum) % rb->max_size;
   }
 
-recdone:
-  // sanity checks
-  assert(saws_shrb_shared_isempty(rb) || rb->completed[rb->cur].done != 1 || rb->completed[rb->last].done != 1);
+  //assert(saws_shrb_shared_isempty(rb) || rb->completed[rb->cur].done != 1 || rb->completed[rb->last].done != 1);
   rb->nreccalls++;
   TC_STOP_TIMER(rb->tc, reclaim);
   return reclaimed;
@@ -475,7 +464,6 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
     // correct old epoch incase there's outstanding steals
     rb->completed[rb->last].itasks = stolen;
     rb->completed[rb->last].maxsteals = asteals;
-
     // set current epoch
     rb->completed[rb->cur].itasks = tasks_left - amount;
     rb->completed[rb->cur].maxsteals = saws_max_steals(tasks_left - amount);
