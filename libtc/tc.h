@@ -536,7 +536,7 @@ static inline uint64_t gtc_get_tsctime() {
                                 } while (0)
 // TC_READ_TIMER returns elapsed time in nanoseconds
 #define TC_READ_ATIMER(TMR)       (double)((1000000000L * (TMR.total.tv_sec)) + TMR.total.tv_nsec)
-#define TC_READ_ATIMER_M(TMR)     TC_READ_ATIMER(TMR)/1000000
+#define TC_READ_ATIMER_M(TMR)     ((uint64_t)TC_READ_ATIMER(TMR))/1000000
 #define TC_READ_ATIMER_USEC(TMR)  TC_READ_ATIMER(TMR)/1000.0
 #define TC_READ_ATIMER_MSEC(TMR)  (double)(TC_READ_ATIMER(TMR)/(double)1e6)
 #define TC_READ_ATIMER_SEC(TMR)   (double)(TC_READ_ATIMER(TMR)/(double)1e9)
@@ -549,6 +549,7 @@ static inline uint64_t gtc_get_tsctime() {
                                        TC->timers->TMR.total.tv_nsec += (ATMR.temp.tv_nsec - ATMR.last.tv_nsec);\
                                    } while (0)
 
+#define TC_READ_TIMER_M(TC,TMR)     TC_READ_ATIMER_M(TC->timers->TMR)
 #define TC_READ_TIMER_USEC(TC,TMR)  TC_READ_TIMER(TC,TMR)/1000.0
 #define TC_READ_TIMER_MSEC(TC,TMR)  TC_READ_TIMER(TC,TMR)/(double)1e6
 #define TC_READ_TIMER_SEC(TC,TMR)   TC_READ_TIMER(TC,TMR)/(double)1e9
