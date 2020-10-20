@@ -18,7 +18,7 @@ int main(int argc, char **argv) {
 
   for (i = 0; !td_attempt_vote(td); i++) {
     if (rand() > ((i/100 < 32) ? 2>>(i/100) : RAND_MAX))
-        td->my_token.state = ACTIVE;
+        td->token.state = ACTIVE;
   }
   shmem_barrier_all();
   

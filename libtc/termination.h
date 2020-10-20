@@ -1,5 +1,6 @@
 #ifndef __TERMINATION_H__
 #define __TERMINATION_H__
+#include <inttypes.h>
 
 #define TERMINATION_TAG 1
 
@@ -8,25 +9,37 @@ enum token_directions { UP, DOWN };
 
 typedef struct {
   int  state;
-  int  valid;
-  int  counter1;
-  int  counter2;
+  int  spawned;   // counter1
+  int  completed; // counter2
 } td_token_t;
 
 struct td_s {
   int procid, nproc;
+  int p;                  // parent rank
+  int l;                  // left child rank
+  int r;                  // right child rank
+  int nchildren;          // number of children
   int num_cycles;
   int have_voted;
   enum token_directions token_direction;
 
-  td_token_t my_token;
-  td_token_t parent_token;
-  td_token_t left_child_token;
-  td_token_t right_child_token;
-  td_token_t temp_token;
+  td_token_t token;
+  td_token_t down_token;
+  td_token_t upleft_token;
+  td_token_t upright_token;
+  td_token_t send_token;
 
-  int last_counter1;
-  int last_counter2;
+  uint64_t   left_voted;  // signal counters for OpenSHMEM signal puts
+  uint64_t   right_voted;
+  uint64_t   parent_voted;
+
+  uint64_t   last_left;   // last observed signal values
+  uint64_t   last_right;
+  uint64_t   last_parent;
+
+  int last_spawned;
+  int last_completed;
+
 };
 typedef struct td_s td_t;
 
