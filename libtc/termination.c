@@ -134,6 +134,8 @@ void td_reset(td_t *td) {
   td->last_spawned = 0;
   td->last_completed = 0;
 
+  td->token_direction = UP;
+
   shmem_barrier_all();
 }
 
@@ -175,6 +177,8 @@ int td_attempt_vote(td_t *td) {
   nleft  = shmem_signal_fetch(&td->left_voted);
   nright = shmem_signal_fetch(&td->right_voted);
   ndown  = shmem_signal_fetch(&td->parent_voted);
+
+  gtc_lprintf(DBGTD, "td_attempt_vote: %s nl: %d nr: %d nd: %d\n", td->token_direction == UP ? "UP" : "DOWN", nleft, nright, ndown);
 
   // Case 1: Token is moving down the tree
   if (td->token_direction == DOWN) {
@@ -227,11 +231,11 @@ int td_attempt_vote(td_t *td) {
     }
 
     if (have_votes) {
+      int spawned   = td->token.spawned   + td->upleft_token.spawned   + td->upright_token.spawned;
+      int completed = td->token.completed + td->upleft_token.completed + td->upright_token.completed;
 
       // if root
       if (td->procid == 0) {
-        int spawned   = td->token.spawned   + td->upleft_token.spawned   + td->upright_token.spawned;
-        int completed = td->token.completed + td->upleft_token.completed + td->upright_token.completed;
 
         if (((spawned == td->last_spawned) && (completed == td->last_completed)) &&
               (spawned == completed))
@@ -240,7 +244,10 @@ int td_attempt_vote(td_t *td) {
         td->last_spawned   = spawned;
         td->last_completed = completed;
 
-        gtc_lprintf(DBGTD, "td_attempt_vote: broadcasting termination state\n");
+        gtc_lprintf(DBGTD, "td_attempt_vote: broadcasting termination state : token: %d %d ul: %d %d ur: %d %d\n",
+            td->token.spawned, td->token.completed,
+            td->upleft_token.spawned, td->upleft_token.completed,
+            td->upright_token.spawned, td->upright_token.completed);
         td->send_token.state     = td->token.state;
         td->send_token.spawned   = td->token.spawned;
         td->send_token.completed = td->token.completed;
@@ -253,8 +260,8 @@ int td_attempt_vote(td_t *td) {
 
         gtc_lprintf(DBGTD, "td_attempt_vote: broadcasting termination state\n");
         td->send_token.state     = td->token.state;
-        td->send_token.spawned   = td->token.spawned;
-        td->send_token.completed = td->token.completed;
+        td->send_token.spawned   = spawned;
+        td->send_token.completed = completed;
         pass_token_up(td);
         td->token_direction = DOWN;
         td->have_voted = 1;

@@ -454,7 +454,7 @@ int gtc_try_steal_tail(gtc_t gtc, int target) {
     else
         req_stealsize = __GTC_MAX_STEAL_SIZE;
 
-    gtc_lprintf(DBGGET, "  thread %d: attempting to steal %d tasks from thread %d\n", _c->rank, req_stealsize, target);
+    gtc_lprintf(DBGGET, "attempting to steal from %d\n", target);
 
 #ifdef QUEUE_TRY_POP_N_TAIL
     if (tc->qtype == GtcQueueSAWS)
@@ -469,13 +469,13 @@ int gtc_try_steal_tail(gtc_t gtc, int target) {
 
 
     if (stealsize > 0) {
-        gtc_lprintf(DBGGET, "  thread %d: Got %d tasks, pushing onto my head\n", _c->rank, stealsize);
+        gtc_lprintf(DBGGET, "stole %d tasks from %d\n", stealsize, target);
         tc->rcb.push_n_head(tc->shared_rb, _c->rank, tc->steal_buf, stealsize);
     } else if (stealsize < 0) {
-        gtc_lprintf(DBGGET, "  thread %d: Aborting steal from %d\n", _c->rank, target);
+        gtc_lprintf(DBGGET, "aborting steal from %d\n", target);
     }
 
-    gtc_lprintf(DBGGET, "  thread %d: steal completed\n", _c->rank);
+    //gtc_lprintf(DBGGET, "steal completed\n");
 
     return stealsize;
 }
@@ -586,7 +586,9 @@ void gtc_process(gtc_t gtc) {
 
     while (tc->cb.get_buf(gtc, 0, &xtask->task)) {
         // Run the task we just got
+        //static int getcount = 0;
         gtc_task_execute(gtc, &xtask->task);
+        //gtc_dprintf("executed task %d\n", ++getcount);
     }
     free(xtask);
     tc->state = STATE_TERMINATED;

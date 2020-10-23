@@ -270,6 +270,7 @@ void sdc_shrb_release(sdc_shrb_t *rb) {
     rb->nlocal -= amount;
     rb->split   = (rb->split + amount) % rb->max_size;
     rb->nrelease++;
+    gtc_lprintf(DBGSHRB, "release: local size: %d shared size: %d\n", sdc_shrb_local_size(rb), sdc_shrb_shared_size(rb));
   }
   TC_STOP_TIMER(rb->tc, release);
 }
@@ -299,6 +300,7 @@ int sdc_shrb_reacquire(sdc_shrb_t *rb) {
       if (rb->split < 0)
         rb->split += rb->max_size;
       rb->nreacquire++;
+      gtc_lprintf(DBGSHRB, "reacquire: local size: %d shared size: %d\n", sdc_shrb_local_size(rb), sdc_shrb_shared_size(rb));
     }
 
     // Assertion: sdc_shrb_local_isempty(rb) => sdc_shrb_isempty(rb)

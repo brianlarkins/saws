@@ -474,6 +474,7 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
     rb->completed[rb->cur].vtail = (rb->completed[rb->last].vtail + rb->completed[rb->last].itasks) % rb->max_size;
 
     steal_val = saws_set_stealval(rb->cur, tasks_left - amount, rb->completed[rb->cur].vtail);
+    gtc_lprintf(DBGSHRB, "reacquire: local size: %d shared size: %d\n", sdc_shrb_local_size(rb), sdc_shrb_shared_size(rb));
 
   } else {
     gtc_lprintf(DBGSHRB, "reacquire found no tasks\n", amount, tasks_left);
@@ -661,7 +662,7 @@ test:
   assert(ntasks > 0);
   if(ntasks <= 0)
     return 0;
-  gtc_lprintf(DBGSTEAL, "stealing %d tasks from (%d), starting at index %d\n", ntasks, proc, rtail + stolen);
+  gtc_lprintf(DBGSHRB, "attempting from (%d), starting at index %d\n", ntasks, proc, rtail + stolen);
 
   // determine base address of tasks to steal
   rptr = &myrb->q[0] + ((rtail + stolen) * myrb->elem_size);
@@ -676,7 +677,7 @@ test:
 
     // calculate how many tasks from thosealready stolen to the end of the queue
     int part_size = myrb->max_size - (rtail + stolen);
-    gtc_lprintf(DBGSTEAL, "nmax_size: %d  stolen: %d  part size: %d\n", myrb->max_size, rtail + stolen, part_size);
+    gtc_lprintf(DBGSHRB, "nmax_size: %d  stolen: %d  part size: %d\n", myrb->max_size, rtail + stolen, part_size);
     // steal from just after already stolen tasks
     if (part_size > 0) {
       shmem_getmem_nbi(saws_shrb_buff_elem_addr(myrb, e, 0), rptr, part_size * myrb->elem_size, proc);
@@ -688,7 +689,7 @@ test:
     else // the previous steal on this process was also a wrapping steal
     {
         void * new_start = &myrb->q[0] + (abs(part_size) * myrb->elem_size);
-        //gtc_lprintf(DBGSTEAL, "starting steal from indes %d\n", new_start);
+        //gtc_lprintf(DBGSHRB, "starting steal from indes %d\n", new_start);
 
         shmem_getmem_nbi(e, new_start, ntasks * myrb->elem_size, proc);
     }
