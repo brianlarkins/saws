@@ -474,7 +474,7 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
     rb->completed[rb->cur].vtail = (rb->completed[rb->last].vtail + rb->completed[rb->last].itasks) % rb->max_size;
 
     steal_val = saws_set_stealval(rb->cur, tasks_left - amount, rb->completed[rb->cur].vtail);
-    gtc_lprintf(DBGSHRB, "reacquire: local size: %d shared size: %d\n", sdc_shrb_local_size(rb), sdc_shrb_shared_size(rb));
+    gtc_lprintf(DBGSHRB, "reacquire: local size: %d shared size: %d\n", saws_shrb_local_size(rb), saws_shrb_shared_size(rb));
 
   } else {
     gtc_lprintf(DBGSHRB, "reacquire found no tasks\n", amount, tasks_left);
