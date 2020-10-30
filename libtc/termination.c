@@ -125,7 +125,6 @@ void td_reset(td_t *td) {
   token_reset(&td->send_token);
 
   td->num_cycles = 0;
-  td->have_voted = 0;
 
   td->parent_voted = 0;
   td->left_voted   = 0;
@@ -185,9 +184,7 @@ int td_attempt_vote(td_t *td) {
     // have we received a vote from the parent?
     if ((td->procid == 0) || (ndown > td->last_parent)) {
       if (td->nchildren == 0) {
-
         // leaf
-
         if (td->down_token.state == TERMINATED) {
           td->token.state = TERMINATED;
         } else {
@@ -195,7 +192,6 @@ int td_attempt_vote(td_t *td) {
           gtc_lprintf(DBGTD, "td_attempt_vote: restarting vote\n");
           td->send_token = td->token;
           pass_token_up(td);
-          td->have_voted = 1;
         }
       } else {
         // interior node
@@ -204,7 +200,6 @@ int td_attempt_vote(td_t *td) {
           td->token.state = TERMINATED;
         td->send_token = td->down_token; // struct copy
         pass_token_down(td);
-        td->have_voted = 0;
         td->token_direction = UP;
 
         if (td->down_token.state != TERMINATED) {
@@ -213,6 +208,7 @@ int td_attempt_vote(td_t *td) {
         }
       }
     }
+
   } else {
     // if we've received votes from left and right:
     have_votes = 0;
@@ -249,11 +245,10 @@ int td_attempt_vote(td_t *td) {
             td->upleft_token.spawned, td->upleft_token.completed,
             td->upright_token.spawned, td->upright_token.completed);
         td->send_token.state     = td->token.state;
-        td->send_token.spawned   = td->token.spawned;
-        td->send_token.completed = td->token.completed;
+        td->send_token.spawned   = spawned;
+        td->send_token.completed = completed;
         pass_token_down(td);
         td->token_direction = UP;
-        td->have_voted = 0;
 
       } else {
         // else if interior or leaf node
@@ -264,7 +259,6 @@ int td_attempt_vote(td_t *td) {
         td->send_token.completed = completed;
         pass_token_up(td);
         td->token_direction = DOWN;
-        td->have_voted = 1;
       }
 
       if (td->token.state != TERMINATED) {

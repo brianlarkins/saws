@@ -456,6 +456,8 @@ int gtc_try_steal_tail(gtc_t gtc, int target) {
 
     gtc_lprintf(DBGGET, "attempting to steal from %d\n", target);
 
+    // ZZZ clean up dead code (TRY_POP_N_TAIL not defined?)
+
 #ifdef QUEUE_TRY_POP_N_TAIL
     if (tc->qtype == GtcQueueSAWS)
         stealsize = tc->cb.try_pop_n_tail(tc->shrb, target, req_stealsize, tc->steal_buf, tc->ldbal_cfg.      steal_method);

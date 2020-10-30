@@ -209,15 +209,11 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
     tc->ct.passive_count++;
 #endif
 
-    rb_buf = malloc(tc->qsize);
-    assert(rb_buf != NULL);
-
     vs_state.last_target = tc->last_target;
 
     // Keep searching until we find work or detect termination
     while (!got_task && !tc->terminated) {
       int      max_steal_attempts, steal_attempts, steal_done;
-//      void *target_rb;
 
       tc->state = STATE_SEARCHING;
 
@@ -230,14 +226,18 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
       v = gtc_select_target(gtc, &vs_state);
 
       max_steal_attempts = tc->ldbal_cfg.max_steal_attempts_remote;
-      //target_rb = rb_buf;
 
       TC_START_TIMER(tc,poptail); // this counts as attempting to steal
       // saws_shrb_fetch_remote_trb(tc->shrb, target_rb, v);
       saws_shrb_t *target = (saws_shrb_t *)tc->shared_rb;
       uint64_t steal_val = shmem_atomic_fetch(&target->steal_val, v);
 
+      // ZZZ ?
+      // uint64_t steal_val = shmem_atomic_fetch(&tc->shared_rb->steal_val,v);
+
       TC_STOP_TIMER(tc,poptail);
+
+      // ZZZ clean this up - make look more like sciotwo code
 
       // Poll the target for work.  In between polls, maintain progress on termination detection.
       for (steal_attempts = 0, steal_done = 0;
@@ -313,7 +313,6 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
         got_task = gtc_get_local_buf(gtc, priority, buf);
     } //end whileloop for td
 
-    free(rb_buf);
   } else {
     tc->ct.getlocal++;
   }
