@@ -25,9 +25,9 @@ function makefile() {
   if [[ $n -lt 4 ]]; then
     wtime="02:00:00"
   elif [[ $n -le 8 ]]; then
-    wtime="59:00"
+    wtime="10:00"
   else
-    wtime="40:00"
+    wtime="05:00"
   fi
 
   echo "nodes: $n total tasks: $ntasks tpn: $tpn cputasks: $cputask $uenv $exe $label $sfname"

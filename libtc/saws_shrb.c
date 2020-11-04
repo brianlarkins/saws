@@ -252,15 +252,6 @@ int saws_shrb_shared_size(saws_shrb_t *rb) {
 
 int saws_shrb_public_size(saws_shrb_t *rb) {
   return saws_shrb_shared_size(rb);
-  /*
-     if (rb->vtail == rb->split) {    // Public is empty
-     return 0;
-     }
-     else if (rb->vtail < rb->split)  // No wrap-around
-     return rb->split - rb->vtail;
-     else                             // Wrap-around
-     return rb->split + rb->max_size - rb->vtail;
-     */
 }
 
 
@@ -607,7 +598,7 @@ int saws_shrb_pop_tail(saws_shrb_t *rb, int proc, void *buf) {
  *  @return      The number of tasks stolen or -1 on failure
  */
 static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, void *e, int steal_vol, int trylock) {
-
+  __gtc_marker[1] = 1;
   TC_START_TIMER(myrb->tc, poptail);
   int valid, ntasks = 0, stolen = 0;
   uint64_t steal_val, asteals, tasks_left, itasks, increment, maxsteals;
@@ -624,7 +615,7 @@ static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, 
   //     get tasks
   //     wait
   //   atomic advance tail (tail wrap or no wrap?)
-
+  shmem_quiet();
 test:
   if (myrb->targets[proc] == FullQueue)
     steal_val = shmem_atomic_fetch_add(&myrb->steal_val, increment, proc);
@@ -637,6 +628,7 @@ test:
     gtc_lprintf(DBGSHRB, "remote queue invalid PE: %d : valid: %d\n", proc, valid);
     return 0;
   }
+  __gtc_marker[1] = 2;
   maxsteals = saws_max_steals(itasks);
 
   if (asteals >= maxsteals) {
@@ -662,8 +654,8 @@ test:
   assert(ntasks > 0);
   if(ntasks <= 0)
     return 0;
-  gtc_lprintf(DBGSHRB, "attempting from (%d), starting at index %d\n", ntasks, proc, rtail + stolen);
-
+  gtc_lprintf(DBGGET, "attempting from (%d), starting at index %d\n", ntasks, proc, rtail + stolen);
+  __gtc_marker[1] = 3;
   // determine base address of tasks to steal
   rptr = &myrb->q[0] + ((rtail + stolen) * myrb->elem_size);
 
@@ -701,6 +693,7 @@ test:
   shmem_quiet(); // this is required to wait for the non-blocking shmem_getmem_nbi's
   TC_STOP_TIMER(myrb->tc, poptail);
   return ntasks;
+  __gtc_marker[1] = 0;
 }
 
 

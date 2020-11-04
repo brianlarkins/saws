@@ -45,6 +45,7 @@ static void token_reset(td_token_t *t) {
  * @param td termination detection state
  */
 static void pass_token_down(td_t *td) {
+  __gtc_marker[2] = 1;
   gtc_lprintf(DBGTD, "td: passing token down: send_token: [ %s %d %d ] last : s: %d c: %d nkids: %d l: %d r: %d\n",
       td->send_token.state == ACTIVE ? "a" : "t", td->send_token.spawned, td->send_token.completed,
       td->last_spawned, td->last_completed, td->nchildren, td->l, td->r);
@@ -56,7 +57,7 @@ static void pass_token_down(td_t *td) {
       shmem_putmem_signal_nbi(&td->down_token, &td->send_token, sizeof(td_token_t), &td->parent_voted, 1, SHMEM_SIGNAL_ADD, td->r);
   }
   shmem_quiet();
-
+  __gtc_marker[2] = 0;
   td->num_cycles++;
 }
 
@@ -67,6 +68,7 @@ static void pass_token_down(td_t *td) {
  * @param td termination detection state
  */
 static void pass_token_up(td_t *td) {
+  __gtc_marker[2] = 2;
   gtc_lprintf(DBGTD, "td: passing token up: send_token: [ %s %d %d ] last : s: %d c: %d\n",
       td->send_token.state == ACTIVE ? "a" : "t", td->send_token.spawned, td->send_token.completed,
       td->last_spawned, td->last_completed);
@@ -77,6 +79,7 @@ static void pass_token_up(td_t *td) {
       shmem_putmem_signal_nbi(&td->upright_token, &td->send_token, sizeof(td_token_t), &td->right_voted, 1, SHMEM_SIGNAL_ADD, td->p);
   }
   shmem_quiet();
+  __gtc_marker[2] = 0;
 }
 
 
@@ -158,7 +161,7 @@ void td_destroy(td_t *td) {
 int td_attempt_vote(td_t *td) {
   uint64_t nleft, nright, ndown;
   int have_votes;
-
+  __gtc_marker[2] = 4;
   // Special Case: 1 Thread
   if (td->nproc == 1) {
     if (   td->token.spawned == td->last_spawned
@@ -172,11 +175,13 @@ int td_attempt_vote(td_t *td) {
     td->last_completed = td->token.completed;
     return td->token.state == TERMINATED ? 1 : 0;
   }
-
+  __gtc_marker[3] = td->l;
   nleft  = shmem_signal_fetch(&td->left_voted);
+  __gtc_marker[3] = td->r;
   nright = shmem_signal_fetch(&td->right_voted);
   ndown  = shmem_signal_fetch(&td->parent_voted);
-
+  shmem_quiet();
+  __gtc_marker[2] = 5;
   gtc_lprintf(DBGTD, "td_attempt_vote: %s nl: %d nr: %d nd: %d\n", td->token_direction == UP ? "UP" : "DOWN", nleft, nright, ndown);
 
   // Case 1: Token is moving down the tree
@@ -271,6 +276,7 @@ int td_attempt_vote(td_t *td) {
   if (td->token.state == TERMINATED) {
     gtc_lprintf(DBGTD, "td_attempt_vote: thread detected termination\n");
   }
-
+  __gtc_marker[2] = 0;
+  __gtc_marker[3] = 0;
   return td->token.state == TERMINATED ? 1 : 0;
 }

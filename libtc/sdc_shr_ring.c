@@ -238,9 +238,11 @@ int sdc_shrb_reclaim_space(sdc_shrb_t *rb) {
 void sdc_shrb_ensure_space(sdc_shrb_t *rb, int n) {
   // Ensure that there is enough free space in the queue.  If there isn't
   // wait until others finish their deferred copies so we can reclaim space.
+  __gtc_marker[1] = 1;
   TC_START_TIMER(rb->tc, ensure);
   if (rb->max_size - (sdc_shrb_local_size(rb) + sdc_shrb_public_size(rb)) < n) {
     sdc_shrb_lock(rb, rb->procid);
+    printf("Process %d locked queue\n", _c->rank);
     {
       if (rb->max_size - sdc_shrb_size(rb) < n) {
         // Error: amount of reclaimable space is less than what we need.
@@ -255,8 +257,10 @@ void sdc_shrb_ensure_space(sdc_shrb_t *rb, int n) {
       rb->nwaited++;
     }
     sdc_shrb_unlock(rb, rb->procid);
+    printf("process %d unlocked queue\n", _c->rank);
   }
   TC_STOP_TIMER(rb->tc, ensure);
+  __gtc_marker[1] = 0;
 }
 
 
@@ -435,7 +439,7 @@ int sdc_shrb_pop_tail(sdc_shrb_t *rb, int proc, void *buf) {
 static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, void *e, int steal_vol, int trylock) {
   sdc_shrb_t trb;
   TC_START_TIMER(myrb->tc, poptail);
-
+  __gtc_marker[1] = 3;
   // Attempt to get the lock
   if (trylock) {
     if (!sdc_shrb_trylock(myrb, proc)) {
@@ -522,7 +526,7 @@ static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, vo
     sdc_shrb_unlock(myrb, proc);
   }
   TC_STOP_TIMER(myrb->tc, poptail);
-
+  __gtc_marker[1] = 0;
   return n;
 }
 

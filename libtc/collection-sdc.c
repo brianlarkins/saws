@@ -179,7 +179,7 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
 
   tc->ct.getcalls++;
   TC_START_TIMER(tc, getbuf);
-
+  __gtc_marker[0] = -1;
   // Invoke the progress engine
   gtc_progress(gtc);
 
@@ -227,9 +227,10 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
 
       TC_START_TIMER(tc,poptail); // this counts as attempting to steal
       // sdc_shrb_fetch_remote_trb(tc->shared_rb, target_rb, v);
+      __gtc_marker[0] = v;
       shmem_getmem(target_rb, tc->shared_rb, sizeof(sdc_shrb_t), v);
       TC_STOP_TIMER(tc,poptail);
-
+      __gtc_marker[0] = -2;
       // Poll the target for work.  In between polls, maintain progress on termination detection.
       for (steal_attempts = 0, steal_done = 0;
            !steal_done && !tc->terminated && steal_attempts < max_steal_attempts;
@@ -313,6 +314,7 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
     free(rb_buf);
   } else {
     tc->ct.getlocal++;
+  __gtc_marker[0] = 0;
   }
 
 #ifndef NO_SEATBELTS

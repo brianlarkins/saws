@@ -182,7 +182,6 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
   int     searching = 0;
   //uint64_t asteals, itasks;
   gtc_vs_state_t vs_state = {0, 0, 0};
-  void *rb_buf;
 
   tc->ct.getcalls++;
   TC_START_TIMER(tc, getbuf);
@@ -192,8 +191,9 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
 
   // Try to take my own work first.  We take from the head of our own queue.
   // When we steal, we take work off of the tail of the target's queue.
-  //priuntf("before get")
+  __gtc_marker[0] = -1;
   got_task = gtc_get_local_buf(gtc, priority, buf);
+  __gtc_marker[0] = -2;
   // Time dispersion.  If I had work to start this should be ~0.
   if (!tc->dispersed) TC_START_TIMER(tc, dispersion);
 
@@ -224,18 +224,8 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
 
       // Select the next target
       v = gtc_select_target(gtc, &vs_state);
-
+      __gtc_marker[0] = v;
       max_steal_attempts = tc->ldbal_cfg.max_steal_attempts_remote;
-
-      TC_START_TIMER(tc,poptail); // this counts as attempting to steal
-      // saws_shrb_fetch_remote_trb(tc->shrb, target_rb, v);
-      saws_shrb_t *target = (saws_shrb_t *)tc->shared_rb;
-      uint64_t steal_val = shmem_atomic_fetch(&target->steal_val, v);
-
-      // ZZZ ?
-      // uint64_t steal_val = shmem_atomic_fetch(&tc->shared_rb->steal_val,v);
-
-      TC_STOP_TIMER(tc,poptail);
 
       // ZZZ clean this up - make look more like sciotwo code
 
@@ -249,10 +239,6 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
           for (j = 0; j < steal_attempts*1000; j++)
             gtc_get_dw += 1.0;
         }
-	//itasks = (steal_val >> 19)  & 0x000000000007FFFF;
-	//asteals =  (steal_val >> 40)  & 0x0000000000FFFFFF;
-	//uint64_t max = max_steals(itasks);
-        if (((steal_val >> 19)  & 0x000000000007FFFF) > 0) { //  && (asteals < max)) {
           tc->state = STATE_STEALING;
 
           if (searching) {
@@ -264,12 +250,9 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
 
           // Perform a steal/try_steal
           //if (tc->ldbal_cfg.steals_can_abort){
-
-            //printf("(%d) attempting steal on proc: %d\n",_c->rank, v);
-            //steal_size = gtc_try_steal_tail(gtc, v);
-          //} else {
-            steal_size = gtc_steal_tail(gtc, v);
-          //}
+          __gtc_marker[0] = -3;
+          steal_size = gtc_steal_tail(gtc, v);
+          __gtc_marker[0] = -4;
           // Steal succeeded: Got some work from remote node
           if (steal_size > 0) {
             tc->ct.tasks_stolen += steal_size;
@@ -289,8 +272,6 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
           //  vs_state.target_retry = 1;
           }
 
-        } else /* ! (QUEUE_WORK_AVAIL(target_rb) > 0) */ {
-          tc->ct.failed_steals_unlocked++;
           steal_done = 1;
         }
 
@@ -308,7 +289,6 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
         } else {
           steal_done = 1;
         }
-      } // end for-loop
       if (gtc_tasks_avail(gtc))
         got_task = gtc_get_local_buf(gtc, priority, buf);
     } //end whileloop for td
@@ -335,6 +315,7 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
   gtc_lprintf(DBGGET, " Thread %d: gtc_get() %s\n", _c->rank, got_task? "got work":"no work");
   if (got_task) tc->state = STATE_WORKING;
   TC_STOP_TIMER(tc,getbuf);
+  __gtc_marker[0] = 0;
   return got_task;
 }
 
