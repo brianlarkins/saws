@@ -64,6 +64,17 @@ gtc_context_t *gtc_init(void) {
 
   sigaction(SIGSEGV, &sa, NULL);
   sigaction(SIGINT, &sa, NULL);
+  sigaction(SIGABRT, &sa, NULL);
+  sigaction(SIGALRM, &sa, NULL);
+  sigaction(SIGTERM, &sa, NULL);
+  sigaction(SIGINT, &sa, NULL);
+  sigaction(SIGBUS, &sa, NULL);
+
+
+
+
+
+
 
   _c->tsc_cpu_hz = gtc_tsc_calibrate();
 
@@ -84,7 +95,7 @@ void gtc_fini(void) {
 
 
 static void gtc_exit_handler(void) {
-   ;
+   printf("\n rank %d exited normally\n", _c->rank);
 }
 
 

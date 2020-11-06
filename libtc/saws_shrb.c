@@ -660,10 +660,10 @@ test:
   rptr = &myrb->q[0] + ((rtail + stolen) * myrb->elem_size);
 
   // check to see if the task block wraps around the end of the queue
+  shmem_quiet();
   if (rtail + stolen + ntasks < myrb->max_size) {
     // No wrap
     shmem_getmem_nbi(e, rptr, ntasks * myrb->elem_size, proc);
-
   } else {
     // steal wraps, use two communications
 
@@ -686,6 +686,8 @@ test:
         shmem_getmem_nbi(e, new_start, ntasks * myrb->elem_size, proc);
     }
   }
+  shmem_quiet();
+  __gtc_marker[1] = -1;
   gtc_lprintf(DBGSHRB, "sending completion to epoch %d index %d\n", valid, index);
   shmem_atomic_add(&myrb->completed[valid].status[index], ntasks, proc);
 

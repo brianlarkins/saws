@@ -118,7 +118,6 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
     } else {
         tc->steal_buf = malloc(__GTC_MAX_STEAL_SIZE*(sizeof(task_t)+max_body_size));
     }
-
     tc->qtype = qtype;
 
     tc->clod = clod_create(GTC_MAX_CLOD_CLOS);

@@ -242,7 +242,6 @@ void sdc_shrb_ensure_space(sdc_shrb_t *rb, int n) {
   TC_START_TIMER(rb->tc, ensure);
   if (rb->max_size - (sdc_shrb_local_size(rb) + sdc_shrb_public_size(rb)) < n) {
     sdc_shrb_lock(rb, rb->procid);
-    printf("Process %d locked queue\n", _c->rank);
     {
       if (rb->max_size - sdc_shrb_size(rb) < n) {
         // Error: amount of reclaimable space is less than what we need.
@@ -257,7 +256,6 @@ void sdc_shrb_ensure_space(sdc_shrb_t *rb, int n) {
       rb->nwaited++;
     }
     sdc_shrb_unlock(rb, rb->procid);
-    printf("process %d unlocked queue\n", _c->rank);
   }
   TC_STOP_TIMER(rb->tc, ensure);
   __gtc_marker[1] = 0;
