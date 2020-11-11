@@ -19,6 +19,8 @@ static long sleep_time = 0;
 static long ideal_time = 0;
 static int gtimeout = 0;
 
+static uint64_t *pp = NULL;
+
 void create_task(gtc_t gtc, task_class_t tclass, int my_id, int task_num);
 void task_fcn(gtc_t gtc, task_t *task);
 
@@ -39,6 +41,9 @@ void task_fcn(gtc_t gtc, task_t *task) {
   sleep_time += timeout;
   printf("  Task (%2d, %3d) processed by worker %d\n", t->parent_id, t->task_num, mythread);
   __gtc_marker[4]++; // completed
+  if (_c->rank == 3) {
+    shmem_signal_fetch(pp);
+  }
 }
 
 /**
@@ -69,6 +74,8 @@ int main(int argc, char **argv)
   gtc_t gtc;
   gtc_qtype_t qtype = GtcQueueSAWS;
   int num_tasks = NUM_TASKS;
+
+  setenv("SHMEM_BACKTRACE", "gdb", 1);
 
   gtc_init();
   // printf("(%d) _c->size: %d\n", _c->rank, _c->size);

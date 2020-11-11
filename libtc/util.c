@@ -141,3 +141,24 @@ int gtc_lvl_dbg_eprintf(int lvl, const char *format, ...) {
   }
   return ret;
 }
+
+
+/**
+ * gtc_sanity_check
+ */
+void gtc_sanity_check(void) {
+
+  if (_c->rank != _sanity->rank)          { gtc_dprintf("rank corrupted\n"); }
+  if (_c->size != _sanity->size)          { gtc_dprintf("size corrupted\n"); }
+  for (int i=0; i<_c->total_tcs; i++) {
+    if (_c->tcs[i] != _sanity->tcs[i])    { gtc_dprintf("tc[%d] corrupted\n", i); }
+    switch (_c->tcs[i]->qtype) {
+      case GtcQueueSDC:
+        //gtc_sdc_sanity(_c->tcs[i], _sanity->tcs[i]);
+        break;
+      case GtcQueueSAWS:
+        //gtc_saws_sanity(_c->tcs[i], _sanity->tcs[i]);
+        break;
+    }
+  }
+}

@@ -23,6 +23,7 @@ int __gtc_marker[5] = { 0, 0, 0, 0, 0};
 static void gtc_exit_handler(void);
 
 gtc_context_t *_c;
+gtc_context_t *_sanity;
 int gtc_is_initialized = 0;
 
 
@@ -70,13 +71,9 @@ gtc_context_t *gtc_init(void) {
   sigaction(SIGINT, &sa, NULL);
   sigaction(SIGBUS, &sa, NULL);
 
-
-
-
-
-
-
   _c->tsc_cpu_hz = gtc_tsc_calibrate();
+
+  _sanity = _c;
 
   return _c;
 }
@@ -116,6 +113,7 @@ void gtc_bthandler(int sig, siginfo_t *si, void *vctx) {
   size = backtrace(a, 100);
   printf("rank: %d pid : %d signal: %d marker: %d %d %d %d %d\n", _c->rank, getpid(), sig,
       __gtc_marker[0], __gtc_marker[1], __gtc_marker[2], __gtc_marker[3], __gtc_marker[4]);
+  printf("func: %s  file %s:%d\n", _sanity->curfun, _sanity->curfile, _sanity->curline);
   fflush(stdout);
 
   //backtrace_symbols_fd(a,size, STDERR_FILENO);

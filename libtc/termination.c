@@ -27,15 +27,19 @@ static void pass_token_down(td_t *td);
   * @param[in] count2 New value for counter 2.
   */
 void td_set_counters(td_t *td, int count1, int count2) {
+  GTC_ENTRY();
   td->token.spawned = count1;
   td->token.completed = count2;
+  GTC_EXIT();
 }
 
 
 static void token_reset(td_token_t *t) {
+  GTC_ENTRY();
   t->state    = ACTIVE;
   t->spawned = 0;
   t->completed = 0;
+  GTC_EXIT();
 }
 
 /** Communication Functions -- Move the token up and down the tree **/
@@ -45,6 +49,7 @@ static void token_reset(td_token_t *t) {
  * @param td termination detection state
  */
 static void pass_token_down(td_t *td) {
+  GTC_ENTRY();
   __gtc_marker[2] = 1;
   gtc_lprintf(DBGTD, "td: passing token down: send_token: [ %s %d %d ] last : s: %d c: %d nkids: %d l: %d r: %d\n",
       td->send_token.state == ACTIVE ? "a" : "t", td->send_token.spawned, td->send_token.completed,
@@ -59,6 +64,7 @@ static void pass_token_down(td_t *td) {
   shmem_quiet();
   __gtc_marker[2] = 0;
   td->num_cycles++;
+  GTC_EXIT();
 }
 
 
@@ -68,6 +74,7 @@ static void pass_token_down(td_t *td) {
  * @param td termination detection state
  */
 static void pass_token_up(td_t *td) {
+  GTC_ENTRY();
   __gtc_marker[2] = 2;
   gtc_lprintf(DBGTD, "td: passing token up: send_token: [ %s %d %d ] last : s: %d c: %d\n",
       td->send_token.state == ACTIVE ? "a" : "t", td->send_token.spawned, td->send_token.completed,
@@ -80,6 +87,7 @@ static void pass_token_up(td_t *td) {
   }
   shmem_quiet();
   __gtc_marker[2] = 0;
+  GTC_EXIT();
 }
 
 
@@ -89,6 +97,7 @@ static void pass_token_up(td_t *td) {
   * @return         Termination detection context.
   */
 td_t *td_create() {
+  GTC_ENTRY();
   td_t *td = shmem_malloc(sizeof(td_t));
 
   assert(td != NULL);
@@ -109,7 +118,7 @@ td_t *td_create() {
   gtc_lprintf(DBGTD,"TD Created (%d of %d): parent=%d, left_child=%d, right_child=%d, direction=%s\n",
       td->procid, td->nproc, td->p, td->l, td->r, td->token_direction == UP ? "UP" : "DOWN");
 
-  return td;
+  GTC_EXIT(td);
 }
 
 
@@ -119,6 +128,7 @@ td_t *td_create() {
   * @param[in] td Termination detection context.
   */
 void td_reset(td_t *td) {
+  GTC_ENTRY();
   shmem_barrier_all();
 
   token_reset(&td->token);
@@ -127,7 +137,8 @@ void td_reset(td_t *td) {
   token_reset(&td->down_token);
   token_reset(&td->send_token);
 
-  td->num_cycles = 0;
+  td->num_cycles   = 0;
+  td->num_attempts = 0;
 
   td->parent_voted = 0;
   td->left_voted   = 0;
@@ -139,6 +150,7 @@ void td_reset(td_t *td) {
   td->token_direction = UP;
 
   shmem_barrier_all();
+  GTC_EXIT();
 }
 
 
@@ -148,8 +160,10 @@ void td_reset(td_t *td) {
   * @param[in] td Termination detection context.
   */
 void td_destroy(td_t *td) {
+  GTC_ENTRY();
   gtc_lprintf(DBGTD, "Destroying TD (%d of %d)\n", td->procid, td->nproc);
   shmem_free(td);
+  GTC_EXIT();
 }
 
 
@@ -159,6 +173,7 @@ void td_destroy(td_t *td) {
   * @return       Non-zero upon termination, zero othersize.
   */
 int td_attempt_vote(td_t *td) {
+  GTC_ENTRY();
   uint64_t nleft, nright, ndown;
   int have_votes;
   __gtc_marker[2] = 4;
@@ -238,6 +253,8 @@ int td_attempt_vote(td_t *td) {
       // if root
       if (td->procid == 0) {
 
+        td->num_attempts++; // track termination attempts
+
         if (((spawned == td->last_spawned) && (completed == td->last_completed)) &&
               (spawned == completed))
           td->token.state = TERMINATED;
@@ -278,5 +295,5 @@ int td_attempt_vote(td_t *td) {
   }
   __gtc_marker[2] = 0;
   __gtc_marker[3] = 0;
-  return td->token.state == TERMINATED ? 1 : 0;
+  GTC_EXIT(td->token.state == TERMINATED ? 1 : 0);
 }
