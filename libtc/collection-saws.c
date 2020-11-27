@@ -26,6 +26,7 @@
  * @return                 Portable task collection handle.
  */
 gtc_t gtc_create_saws(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg_t *cfg) {
+  GTC_ENTRY();
   tc_t  *tc;
 
   UNUSED(max_body_size);
@@ -60,7 +61,7 @@ gtc_t gtc_create_saws(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg
 
   shmem_barrier_all();
 
-  return gtc;
+  GTC_EXIT(gtc);
 }
 
 
@@ -69,10 +70,12 @@ gtc_t gtc_create_saws(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg
  * Destroy task collection.  Collective call.
  */
 void gtc_destroy_saws(gtc_t gtc) {
+  GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
 
   saws_shrb_destroy(tc->shared_rb);
   //shrb_destroy(tc->inbox);
+  GTC_EXIT();
 }
 
 
@@ -82,9 +85,11 @@ void gtc_destroy_saws(gtc_t gtc) {
  * Collective call.
  */
 void gtc_reset_saws(gtc_t gtc) {
+  GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
   saws_shrb_reset(tc->shared_rb);
   //shrb_reset(tc->inbox);
+  GTC_EXIT();
 }
 
 
@@ -93,7 +98,8 @@ void gtc_reset_saws(gtc_t gtc) {
  * String that gives the name of this queue
  */
 char *gtc_queue_name_saws() {
-  return "SAWS Atomic";
+  GTC_ENTRY();
+  GTC_EXIT("SAWS Atomic");
 }
 
 
@@ -102,6 +108,7 @@ char *gtc_queue_name_saws() {
  *  make progress on communication.
  */
 void gtc_progress_saws(gtc_t gtc) {
+  GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
   static int cc = 0;
   TC_START_TIMER(tc,progress);
@@ -132,6 +139,7 @@ void gtc_progress_saws(gtc_t gtc) {
     saws_shrb_reclaim_space(tc->shared_rb);
   ((saws_shrb_t *)tc->shared_rb)->nprogress++;
   TC_STOP_TIMER(tc,progress);
+  GTC_EXIT();
 }
 
 
@@ -141,10 +149,11 @@ void gtc_progress_saws(gtc_t gtc) {
  * approximate number since we're not locking the data structures.
  */
 int gtc_tasks_avail_saws(gtc_t gtc) {
+  GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
 
   //return saws_shrb_size(tc->shrb) + shrb_size(tc->inbox);
-  return saws_shrb_size(tc->shared_rb);
+  GTC_EXIT(saws_shrb_size(tc->shared_rb));
 }
 
 
@@ -175,14 +184,14 @@ double gtc_get_dw = 0.0;
 
 
 int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
-    tc_t   *tc = gtc_lookup(gtc);
+  GTC_ENTRY();
+  tc_t   *tc = gtc_lookup(gtc);
   int     got_task = 0;
   int     v, steal_size;
   int     passive = 0;
   int     searching = 0;
   //uint64_t asteals, itasks;
   gtc_vs_state_t vs_state = {0, 0, 0};
-  void *rb_buf;
 
   tc->ct.getcalls++;
   TC_START_TIMER(tc, getbuf);
@@ -192,8 +201,9 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
 
   // Try to take my own work first.  We take from the head of our own queue.
   // When we steal, we take work off of the tail of the target's queue.
-  //priuntf("before get")
+  __gtc_marker[0] = -1;
   got_task = gtc_get_local_buf(gtc, priority, buf);
+  __gtc_marker[0] = -2;
   // Time dispersion.  If I had work to start this should be ~0.
   if (!tc->dispersed) TC_START_TIMER(tc, dispersion);
 
@@ -209,15 +219,11 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
     tc->ct.passive_count++;
 #endif
 
-    rb_buf = malloc(tc->qsize);
-    assert(rb_buf != NULL);
-
     vs_state.last_target = tc->last_target;
 
     // Keep searching until we find work or detect termination
     while (!got_task && !tc->terminated) {
       int      max_steal_attempts, steal_attempts, steal_done;
-//      void *target_rb;
 
       tc->state = STATE_SEARCHING;
 
@@ -228,16 +234,10 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
 
       // Select the next target
       v = gtc_select_target(gtc, &vs_state);
-
+      __gtc_marker[0] = v;
       max_steal_attempts = tc->ldbal_cfg.max_steal_attempts_remote;
-      //target_rb = rb_buf;
 
-      TC_START_TIMER(tc,poptail); // this counts as attempting to steal
-      // saws_shrb_fetch_remote_trb(tc->shrb, target_rb, v);
-      saws_shrb_t *target = (saws_shrb_t *)tc->shared_rb;
-      uint64_t steal_val = shmem_atomic_fetch(&target->steal_val, v);
-
-      TC_STOP_TIMER(tc,poptail);
+      // ZZZ clean this up - make look more like sciotwo code
 
       // Poll the target for work.  In between polls, maintain progress on termination detection.
       for (steal_attempts = 0, steal_done = 0;
@@ -249,10 +249,6 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
           for (j = 0; j < steal_attempts*1000; j++)
             gtc_get_dw += 1.0;
         }
-	//itasks = (steal_val >> 19)  & 0x000000000007FFFF;
-	//asteals =  (steal_val >> 40)  & 0x0000000000FFFFFF;
-	//uint64_t max = max_steals(itasks);
-        if (((steal_val >> 19)  & 0x000000000007FFFF) > 0) { //  && (asteals < max)) {
           tc->state = STATE_STEALING;
 
           if (searching) {
@@ -264,12 +260,9 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
 
           // Perform a steal/try_steal
           //if (tc->ldbal_cfg.steals_can_abort){
-
-            //printf("(%d) attempting steal on proc: %d\n",_c->rank, v);
-            //steal_size = gtc_try_steal_tail(gtc, v);
-          //} else {
-            steal_size = gtc_steal_tail(gtc, v);
-          //}
+          __gtc_marker[0] = -3;
+          steal_size = gtc_steal_tail(gtc, v);
+          __gtc_marker[0] = -4;
           // Steal succeeded: Got some work from remote node
           if (steal_size > 0) {
             tc->ct.tasks_stolen += steal_size;
@@ -289,8 +282,6 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
           //  vs_state.target_retry = 1;
           }
 
-        } else /* ! (QUEUE_WORK_AVAIL(target_rb) > 0) */ {
-          tc->ct.failed_steals_unlocked++;
           steal_done = 1;
         }
 
@@ -308,12 +299,10 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
         } else {
           steal_done = 1;
         }
-      } // end for-loop
       if (gtc_tasks_avail(gtc))
         got_task = gtc_get_local_buf(gtc, priority, buf);
     } //end whileloop for td
 
-    free(rb_buf);
   } else {
     tc->ct.getlocal++;
   }
@@ -336,7 +325,8 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
   gtc_lprintf(DBGGET, " Thread %d: gtc_get() %s\n", _c->rank, got_task? "got work":"no work");
   if (got_task) tc->state = STATE_WORKING;
   TC_STOP_TIMER(tc,getbuf);
-  return got_task;
+  __gtc_marker[0] = 0;
+  GTC_EXIT(got_task);
 }
 
 
@@ -357,6 +347,7 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
  * @return 0 on success.
  */
 int gtc_add_saws(gtc_t gtc, task_t *task, int proc) {
+  GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
 
   assert(gtc_task_body_size(task) <= tc->max_body_size);
@@ -381,7 +372,7 @@ int gtc_add_saws(gtc_t gtc, task_t *task, int proc) {
 
   ++tc->ct.tasks_spawned;
   TC_STOP_TIMER(tc,add);
-  return 0;
+  GTC_EXIT(0);
 }
 
 
@@ -396,6 +387,7 @@ int gtc_add_saws(gtc_t gtc, task_t *task, int proc) {
  * @param tclass Desired task class
  */
 task_t *gtc_task_inplace_create_and_add_saws(gtc_t gtc, task_class_t tclass) {
+  GTC_ENTRY();
   tc_t   *tc = gtc_lookup(gtc);
   task_t *t;
   TC_START_TIMER(tc,addinplace);
@@ -413,7 +405,7 @@ task_t *gtc_task_inplace_create_and_add_saws(gtc_t gtc, task_class_t tclass) {
 
   TC_STOP_TIMER(tc,addinplace);
 
-  return t;
+  GTC_EXIT(t);
 }
 
 
@@ -425,6 +417,7 @@ task_t *gtc_task_inplace_create_and_add_saws(gtc_t gtc, task_class_t tclass) {
  * @param task   The pointer that was returned by inplace_create_and_add()
  */
 void gtc_task_inplace_create_and_add_finish_saws(gtc_t gtc, task_t *t) {
+  GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
   // TODO: Maintain a counter of how many are outstanding to avoid corruption at the
   // head of the queue
@@ -433,6 +426,7 @@ void gtc_task_inplace_create_and_add_finish_saws(gtc_t gtc, task_t *t) {
   // Can't release until the inplace op completes
   gtc_progress_saws(gtc);
   TC_STOP_TIMER(tc,addfinish);
+  GTC_EXIT();
 }
 
 
@@ -441,6 +435,7 @@ void gtc_task_inplace_create_and_add_finish_saws(gtc_t gtc, task_t *t) {
  * @param tc       IN Ptr to task collection
  */
 void gtc_print_stats_saws(gtc_t gtc) {
+  GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
   saws_shrb_t *rb = tc->shared_rb;
 
@@ -489,6 +484,7 @@ void gtc_print_stats_saws(gtc_t gtc) {
         TC_READ_TIMER_M(tc,pushhead), (uint64_t)0,
         TC_READ_TIMER_M(tc,poptail), perpoptail, rb->ngets);
   }
+  GTC_EXIT();
 }
 
 
@@ -498,6 +494,7 @@ void gtc_print_stats_saws(gtc_t gtc) {
  * @param tc       IN Ptr to task collection
  */
 void gtc_print_gstats_saws(gtc_t gtc) {
+  GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
   saws_shrb_t *rb = (saws_shrb_t *)tc->shared_rb;
   double   *times, *mintimes, *maxtimes, *sumtimes;
@@ -616,6 +613,7 @@ void gtc_print_gstats_saws(gtc_t gtc) {
   shmem_free(mincounts);
   shmem_free(maxcounts);
   shmem_free(sumcounts);
+  GTC_EXIT();
 }
 
 
@@ -625,6 +623,7 @@ void gtc_print_gstats_saws(gtc_t gtc) {
  * simulating failure.
  */
 void gtc_queue_reset_saws(gtc_t gtc) {
+  GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
 
   // Clear out the ring buffer
@@ -638,4 +637,5 @@ void gtc_queue_reset_saws(gtc_t gtc) {
   shrb_reset(tc->inbox);
   shrb_unlock(tc->inbox, _c->rank);
 #endif /* no task pushing */
+  GTC_EXIT();
 }

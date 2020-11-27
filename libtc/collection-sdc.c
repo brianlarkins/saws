@@ -28,6 +28,7 @@
  * @return                 Portable task collection handle.
  */
 gtc_t gtc_create_sdc(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg_t *cfg) {
+  GTC_ENTRY();
   tc_t  *tc;
 
   UNUSED(max_body_size);
@@ -63,7 +64,7 @@ gtc_t gtc_create_sdc(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg_
 
   shmem_barrier_all();
 
-  return gtc;
+  GTC_EXIT(gtc);
 }
 
 
@@ -72,10 +73,12 @@ gtc_t gtc_create_sdc(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg_
  * Destroy task collection.  Collective call.
  */
 void gtc_destroy_sdc(gtc_t gtc) {
+  GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
 
   sdc_shrb_destroy(tc->shared_rb);
   //shrb_destroy(tc->inbox);
+  GTC_EXIT();
 }
 
 
@@ -85,9 +88,11 @@ void gtc_destroy_sdc(gtc_t gtc) {
  * Collective call.
  */
 void gtc_reset_sdc(gtc_t gtc) {
+  GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
   sdc_shrb_reset(tc->shared_rb);
   //shrb_reset(tc->inbox);
+  GTC_EXIT();
 }
 
 
@@ -96,10 +101,11 @@ void gtc_reset_sdc(gtc_t gtc) {
  * String that gives the name of this queue
  */
 char *gtc_queue_name_sdc() {
+  GTC_ENTRY();
 #ifdef SDC_NODC
-  return "Split (NODC)";
+  GTC_EXIT("Split (NODC)");
 #else
-  return "Split Deferred-Copy";
+  GTC_EXIT("Split Deferred-Copy");
 #endif
 }
 
@@ -109,6 +115,7 @@ char *gtc_queue_name_sdc() {
  *  make progress on communication.
  */
 void gtc_progress_sdc(gtc_t gtc) {
+  GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
   //TC_START_TIMER(tc, t[0]);
   TC_START_TIMER(tc,progress);
@@ -138,6 +145,7 @@ void gtc_progress_sdc(gtc_t gtc) {
   ((sdc_shrb_t *)tc->shared_rb)->nprogress++;
   //TC_STOP_TIMER(tc,t[0]);
   TC_STOP_TIMER(tc,progress);
+  GTC_EXIT();
 }
 
 
@@ -147,10 +155,11 @@ void gtc_progress_sdc(gtc_t gtc) {
  * approximate number since we're not locking the data structures.
  */
 int gtc_tasks_avail_sdc(gtc_t gtc) {
+  GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
 
   //return sdc_shrb_size(tc->shared_rb) + shrb_size(tc->inbox);
-  return sdc_shrb_size(tc->shared_rb);
+  GTC_EXIT(sdc_shrb_size(tc->shared_rb));
 }
 
 
@@ -169,6 +178,7 @@ int gtc_tasks_avail_sdc(gtc_t gtc) {
 double gtc_get_dummy_work = 0.0;
 
 int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
+  GTC_ENTRY();
   tc_t   *tc = gtc_lookup(gtc);
   int     got_task = 0;
   int     v, steal_size;
@@ -179,7 +189,7 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
 
   tc->ct.getcalls++;
   TC_START_TIMER(tc, getbuf);
-
+  __gtc_marker[0] = -1;
   // Invoke the progress engine
   gtc_progress(gtc);
 
@@ -227,9 +237,10 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
 
       TC_START_TIMER(tc,poptail); // this counts as attempting to steal
       // sdc_shrb_fetch_remote_trb(tc->shared_rb, target_rb, v);
+      __gtc_marker[0] = v;
       shmem_getmem(target_rb, tc->shared_rb, sizeof(sdc_shrb_t), v);
       TC_STOP_TIMER(tc,poptail);
-
+      __gtc_marker[0] = -2;
       // Poll the target for work.  In between polls, maintain progress on termination detection.
       for (steal_attempts = 0, steal_done = 0;
            !steal_done && !tc->terminated && steal_attempts < max_steal_attempts;
@@ -313,6 +324,7 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
     free(rb_buf);
   } else {
     tc->ct.getlocal++;
+  __gtc_marker[0] = 0;
   }
 
 #ifndef NO_SEATBELTS
@@ -333,7 +345,7 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
   gtc_lprintf(DBGGET, " Thread %d: gtc_get() %s\n", _c->rank, got_task? "got work":"no work");
   if (got_task) tc->state = STATE_WORKING;
   TC_STOP_TIMER(tc,getbuf);
-  return got_task;
+  GTC_EXIT(got_task);
 }
 
 
@@ -354,6 +366,7 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
  * @return 0 on success.
  */
 int gtc_add_sdc(gtc_t gtc, task_t *task, int proc) {
+  GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
 
   assert(gtc_task_body_size(task) <= tc->max_body_size);
@@ -379,7 +392,7 @@ int gtc_add_sdc(gtc_t gtc, task_t *task, int proc) {
   ++tc->ct.tasks_spawned;
   TC_STOP_TIMER(tc,add);
 
-  return 0;
+  GTC_EXIT(0);
 }
 
 
@@ -394,6 +407,7 @@ int gtc_add_sdc(gtc_t gtc, task_t *task, int proc) {
  * @param tclass Desired task class
  */
 task_t *gtc_task_inplace_create_and_add_sdc(gtc_t gtc, task_class_t tclass) {
+  GTC_ENTRY();
   tc_t   *tc = gtc_lookup(gtc);
   task_t *t;
   TC_START_TIMER(tc,addinplace);
@@ -411,7 +425,7 @@ task_t *gtc_task_inplace_create_and_add_sdc(gtc_t gtc, task_class_t tclass) {
 
   TC_STOP_TIMER(tc,addinplace);
 
-  return t;
+  GTC_EXIT(t);
 }
 
 
@@ -423,6 +437,7 @@ task_t *gtc_task_inplace_create_and_add_sdc(gtc_t gtc, task_class_t tclass) {
  * @param task   The pointer that was returned by inplace_create_and_add()
  */
 void gtc_task_inplace_create_and_add_finish_sdc(gtc_t gtc, task_t *t) {
+  GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
   UNUSED(t);
   // TODO: Maintain a counter of how many are outstanding to avoid corruption at the
@@ -432,6 +447,7 @@ void gtc_task_inplace_create_and_add_finish_sdc(gtc_t gtc, task_t *t) {
   // Can't release until the inplace op completes
   gtc_progress_sdc(gtc);
   TC_STOP_TIMER(tc,addfinish);
+  GTC_EXIT();
 }
 
 
@@ -440,6 +456,7 @@ void gtc_task_inplace_create_and_add_finish_sdc(gtc_t gtc, task_t *t) {
  * @param tc       IN Ptr to task collection
  */
 void gtc_print_stats_sdc(gtc_t gtc) {
+  GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
   sdc_shrb_t *rb = (sdc_shrb_t *)tc->shared_rb;
 
@@ -488,6 +505,7 @@ void gtc_print_stats_sdc(gtc_t gtc) {
         TC_READ_TIMER_M(tc,pushhead), (uint64_t)0,
         TC_READ_TIMER_M(tc,poptail), perpoptail, rb->ngets);
   }
+  GTC_EXIT();
 }
 
 
@@ -497,6 +515,7 @@ void gtc_print_stats_sdc(gtc_t gtc) {
  * @param tc       IN Ptr to task collection
  */
 void gtc_print_gstats_sdc(gtc_t gtc) {
+  GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
   sdc_shrb_t *rb = (sdc_shrb_t *)tc->shared_rb;
   double   *times, *mintimes, *maxtimes, *sumtimes;
@@ -615,6 +634,7 @@ void gtc_print_gstats_sdc(gtc_t gtc) {
   shmem_free(mincounts);
   shmem_free(maxcounts);
   shmem_free(sumcounts);
+  GTC_EXIT();
 }
 
 
@@ -624,6 +644,7 @@ void gtc_print_gstats_sdc(gtc_t gtc) {
  * simulating failure.
  */
 void gtc_queue_reset_sdc(gtc_t gtc) {
+  GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
 
   // Clear out the ring buffer
@@ -637,4 +658,5 @@ void gtc_queue_reset_sdc(gtc_t gtc) {
   shrb_reset(tc->inbox);
   shrb_unlock(tc->inbox, _c->rank);
 #endif /* no task pushing */
+  GTC_EXIT();
 }

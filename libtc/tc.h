@@ -50,6 +50,7 @@ extern "C" {
 #define GTC_MAX_COLLECTIONS      2
 #define GTC_MAX_CHUNKS       10000
 #define GTC_MAX_CLOD_CLOS      100
+#define GTC_MAX_FNAMELEN      1024
 
 #define GTC_USE_INTERNAL_TIMERS
 #define GTC_USE_TSC_TIMERS
@@ -85,10 +86,33 @@ extern "C" {
   #define gtc_dprintf(...) gtc_dbg_printf(__VA_ARGS__)
   #define gtc_lprintf(lvl, ...) gtc_lvl_dbg_printf(lvl, __VA_ARGS__)
   #define gtc_eprintf(lvl, ...) gtc_lvl_dbg_eprintf(lvl, __VA_ARGS__)
+  
+  #define GTC_ENTRY(...)  do {\
+                             strncpy(_sanity->curfun, __func__, GTC_MAX_FNAMELEN);\
+                             strncpy(_sanity->curfile, __FILE__, GTC_MAX_FNAMELEN);\
+                             _sanity->curline =  __LINE__;\
+                          } while(0)
+
+  #define GTC_EXIT(ret)  do {\
+                             strncpy(_sanity->curfun, "non-saws", GTC_MAX_FNAMELEN);\
+                             strncpy(_sanity->curfile, "non-saws", GTC_MAX_FNAMELEN);\
+                             _sanity->curline = 0;\
+                             return ret;\
+                         } while(0)
+
+  #define GTC_CHECKPOINT(...) do {\
+                                 strncpy(_sanity->curfile, __FILE__, GTC_MAX_FNAMELEN);\
+                                 _sanity->curline = __LINE__;\
+                              } while(0)
+
 #else
   #define gtc_dprintf(...) while (0) {};
   #define gtc_lprintf(...) while (0) {};
   #define gtc_eprintf(...) while (0) {};
+
+  #define GTC_ENTRY(...)   
+  #define GTC_EXIT(ret)        return ret
+  #define GTC_CHECKPOINT(...)
 #endif
 
 #ifndef offsetof
@@ -318,6 +342,9 @@ struct gtc_context_s {
   int                 quiet;
   int                 size;
   int                 rank;
+  char                curfun[GTC_MAX_FNAMELEN];
+  char                curfile[GTC_MAX_FNAMELEN];
+  int                 curline;
 };
 typedef struct gtc_context_s gtc_context_t;
 
@@ -331,6 +358,7 @@ typedef enum gtc_status_e gtc_status_t;
 
 // Global variables
 extern gtc_context_t *_c;
+extern gtc_context_t *_sanity;
 extern int gtc_is_initialized;
 extern char *target_methods[2];
 extern char *steal_methods[3];
@@ -405,12 +433,7 @@ int                gtc_dbg_printf(const char *format, ...);
 int                gtc_lvl_dbg_printf(int lvl, const char *format, ...);
 int                gtc_lvl_dbg_eprintf(int lvl, const char *format, ...);
 double             gtc_tsc_calibrate(void);
-void               gtc_get_mmad(double *counter, double *tot, double *min, double *max, double *avg);
-void               gtc_get_mmau(tc_counter_t *counter, tc_counter_t *tot, tc_counter_t *min, tc_counter_t *max, double *avg);
-void               gtc_get_mmal(long *counter, long *tot, long *min, long *max, double *avg);
-char              *gtc_print_mmad(char *buf, char *unit, double stat, int total);
-char              *gtc_print_mmau(char *buf, char *unit, tc_counter_t stat, int total);
-char              *gtc_print_mmal(char *buf, char *unit, long stat, int total);
+void               gtc_sanity_check(void);
 
 // collection-sdc.c
 gtc_t   gtc_create_sdc(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg_t *ldbal_cfg);
@@ -426,6 +449,7 @@ void    gtc_task_inplace_create_and_add_finish_sdc(gtc_t gtc, task_t *t);
 void    gtc_print_stats_sdc(gtc_t gtc);
 void    gtc_print_gstats_sdc(gtc_t gtc);
 void    gtc_queue_reset_sdc(gtc_t gtc);
+void    gtc_sdc_sanity(tc_t *tc, tc_t *sanity);
 
 // collection-saws.c
 gtc_t   gtc_create_saws(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg_t *cfg);
@@ -444,6 +468,7 @@ void    gtc_task_inplace_create_and_add_finish_saws(gtc_t gtc, task_t *);
 void    gtc_print_stats_saws(gtc_t gtc);
 void    gtc_print_gstats_saws(gtc_t gtc);
 void    gtc_queue_reset_saws(gtc_t gtc);
+void    gtc_saws_sanity(tc_t *tc, tc_t *sanity);
 
 
 // tc-clod.c - common local object routines

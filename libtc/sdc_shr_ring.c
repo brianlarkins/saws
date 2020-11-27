@@ -63,6 +63,7 @@
 
 
 sdc_shrb_t *sdc_shrb_create(int elem_size, int max_size, tc_t *tc) {
+  GTC_ENTRY();
   sdc_shrb_t  *rb;
   int procid, nproc;
 
@@ -89,11 +90,12 @@ sdc_shrb_t *sdc_shrb_create(int elem_size, int max_size, tc_t *tc) {
 
   shmem_barrier_all();
 
-  return rb;
+  GTC_EXIT(rb);
 }
 
 
 void sdc_shrb_reset(sdc_shrb_t *rb) {
+  GTC_ENTRY();
   // Reset state to empty
   rb->nlocal = 0;
   rb->tail   = 0;
@@ -108,14 +110,18 @@ void sdc_shrb_reset(sdc_shrb_t *rb) {
   rb->nreacquire = 0;
   rb->nwaited    = 0;
   rb->nreclaimed = 0;
+  GTC_EXIT();
 }
 
 
 void sdc_shrb_destroy(sdc_shrb_t *rb) {
+  GTC_ENTRY();
   shmem_free(rb);
+  GTC_EXIT();
 }
 
 void sdc_shrb_print(sdc_shrb_t *rb) {
+  GTC_ENTRY();
   printf("rb: %p {\n", rb);
   printf("   procid  = %d\n", rb->procid);
   printf("   nproc  = %d\n", rb->nproc);
@@ -132,6 +138,7 @@ void sdc_shrb_print(sdc_shrb_t *rb) {
   printf("   public_size= %d\n", sdc_shrb_public_size(rb));
   printf("   size       = %d\n", sdc_shrb_size(rb));
   printf("}\n");
+  GTC_EXIT();
 }
 
 /*==================== STATE QUERIES ====================*/
@@ -212,6 +219,7 @@ void sdc_shrb_unlock(sdc_shrb_t *rb, int proc) {
 
 
 int sdc_shrb_reclaim_space(sdc_shrb_t *rb) {
+  GTC_ENTRY();
   int reclaimed = 0;
   int vtail = rb->vtail;
   int itail = rb->itail; // Capture these values since we are doing this
@@ -230,14 +238,16 @@ int sdc_shrb_reclaim_space(sdc_shrb_t *rb) {
 
   rb->nreccalls++;
   TC_STOP_TIMER(rb->tc, reclaim);
-  return reclaimed;
+  GTC_EXIT(reclaimed);
 }
 
 
 
 void sdc_shrb_ensure_space(sdc_shrb_t *rb, int n) {
+  GTC_ENTRY();
   // Ensure that there is enough free space in the queue.  If there isn't
   // wait until others finish their deferred copies so we can reclaim space.
+  __gtc_marker[1] = 1;
   TC_START_TIMER(rb->tc, ensure);
   if (rb->max_size - (sdc_shrb_local_size(rb) + sdc_shrb_public_size(rb)) < n) {
     sdc_shrb_lock(rb, rb->procid);
@@ -257,11 +267,14 @@ void sdc_shrb_ensure_space(sdc_shrb_t *rb, int n) {
     sdc_shrb_unlock(rb, rb->procid);
   }
   TC_STOP_TIMER(rb->tc, ensure);
+  __gtc_marker[1] = 0;
+  GTC_EXIT();
 }
 
 
 
 void sdc_shrb_release(sdc_shrb_t *rb) {
+  GTC_ENTRY();
   // Favor placing work in the shared portion -- if there is only one task
   // available this scheme will put it in the shared portion.
   TC_START_TIMER(rb->tc, release);
@@ -273,18 +286,22 @@ void sdc_shrb_release(sdc_shrb_t *rb) {
     gtc_lprintf(DBGSHRB, "release: local size: %d shared size: %d\n", sdc_shrb_local_size(rb), sdc_shrb_shared_size(rb));
   }
   TC_STOP_TIMER(rb->tc, release);
+  GTC_EXIT();
 }
 
 
 void sdc_shrb_release_all(sdc_shrb_t *rb) {
+  GTC_ENTRY();
   int amount  = sdc_shrb_local_size(rb);
   rb->nlocal -= amount;
   rb->split   = (rb->split + amount) % rb->max_size;
   rb->nrelease++;
+  GTC_EXIT();
 }
 
 
 int sdc_shrb_reacquire(sdc_shrb_t *rb) {
+  GTC_ENTRY();
   int amount = 0;
 
   TC_START_TIMER(rb->tc, reacquire);
@@ -309,7 +326,7 @@ int sdc_shrb_reacquire(sdc_shrb_t *rb) {
   sdc_shrb_unlock(rb, rb->procid);
   TC_STOP_TIMER(rb->tc, reacquire);
 
-  return amount;
+  GTC_EXIT(amount);
 }
 
 
@@ -347,6 +364,7 @@ static inline void sdc_shrb_push_n_head_impl(sdc_shrb_t *rb, int proc, void *e, 
 }
 
 void sdc_shrb_push_head(sdc_shrb_t *rb, int proc, void *e, int size) {
+  GTC_ENTRY();
   // sdc_shrb_push_n_head_impl(rb, proc, e, 1, size);
   int old_head;
 
@@ -363,27 +381,32 @@ void sdc_shrb_push_head(sdc_shrb_t *rb, int proc, void *e, int size) {
   memcpy(sdc_shrb_elem_addr(rb, proc, (old_head+1)%rb->max_size), e, size);
 
   // printf("(%d) pushed head\n", rb->procid);
+  GTC_EXIT();
 }
 
 void sdc_shrb_push_n_head(void *b, int proc, void *e, int n) {
+  GTC_ENTRY();
   sdc_shrb_t *rb = (sdc_shrb_t *)b;
   sdc_shrb_push_n_head_impl(rb, proc, e, n, rb->elem_size);
+  GTC_EXIT();
 }
 
 
 void *sdc_shrb_alloc_head(sdc_shrb_t *rb) {
+  GTC_ENTRY();
   // Make sure there is enough space for 1 element
   sdc_shrb_ensure_space(rb, 1);
 
   rb->nlocal += 1;
 
-  return sdc_shrb_elem_addr(rb, rb->procid, sdc_shrb_head(rb));
+  GTC_EXIT(sdc_shrb_elem_addr(rb, rb->procid, sdc_shrb_head(rb)));
 }
 
 /*==================== POP OPERATIONS ====================*/
 
 
 int sdc_shrb_pop_head(void *b, int proc, void *buf) {
+  GTC_ENTRY();
   sdc_shrb_t *rb = (sdc_shrb_t *)b;
   int   old_head;
   int   buf_valid = 0;
@@ -408,12 +431,13 @@ int sdc_shrb_pop_head(void *b, int proc, void *buf) {
 
   // printf("(%d) popped head\n", rb->procid);
 
-  return buf_valid;
+  GTC_EXIT(buf_valid);
 }
 
 
 int sdc_shrb_pop_tail(sdc_shrb_t *rb, int proc, void *buf) {
-  return sdc_shrb_pop_n_tail(rb, proc, 1, buf, STEAL_HALF);
+  GTC_ENTRY();
+  GTC_EXIT(sdc_shrb_pop_n_tail(rb, proc, 1, buf, STEAL_HALF));
 }
 
 /* Pop up to N elements off the tail of the queue, putting the result into the user-
@@ -435,7 +459,7 @@ int sdc_shrb_pop_tail(sdc_shrb_t *rb, int proc, void *buf) {
 static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, void *e, int steal_vol, int trylock) {
   sdc_shrb_t trb;
   TC_START_TIMER(myrb->tc, poptail);
-
+  __gtc_marker[1] = 3;
   // Attempt to get the lock
   if (trylock) {
     if (!sdc_shrb_trylock(myrb, proc)) {
@@ -522,16 +546,18 @@ static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, vo
     sdc_shrb_unlock(myrb, proc);
   }
   TC_STOP_TIMER(myrb->tc, poptail);
-
+  __gtc_marker[1] = 0;
   return n;
 }
 
 int sdc_shrb_pop_n_tail(void *b, int proc, int n, void *e, int steal_vol) {
+  GTC_ENTRY();
   sdc_shrb_t *myrb = (sdc_shrb_t *)b;
-  return sdc_shrb_pop_n_tail_impl(myrb, proc, n, e, steal_vol, 0);
+  GTC_EXIT(sdc_shrb_pop_n_tail_impl(myrb, proc, n, e, steal_vol, 0));
 }
 
 int sdc_shrb_try_pop_n_tail(void *b, int proc, int n, void *e, int steal_vol) {
+  GTC_ENTRY();
   sdc_shrb_t *myrb = (sdc_shrb_t *)b;
-  return sdc_shrb_pop_n_tail_impl(myrb, proc, n, e, steal_vol, 1);
+  GTC_EXIT(sdc_shrb_pop_n_tail_impl(myrb, proc, n, e, steal_vol, 1));
 }

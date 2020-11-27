@@ -20,6 +20,7 @@ struct td_s {
   int r;                  // right child rank
   int nchildren;          // number of children
   int num_cycles;
+  int num_attempts;       // number of failed termination attempts
   int have_voted;
   enum token_directions token_direction;
 

@@ -65,6 +65,7 @@
  */
 
 saws_shrb_t *saws_shrb_create(int elem_size, int max_size, tc_t *tc) {
+  GTC_ENTRY();
   saws_shrb_t  *rb;
   int procid, nproc;
   uint32_t *targets;
@@ -99,12 +100,12 @@ saws_shrb_t *saws_shrb_create(int elem_size, int max_size, tc_t *tc) {
 
   shmem_barrier_all();
 
-  return rb;
+  GTC_EXIT(rb);
 }
 
 
 void saws_shrb_reset(saws_shrb_t *rb) {
-
+  GTC_ENTRY();
   rb->nlocal     = 0;
   rb->tail       = 0;
   rb->vtail      = 0;
@@ -126,18 +127,22 @@ void saws_shrb_reset(saws_shrb_t *rb) {
   for(int i = 0; i < rb->nproc; i++)
     rb->targets[i] = FullQueue;
 
+  GTC_EXIT();
 }
 
 
 void saws_shrb_destroy(saws_shrb_t *rb) {
+  GTC_ENTRY();
   free(rb->targets);
   shmem_free(rb);
+  GTC_EXIT();
 }
 
 
 /*================== HELPER FUNCTIONS ===================*/
 
 void saws_shrb_print(saws_shrb_t *rb) {
+  GTC_ENTRY();
   printf("rb: %p {\n", rb);
   printf("   procid  = %d\n", rb->procid);
   printf("   nproc  = %d\n", rb->nproc);
@@ -156,9 +161,11 @@ void saws_shrb_print(saws_shrb_t *rb) {
   printf("   vtail      = %ld\n", rb->steal_val & 0x00000000007FFFF);
   printf("   current epoch = %d\n", rb->cur);
   printf("}\n");
+  GTC_EXIT();
 }
 
 void print_epoch(saws_shrb_t *rb) {
+  GTC_ENTRY();
   printf("\nprocid    = %d\n", rb->procid);
   int c = rb->cur;
   int x = 0;
@@ -173,6 +180,7 @@ ag:
     printf(" [%d] ", rb->completed[c].status[i]);
   printf("\nprev: \n");
   if (x == 0) { c = rb->last; x = 1; goto ag;}
+  GTC_EXIT();
 }
 
 static inline uint64_t saws_set_stealval(int64_t valid, uint64_t itasks, int64_t tail) {
@@ -252,15 +260,6 @@ int saws_shrb_shared_size(saws_shrb_t *rb) {
 
 int saws_shrb_public_size(saws_shrb_t *rb) {
   return saws_shrb_shared_size(rb);
-  /*
-     if (rb->vtail == rb->split) {    // Public is empty
-     return 0;
-     }
-     else if (rb->vtail < rb->split)  // No wrap-around
-     return rb->split - rb->vtail;
-     else                             // Wrap-around
-     return rb->split + rb->max_size - rb->vtail;
-     */
 }
 
 
@@ -291,10 +290,11 @@ void saws_shrb_unlock(saws_shrb_t *rb, int proc) {
 /*==================== SPLIT MOVEMENT ====================*/
 
 int saws_shrb_reclaim_space(saws_shrb_t *rb) {
-  
+  GTC_ENTRY();
+
   int reclaimed = 0;
   uint32_t sum = 0;
- 
+
   TC_START_TIMER(rb->tc, reclaim);
   if (!rb->completed[rb->last].done) {
     for (int i = 0; i < rb->completed[rb->last].maxsteals; i++){
@@ -326,12 +326,13 @@ int saws_shrb_reclaim_space(saws_shrb_t *rb) {
   //assert(saws_shrb_shared_isempty(rb) || rb->completed[rb->cur].done != 1 || rb->completed[rb->last].done != 1);
   rb->nreccalls++;
   TC_STOP_TIMER(rb->tc, reclaim);
-  return reclaimed;
+  GTC_EXIT(reclaimed);
 }
 
 
 
 void saws_shrb_ensure_space(saws_shrb_t *rb, int n) {
+  GTC_ENTRY();
   // Ensure that there is enough free space in the queue.  If there isn't
   // wait until others finish their deferred copies so we can reclaim space.
   TC_START_TIMER(rb->tc, ensure);
@@ -346,11 +347,13 @@ void saws_shrb_ensure_space(saws_shrb_t *rb, int n) {
     }
   }
   TC_STOP_TIMER(rb->tc, ensure);
+  GTC_EXIT();
 }
 
 
 
 void saws_shrb_release(saws_shrb_t *rb) {
+  GTC_ENTRY();
   uint64_t  steal_val;
   uint64_t nshared;
 
@@ -376,10 +379,12 @@ void saws_shrb_release(saws_shrb_t *rb) {
   }
   assert (rb->tail >= 0 && rb->tail < rb->max_size);
   TC_STOP_TIMER(rb->tc, release);
+  GTC_EXIT();
 }
 
 
 void saws_shrb_release_all(saws_shrb_t *rb) {
+  GTC_ENTRY();
   uint64_t steal_val;
   int amount  = saws_shrb_local_size(rb);
   rb->nlocal -= amount;
@@ -388,10 +393,12 @@ void saws_shrb_release_all(saws_shrb_t *rb) {
   steal_val = saws_set_stealval(rb->cur, amount, rb->tail);
   shmem_atomic_set(&rb->steal_val, steal_val, rb->procid);
   rb->nrelease++;
+  GTC_EXIT();
 }
 
 
 void saws_shrb_reacquire(saws_shrb_t *rb) {
+  GTC_ENTRY();
   uint64_t steal_val, asteals, itasks, amount;
   uint64_t sum;
   int64_t vtail;
@@ -486,6 +493,7 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
   //assert(!saws_shrb_local_isempty(rb) || (saws_shrb_isempty(rb) && saws_shrb_local_isempty(rb)));
   //assert(rb->tail >= 0 && rb->tail < rb->max_size);
   TC_STOP_TIMER(rb->tc, reacquire);
+  GTC_EXIT();
 }
 
 
@@ -525,6 +533,7 @@ static inline void saws_shrb_push_n_head_impl(saws_shrb_t *rb, int proc, void *e
 
 
 void saws_shrb_push_head(saws_shrb_t *rb, int proc, void *e, int size) {
+  GTC_ENTRY();
   int old_head;
   static int cc = 0; // may want to damp ensure calls
 
@@ -538,25 +547,28 @@ void saws_shrb_push_head(saws_shrb_t *rb, int proc, void *e, int size) {
   rb->nlocal += 1;
 
   memcpy(saws_shrb_elem_addr(rb, proc, (old_head+1)%rb->max_size), e, size);
-
+  GTC_EXIT();
 }
 
 
 
 void saws_shrb_push_n_head(void *b, int proc, void *e, int n) {
+  GTC_ENTRY();
   saws_shrb_t *rb = (saws_shrb_t *)b;
   saws_shrb_push_n_head_impl(rb, proc, e, n, rb->elem_size);
+  GTC_EXIT();
 }
 
 
 
 void *saws_shrb_alloc_head(saws_shrb_t *rb) {
+  GTC_ENTRY();
   // Make sure there is enough space for 1 element
   saws_shrb_ensure_space(rb, 1);
 
   rb->nlocal += 1;
 
-  return saws_shrb_elem_addr(rb, rb->procid, saws_shrb_head(rb));
+  GTC_EXIT(saws_shrb_elem_addr(rb, rb->procid, saws_shrb_head(rb)));
 }
 
 
@@ -564,6 +576,7 @@ void *saws_shrb_alloc_head(saws_shrb_t *rb) {
 
 
 int saws_shrb_pop_head(void *b, int proc, void *buf) {
+  GTC_ENTRY();
 
   saws_shrb_t *rb = (saws_shrb_t *)b;
   int   old_head;
@@ -583,12 +596,13 @@ int saws_shrb_pop_head(void *b, int proc, void *buf) {
     buf_valid = 1;
   }
 
-  return buf_valid;
+  GTC_EXIT(buf_valid);
 }
 
 
 int saws_shrb_pop_tail(saws_shrb_t *rb, int proc, void *buf) {
-  return saws_shrb_pop_n_tail(rb, proc, 1, buf, STEAL_CHUNK);
+  GTC_ENTRY();
+  GTC_EXIT(saws_shrb_pop_n_tail(rb, proc, 1, buf, STEAL_CHUNK));
 }
 
 /* Pop up to N elements off the tail of the queue, putting the result into the user-
@@ -607,7 +621,7 @@ int saws_shrb_pop_tail(saws_shrb_t *rb, int proc, void *buf) {
  *  @return      The number of tasks stolen or -1 on failure
  */
 static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, void *e, int steal_vol, int trylock) {
-
+  __gtc_marker[1] = 1;
   TC_START_TIMER(myrb->tc, poptail);
   int valid, ntasks = 0, stolen = 0;
   uint64_t steal_val, asteals, tasks_left, itasks, increment, maxsteals;
@@ -624,7 +638,7 @@ static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, 
   //     get tasks
   //     wait
   //   atomic advance tail (tail wrap or no wrap?)
-
+  shmem_quiet();
 test:
   if (myrb->targets[proc] == FullQueue)
     steal_val = shmem_atomic_fetch_add(&myrb->steal_val, increment, proc);
@@ -637,6 +651,7 @@ test:
     gtc_lprintf(DBGSHRB, "remote queue invalid PE: %d : valid: %d\n", proc, valid);
     return 0;
   }
+  __gtc_marker[1] = 2;
   maxsteals = saws_max_steals(itasks);
 
   if (asteals >= maxsteals) {
@@ -662,16 +677,16 @@ test:
   assert(ntasks > 0);
   if(ntasks <= 0)
     return 0;
-  gtc_lprintf(DBGSHRB, "attempting from (%d), starting at index %d\n", ntasks, proc, rtail + stolen);
-
+  gtc_lprintf(DBGGET, "attempting from (%d), starting at index %d\n", ntasks, proc, rtail + stolen);
+  __gtc_marker[1] = 3;
   // determine base address of tasks to steal
   rptr = &myrb->q[0] + ((rtail + stolen) * myrb->elem_size);
 
   // check to see if the task block wraps around the end of the queue
+  shmem_quiet();
   if (rtail + stolen + ntasks < myrb->max_size) {
     // No wrap
     shmem_getmem_nbi(e, rptr, ntasks * myrb->elem_size, proc);
-
   } else {
     // steal wraps, use two communications
 
@@ -694,6 +709,8 @@ test:
         shmem_getmem_nbi(e, new_start, ntasks * myrb->elem_size, proc);
     }
   }
+  shmem_quiet();
+  __gtc_marker[1] = -1;
   gtc_lprintf(DBGSHRB, "sending completion to epoch %d index %d\n", valid, index);
   shmem_atomic_add(&myrb->completed[valid].status[index], ntasks, proc);
 
@@ -701,16 +718,19 @@ test:
   shmem_quiet(); // this is required to wait for the non-blocking shmem_getmem_nbi's
   TC_STOP_TIMER(myrb->tc, poptail);
   return ntasks;
+  __gtc_marker[1] = 0;
 }
 
 
 int saws_shrb_pop_n_tail(void *b, int proc, int n, void *e, int steal_vol) {
+  GTC_ENTRY();
   saws_shrb_t *myrb = (saws_shrb_t *)b;
-  return saws_shrb_pop_n_tail_impl(myrb, proc, n, e, steal_vol, 0);
+  GTC_EXIT(saws_shrb_pop_n_tail_impl(myrb, proc, n, e, steal_vol, 0));
 }
 
 
 int saws_shrb_try_pop_n_tail(void *b, int proc, int n, void *e, int steal_vol) {
+  GTC_ENTRY();
   saws_shrb_t *myrb = (saws_shrb_t *)b;
-  return saws_shrb_pop_n_tail_impl(myrb, proc, n, e, steal_vol, 1);
+  GTC_EXIT(saws_shrb_pop_n_tail_impl(myrb, proc, n, e, steal_vol, 1));
 }
