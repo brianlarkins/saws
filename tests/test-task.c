@@ -28,6 +28,7 @@ void task_fcn(gtc_t gtc, task_t *task);
 void task_fcn(gtc_t gtc, task_t *task) {
   int timeout;
   mytask_t *t = (mytask_t*) gtc_task_body(task);
+  static mytask_t *s = NULL;
 
   //if (rand() < RAND_MAX/2) {
   // 50% Chance of spawning a new task
@@ -39,6 +40,9 @@ void task_fcn(gtc_t gtc, task_t *task) {
   sleep_time += timeout;
   printf("  Task (%2d, %3d) processed by worker %d\n", t->parent_id, t->task_num, mythread);
   __gtc_marker[4]++; // completed
+  if (_c->rank == 3) {
+    shmem_signal_fetch((uint64_t *)s);
+  }
 }
 
 /**
@@ -69,6 +73,9 @@ int main(int argc, char **argv)
   gtc_t gtc;
   gtc_qtype_t qtype = GtcQueueSAWS;
   int num_tasks = NUM_TASKS;
+
+  setenv("SHMEM_BACKTRACE", "gdb", 1);
+  setenv("SHMEM_TRAP_ON_ABORT", "1", 1);
 
   gtc_init();
   // printf("(%d) _c->size: %d\n", _c->rank, _c->size);

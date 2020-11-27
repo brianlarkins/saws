@@ -38,6 +38,9 @@ gtc_context_t *gtc_init(void) {
   // allocate context structure
   _c = (gtc_context_t *)calloc(1, sizeof(gtc_context_t));
 
+  // set gdb backtraces if possible
+  setenv("SHMEM_BACKTRACE", "gdb", 1);
+
   // initialize openshmem
   shmem_init();
 
