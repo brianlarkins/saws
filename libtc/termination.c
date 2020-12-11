@@ -56,10 +56,21 @@ static void pass_token_down(td_t *td) {
       td->last_spawned, td->last_completed, td->nchildren, td->l, td->r);
 
   if (td->nchildren > 0) {
+#if GTC_USE_SIGNAL_COMMS
     shmem_putmem_signal_nbi(&td->down_token, &td->send_token, sizeof(td_token_t), &td->parent_voted, 1, SHMEM_SIGNAL_ADD, td->l);
+#else
+    shmem_putmem(&td->down_token, &td->send_token, sizeof(td_token_t), td->l);
+    shmem_atomic_inc(&td->parent_voted, td->l);
+#endif // GTC_USE_SIGNAL_COMMS
 
-    if (td->nchildren == 2)
+    if (td->nchildren == 2) {
+#if GTC_USE_SIGNAL_COMMS
       shmem_putmem_signal_nbi(&td->down_token, &td->send_token, sizeof(td_token_t), &td->parent_voted, 1, SHMEM_SIGNAL_ADD, td->r);
+#else
+      shmem_putmem(&td->down_token, &td->send_token, sizeof(td_token_t), td->r);
+      shmem_atomic_inc(&td->parent_voted, td->r);
+#endif // GTC_USE_SIGNAL_COMMS
+    }
   }
   shmem_quiet();
   __gtc_marker[2] = 0;
@@ -81,9 +92,19 @@ static void pass_token_up(td_t *td) {
       td->last_spawned, td->last_completed);
 
   if ((td->procid % 2) == 1) {
+#if GTC_USE_SIGNAL_COMMS
       shmem_putmem_signal_nbi(&td->upleft_token, &td->send_token, sizeof(td_token_t), &td->left_voted, 1, SHMEM_SIGNAL_ADD, td->p);
+#else
+      shmem_putmem(&td->upleft_token, &td->send_token, sizeof(td_token_t), td->p);
+      shmem_atomic_inc(&td->left_voted, td->p);
+#endif // GTC_USE_SIGNAL_COMMS
   } else {
+#if GTC_USE_SIGNAL_COMMS
       shmem_putmem_signal_nbi(&td->upright_token, &td->send_token, sizeof(td_token_t), &td->right_voted, 1, SHMEM_SIGNAL_ADD, td->p);
+#else
+      shmem_putmem(&td->upright_token, &td->send_token, sizeof(td_token_t), td->p);
+      shmem_atomic_inc(&td->right_voted, td->p);
+#endif // GTC_USE_SIGNAL_COMMS
   }
   shmem_quiet();
   __gtc_marker[2] = 0;
@@ -190,11 +211,17 @@ int td_attempt_vote(td_t *td) {
     td->last_completed = td->token.completed;
     return td->token.state == TERMINATED ? 1 : 0;
   }
+#if GTC_USE_SIGNAL_COMMS
   __gtc_marker[3] = td->l;
   nleft  = shmem_signal_fetch(&td->left_voted);
   __gtc_marker[3] = td->r;
   nright = shmem_signal_fetch(&td->right_voted);
   ndown  = shmem_signal_fetch(&td->parent_voted);
+#else
+  nleft  = shmem_atomic_fetch(&td->left_voted, td->procid);
+  nright = shmem_atomic_fetch(&td->right_voted, td->procid);
+  ndown  = shmem_atomic_fetch(&td->parent_voted, td->procid);
+#endif // GTC_USE_SIGNAL_COMMS
   shmem_quiet();
   __gtc_marker[2] = 5;
   gtc_lprintf(DBGTD, "td_attempt_vote: %s nl: %d nr: %d nd: %d\n", td->token_direction == UP ? "UP" : "DOWN", nleft, nright, ndown);
