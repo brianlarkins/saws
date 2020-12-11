@@ -87,6 +87,7 @@ gtc_context_t *gtc_init(void) {
  * gtc_fini - initializes sciotwo system
  */
 void gtc_fini(void) {
+  shmem_barrier_all();
   shmem_finalize();
   free(_c);
   _c = NULL;
@@ -95,7 +96,8 @@ void gtc_fini(void) {
 
 
 static void gtc_exit_handler(void) {
-   printf("\n rank %d exited normally\n", _c->rank);
+  if (_c)
+    printf("\n rank %d exited normally\n", _c->rank);
 }
 
 
