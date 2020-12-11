@@ -86,7 +86,7 @@ extern "C" {
   #define gtc_dprintf(...) gtc_dbg_printf(__VA_ARGS__)
   #define gtc_lprintf(lvl, ...) gtc_lvl_dbg_printf(lvl, __VA_ARGS__)
   #define gtc_eprintf(lvl, ...) gtc_lvl_dbg_eprintf(lvl, __VA_ARGS__)
-  
+
   #define GTC_ENTRY(...)  do {\
                              strncpy(_sanity->curfun, __func__, GTC_MAX_FNAMELEN);\
                              strncpy(_sanity->curfile, __FILE__, GTC_MAX_FNAMELEN);\
