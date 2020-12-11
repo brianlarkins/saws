@@ -224,7 +224,9 @@ int td_attempt_vote(td_t *td) {
 #endif // GTC_USE_SIGNAL_COMMS
   shmem_quiet();
   __gtc_marker[2] = 5;
-  gtc_lprintf(DBGTD, "td_attempt_vote: %s nl: %d nr: %d nd: %d\n", td->token_direction == UP ? "UP" : "DOWN", nleft, nright, ndown);
+  gtc_lprintf(DBGTD, "td_attempt_vote: %s nl: %d nr: %d nd: %d last-l: %d last-r: %d last-p: %d\n", 
+      td->token_direction == UP ? "UP" : "DOWN", nleft, nright, ndown,
+      td->last_left, td->last_right, td->last_parent);
 
   // Case 1: Token is moving down the tree
   if (td->token_direction == DOWN) {
@@ -239,6 +241,7 @@ int td_attempt_vote(td_t *td) {
           gtc_lprintf(DBGTD, "td_attempt_vote: restarting vote\n");
           td->send_token = td->token;
           pass_token_up(td);
+          td->last_parent = ndown;
         }
       } else {
         // interior node

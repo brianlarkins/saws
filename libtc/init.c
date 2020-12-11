@@ -48,7 +48,7 @@ gtc_context_t *gtc_init(void) {
   _c->rank = shmem_my_pe();
   _c->size = shmem_n_pes();
 
-  _c->total_tcs = -1;
+  _c->total_tcs = 0;
   for (int i=0; i< GTC_MAX_TC; i++) {
     _c->tcs[i] = NULL;
   }

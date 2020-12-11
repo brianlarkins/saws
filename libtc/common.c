@@ -49,8 +49,6 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
   }
   GTC_ENTRY(); // don't enter until we know we've initialized global state
 
-  //_c->total_tcs++; //why was this being called here and in gtc_handle_register
-
   if (!gtc_is_seeded) {
     struct timespec t = gtc_get_wtime();
     unsigned rseed = (1000000000L * t.tv_sec) + t.tv_nsec;
@@ -64,7 +62,6 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
 
   // add to global registry
   gtc = gtc_handle_register(tc);
-
 
   // allocate timers
   tc->timers = calloc(1, sizeof(tc_timers_t));
