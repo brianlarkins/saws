@@ -15,8 +15,8 @@ typedef struct {
 
 static task_class_t task_class;
 static int mythread, nthreads;
-static long sleep_time = 0;
-static long ideal_time = 0;
+static unsigned long sleep_time = 0;
+static unsigned long ideal_time = 0;
 static int gtimeout = 0;
 
 void create_task(gtc_t gtc, task_class_t tclass, int my_id, int task_num);
@@ -121,7 +121,11 @@ int main(int argc, char **argv)
   shmem_barrier_all();
 
   // Find the ideal execution time
+#ifndef GTC_USE_OLD_SHMEM_COLLECTIVES
   shmem_sum_reduce(SHMEM_TEAM_WORLD, &ideal_time, &sleep_time, 1);
+#else
+  gtc_sum_reduce_uint64(&ideal_time, &sleep_time, 1);
+#endif // GTC_USE_OLD_SHMEM_COLLECTIVES
   //gtc_reduce(&sleep_time, &ideal_time, GtcReduceOpSum, LongType, 1);
   if (mythread == 0)
     printf("Total sleep time = %f sec, Ideal = %f sec (compare with process time above)\n",

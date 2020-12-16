@@ -72,7 +72,11 @@ int main(int argc, char **argv)
                                                        TC_READ_ATIMER_USEC(addtimer)/NITER);
   //MPI_Reduce(&t_add_l, &avg_t_add, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
   //gtc_reduce(&t_add_l, &avg_t_add, GtcReduceOpSum, DoubleType, 1);
+#ifndef GTC_USE_OLD_SHMEM_COLLECTIVES
   shmem_sum_reduce(SHMEM_TEAM_WORLD, &avg_t_add, &t_add_l, 1);
+#else
+  gtc_sum_reduce_double(&avg_t_add, &t_add_l, 1);
+#endif // GTC_USE_OLD_SHMEM_COLLECTIVES
   shmem_barrier_all();
 
   /**** LOCAL TASK DRAIN ****/
@@ -93,7 +97,11 @@ int main(int argc, char **argv)
                                                        TC_READ_ATIMER_SEC(draintimer)/NITER);
   //MPI_Reduce(&t_drain_l, &avg_t_drain, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
   //gtc_reduce(&t_drain_l, &avg_t_drain, GtcReduceOpSum, DoubleType, 1);
+#ifndef GTC_USE_OLD_SHMEM_COLLECTIVES
   shmem_sum_reduce(SHMEM_TEAM_WORLD, &avg_t_drain, &t_drain_l, 1);
+#else
+  gtc_sum_reduce_double(&avg_t_drain, &t_drain_l, 1);
+#endif // GTC_USE_OLD_SHMEM_COLLECTIVES
   shmem_barrier_all();
   //gtc_print_stats(tc);
   if (mythread == 0) {

@@ -140,9 +140,10 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
       break;
   }
 
-  // save a copy for sanity/corruption checking 
+  // save a copy for sanity/corruption checking
   _sanity->tcs[gtc] = shmem_calloc(1, sizeof(tc_t));
   memcpy(_sanity->tcs[gtc], tc, sizeof(tc_t));
+  shmem_barrier_all();
 
   GTC_EXIT(gtc);
 }
@@ -714,6 +715,7 @@ void gtc_print_gstats(gtc_t gtc) {
   counts[TasksStolen]        = tc->ct.tasks_stolen;
   counts[NumSteals]          = tc->ct.num_steals;
 
+#ifndef GTC_USE_OLD_SHMEM_COLLECTIVES
   shmem_min_reduce(SHMEM_TEAM_WORLD, mintimes, times, ntimes);
   shmem_max_reduce(SHMEM_TEAM_WORLD, maxtimes, times, ntimes);
   shmem_sum_reduce(SHMEM_TEAM_WORLD, sumtimes, times, ntimes);
@@ -721,6 +723,16 @@ void gtc_print_gstats(gtc_t gtc) {
   shmem_min_reduce(SHMEM_TEAM_WORLD, mincounts, counts, ncounts);
   shmem_max_reduce(SHMEM_TEAM_WORLD, maxcounts, counts, ncounts);
   shmem_sum_reduce(SHMEM_TEAM_WORLD, sumcounts, counts, ncounts);
+#else
+  gtc_min_reduce_double(mintimes, times, ntimes);
+  gtc_max_reduce_double(maxtimes, times, ntimes);
+  gtc_sum_reduce_double(sumtimes, times, ntimes);
+
+  gtc_min_reduce_uint64(mincounts, counts, ncounts);
+  gtc_max_reduce_uint64(maxcounts, counts, ncounts);
+  gtc_sum_reduce_uint64(sumcounts, counts, ncounts);
+#endif // GTC_USE_OLD_SHMEM_COLLECTIVES
+
   shmem_barrier_all();
 
   if (ext_stats_enabled == NULL) {
@@ -825,6 +837,7 @@ void gtc_print_stats(gtc_t gtc) {
   counts[NumSteals]          = tc->ct.num_steals;
   counts[DispersionAttempts] = tc->ct.dispersion_attempts_locked + tc->ct.dispersion_attempts_unlocked;
 
+#ifndef GTC_USE_OLD_SHMEM_COLLECTIVES
   shmem_min_reduce(SHMEM_TEAM_WORLD, mintimes, times, ntimes);
   shmem_max_reduce(SHMEM_TEAM_WORLD, maxtimes, times, ntimes);
   shmem_sum_reduce(SHMEM_TEAM_WORLD, sumtimes, times, ntimes);
@@ -832,6 +845,15 @@ void gtc_print_stats(gtc_t gtc) {
   shmem_min_reduce(SHMEM_TEAM_WORLD, mincounts, counts, ncounts);
   shmem_max_reduce(SHMEM_TEAM_WORLD, maxcounts, counts, ncounts);
   shmem_sum_reduce(SHMEM_TEAM_WORLD, sumcounts, counts, ncounts);
+#else
+  gtc_min_reduce_double(mintimes, times, ntimes);
+  gtc_max_reduce_double(maxtimes, times, ntimes);
+  gtc_sum_reduce_double(sumtimes, times, ntimes);
+
+  gtc_min_reduce_uint64(mincounts, counts, ncounts);
+  gtc_max_reduce_uint64(maxcounts, counts, ncounts);
+  gtc_sum_reduce_uint64(sumcounts, counts, ncounts);
+#endif // GTC_USE_OLD_SHMEM_COLLECTIVES
   shmem_barrier_all();
 
 
@@ -858,7 +880,7 @@ void gtc_print_stats(gtc_t gtc) {
 
   //this is the graph data.
   // num_processes, average_time, passive_time, search_time, average_dispersion_time, dispersion_attempts, tasks_completed, idk
-  eprintf("&&&&  %lu      %.5f %lu %.5f %.5f %6.2f %6.2f %.2f %.2f\n", _c->size, sumtimes[ProcessTime]/_c->size,      
+  eprintf("&&&&  %lu      %.5f %lu %.5f %.5f %6.2f %6.2f %.2f %.2f\n", _c->size, sumtimes[ProcessTime]/_c->size,
       sumtimes[PassiveTime]/_c->size, sumtimes[SearchTime]/_c->size, sumtimes[DispersionTime]/_c->size,
       sumcounts[DispersionAttempts]/_c->size,
       sumcounts[TasksCompleted], sumtimes[TasksCompleted]/(sumtimes[ProcessTime]/_c->size));

@@ -113,8 +113,8 @@ double gtc_tsc_calibrate(void) {
 
   if (_c->rank == 0) {
     // clockdiff and tscdiff should be ~250M ns or 250 ms
-    gtc_lprintf(DBGINIT, "gtc_tsc_calibrate: calibrated MHz: %7.3f clock_gettime: %7.3f ms rtdsc: %7.3f ms\n", 
-        tscticks, 
+    gtc_lprintf(DBGINIT, "gtc_tsc_calibrate: calibrated MHz: %7.3f clock_gettime: %7.3f ms rtdsc: %7.3f ms\n",
+        tscticks,
         (clockdiff/(double)1e6),
         ((tscdiff/tscticks)/(double)1e3));
   }
@@ -162,3 +162,86 @@ void gtc_sanity_check(void) {
     }
   }
 }
+
+#ifdef GTC_USE_OLD_SHMEM_COLLECTIVES
+typedef enum { GtcReduceMin, GtcReduceMax, GtcReduceSum } gtc_reduce_op_t;
+typedef enum { GtcTypeLong, GtcTypeDouble } gtc_reduce_type_t;
+static  long   psync[SHMEM_REDUCE_SYNC_SIZE];
+static  long   longwork[10+SHMEM_REDUCE_MIN_WRKDATA_SIZE];
+static  double doublework[10+SHMEM_REDUCE_MIN_WRKDATA_SIZE];
+
+static void gtc_reduce(void *dest, void *source, size_t nreduce, gtc_reduce_op_t op, gtc_reduce_type_t ty) {
+
+  for (int i=0; i<SHMEM_REDUCE_SYNC_SIZE; i++)
+    psync[i] = SHMEM_SYNC_VALUE;
+  shmem_barrier_all();
+
+  switch (ty) {
+    case GtcTypeLong:
+      {
+        switch (op) {
+          case GtcReduceMin:
+            gtc_dprintf("lmin\n");
+            shmem_long_min_to_all((long *)dest, (long *)source, nreduce, 0, 0, _c->size, longwork, psync);
+            break;
+          case GtcReduceMax:
+            gtc_dprintf("lmax\n");
+            shmem_long_max_to_all((long *)dest, (long *)source, nreduce, 0, 0, _c->size, longwork, psync);
+            break;
+          case GtcReduceSum:
+            gtc_dprintf("lsum\n");
+            shmem_long_sum_to_all((long *)dest, (long *)source, nreduce, 0, 0, _c->size, longwork, psync);
+            break;
+        }
+      }
+      break;
+    case GtcTypeDouble:
+      {
+        for (size_t i=0; i<nreduce; i++) {
+          gtc_dprintf("%d: %f\n", i, ((double *)source)[i]);
+        }
+        switch (op) {
+          case GtcReduceMin:
+            gtc_dprintf("dmin\n");
+            shmem_double_min_to_all((double *)dest, (double *)source, nreduce, 0, 0, _c->size, doublework, psync);
+            break;
+          case GtcReduceMax:
+            gtc_dprintf("dmax\n");
+            shmem_double_max_to_all((double *)dest, (double *)source, nreduce, 0, 0, _c->size, doublework, psync);
+            break;
+          case GtcReduceSum:
+            gtc_dprintf("dsum\n");
+            shmem_double_sum_to_all((double *)dest, (double *)source, nreduce, 0, 0, _c->size, doublework, psync);
+            break;
+        }
+      }
+      break;
+  }
+  shmem_barrier_all();
+  gtc_dprintf("done\n");
+}
+
+void gtc_min_reduce_uint64(uint64_t *dest, uint64_t *source, size_t nreduce) {
+  gtc_reduce(dest, source, nreduce, GtcReduceMin, GtcTypeLong);
+}
+
+void gtc_max_reduce_uint64(uint64_t *dest, uint64_t *source, size_t nreduce) {
+  gtc_reduce(dest, source, nreduce, GtcReduceMax, GtcTypeLong);
+}
+
+void gtc_sum_reduce_uint64(uint64_t *dest, uint64_t *source, size_t nreduce) {
+  gtc_reduce(dest, source, nreduce, GtcReduceSum, GtcTypeLong);
+}
+
+void gtc_min_reduce_double(double *dest, double *source, size_t nreduce) {
+  gtc_reduce(dest, source, nreduce, GtcReduceMin, GtcTypeDouble);
+}
+
+void gtc_max_reduce_double(double *dest, double *source, size_t nreduce) {
+  gtc_reduce(dest, source, nreduce, GtcReduceMax, GtcTypeDouble);
+}
+
+void gtc_sum_reduce_double(double *dest, double *source, size_t nreduce) {
+  gtc_reduce(dest, source, nreduce, GtcReduceSum, GtcTypeDouble);
+}
+#endif // GTC_USE_OLD_SHMEM_COLLECTIVES

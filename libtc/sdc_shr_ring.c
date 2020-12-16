@@ -533,7 +533,7 @@ static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, vo
         itail_inc = n;
       else
         itail_inc = n - (&trb)->max_size;
-      shmem_atomic_fetch_add(&(myrb->itail), itail_inc, proc);
+      shmem_atomic_add(&(myrb->itail), itail_inc, proc);
 
       shmem_quiet();
     }

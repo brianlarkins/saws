@@ -92,8 +92,8 @@ void task_fcn(gtc_t gtc, task_t *descriptor) {
 
 
 int main(int argc, char **argv) {
-  static int    sum, counter = 0;   // Count the number of tasks executed
-  int           expected; // Used to check the final result
+  static uint64_t    sum, counter = 0;   // Count the number of tasks executed
+  uint64_t           expected; // Used to check the final result
   gtc_t         gtc;           // Portable reference to a task collection
   int           counter_key;   // A portable reference to replicated local copies of counter
   task_class_t  task_class;    // A task class defines a type of task
@@ -136,11 +136,16 @@ int main(int argc, char **argv) {
   gtc_process(gtc);
     printf("thread %d after gtc_process\n", _c->rank);
   // Check if the correct number of tasks were processed
+#ifndef GTC_USE_OLD_SHMEM_COLLECTIVES
   shmem_sum_reduce(SHMEM_TEAM_WORLD, &sum, &counter, 1);
+#else
+  gtc_sum_reduce_uint64(&sum, &counter, 1);
+#endif // GTC_USE_OLD_SHMEM_COLLECTIVES
+
   expected = (1 << (MAXDEPTH+1)) - 1; // == 2^(MAXDEPTH + 1) - 1
 
   if (mythread == 0) {
-    printf("Total tasks processed = %d, expected = %d: %s\n", sum, expected,
+    printf("Total tasks processed = %ld, expected = %ld: %s\n", sum, expected,
       (sum == expected) ? "SUCCESS" : "FAILURE");
     printf("Total task time = %f sec, ideal walltime = %f sec\n", SLEEP_TIME*(float)sum/1e6,
       SLEEP_TIME*(float)sum/1e6/nthreads);

@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <unistd.h>
 
@@ -63,7 +64,7 @@ void task_fcn(gtc_t gtc, task_t *descriptor) {
 
 int main(int argc, char **argv) {
     int sum, expected;
-    static int this_iter, counter;
+    static uint64_t this_iter, counter;
     task_class_t task_class;
     int        counter_key1;
     int        counter_key2;
@@ -131,11 +132,15 @@ int main(int argc, char **argv) {
         gtc_process(gtc2);
         gtc_reset(gtc2);
 
+#ifndef GTC_USE_OLD_SHMEM_COLLECTIVES
         shmem_sum_reduce(SHMEM_TEAM_WORLD, &this_iter, &counter, 1);
+#else
+        gtc_sum_reduce_uint64(&this_iter, &counter, 1);
+#endif // GTC_USE_OLD_SHMEM_COLLECTIVES
         shmem_quiet();
         sum += this_iter;
 
-        if (mythread == 0) printf(" - this round = %4d, total = %4d\n", this_iter, sum);
+        if (mythread == 0) printf(" - this round = %4ld, total = %4d\n", this_iter, sum);
     }
 
     expected = (1 << (MAXDEPTH+1)) - 1; //  == 2^(MAXDEPTH + 1) - 1

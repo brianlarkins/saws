@@ -543,6 +543,7 @@ void gtc_print_gstats_saws(gtc_t gtc) {
   counts[SAWSReacquireCalls]     = rb->nreacquire;
   counts[SAWSReleaseCalls]       = rb->nrelease;
 
+#ifndef GTC_USE_OLD_SHMEM_COLLECTIVES
   shmem_min_reduce(SHMEM_TEAM_WORLD, mintimes, times, ntimes);
   shmem_max_reduce(SHMEM_TEAM_WORLD, maxtimes, times, ntimes);
   shmem_sum_reduce(SHMEM_TEAM_WORLD, sumtimes, times, ntimes);
@@ -550,6 +551,15 @@ void gtc_print_gstats_saws(gtc_t gtc) {
   shmem_min_reduce(SHMEM_TEAM_WORLD, mincounts, counts, ncounts);
   shmem_max_reduce(SHMEM_TEAM_WORLD, maxcounts, counts, ncounts);
   shmem_sum_reduce(SHMEM_TEAM_WORLD, sumcounts, counts, ncounts);
+#else
+  gtc_min_reduce_double(mintimes, times, ntimes);
+  gtc_max_reduce_double(maxtimes, times, ntimes);
+  gtc_sum_reduce_double(sumtimes, times, ntimes);
+
+  gtc_min_reduce_uint64(mincounts, counts, ncounts);
+  gtc_max_reduce_uint64(maxcounts, counts, ncounts);
+  gtc_sum_reduce_uint64(sumcounts, counts, ncounts);
+#endif // GTC_USE_OLD_SHMEM_COLLECTIVES
   shmem_barrier_all();
 
   eprintf("        : gets         %6lu (%6.2f/%3lu/%3lu) time %6.2fms/%6.2fms/%6.2fms per %6.2fms/%6.2fms/%6.2fms\n",
