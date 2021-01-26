@@ -87,6 +87,7 @@ extern "C" {
   #define gtc_lprintf(lvl, ...) gtc_lvl_dbg_printf(lvl, __VA_ARGS__)
   #define gtc_eprintf(lvl, ...) gtc_lvl_dbg_eprintf(lvl, __VA_ARGS__)
 
+#ifdef SCIOTO_TRACING
   #define GTC_ENTRY(...)  do {\
                              strncpy(_sanity->curfun, __func__, GTC_MAX_FNAMELEN);\
                              strncpy(_sanity->curfile, __FILE__, GTC_MAX_FNAMELEN);\
@@ -104,6 +105,11 @@ extern "C" {
                                  strncpy(_sanity->curfile, __FILE__, GTC_MAX_FNAMELEN);\
                                  _sanity->curline = __LINE__;\
                               } while(0)
+#else  // SCIOTO TRACING
+  #define GTC_ENTRY(...)   
+  #define GTC_EXIT(ret)        return ret
+  #define GTC_CHECKPOINT(...)
+#endif // SCIOTO_TRACING
 
 #else
   #define gtc_dprintf(...) while (0) {};
