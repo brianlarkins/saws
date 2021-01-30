@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cpn=24   #cores per node
+cpn=64   #cores per node
 
 function makefile() {
   n=$1
@@ -23,7 +23,7 @@ function makefile() {
   runner="srun"
 
   if [[ $n -lt 4 ]]; then
-    wtime="02:00:00"
+    wtime="01:00:00"
   elif [[ $n -le 8 ]]; then
     wtime="10:00"
   else
@@ -50,6 +50,16 @@ function makefile() {
   echo "$runner -o $HOME/saws/runs/$exe/$exe.$pntasks.${label}_half $uenv $xpath/$exe $args_h" >> $sfname
 }
 
+if [ ! -d uts_scioto ]; then
+	mkdir uts_scioto;
+fi
+if [ ! -d bpc ]; then
+	mkdir bpc;
+fi
+if [ ! -d mad3d ]; then
+	mkdir mad3d;
+fi
+
 
 mkdir -p scripts
 cd scripts
@@ -57,11 +67,11 @@ cd scripts
 # uts
 mkdir -p uts
 cd uts
-. $HOME/saws/examples/iterators/uts/sample_trees.sh
-xpath=$HOME/saws/examples/iterators/uts
+. $HOME/saws/examples/uts/sample_trees.sh
+xpath=$HOME/saws/examples/uts
 for i in 1 2 4 8 16 24 32 48 64 72
 do
-  for tpn in 24
+  for tpn in 64
   do
     makefile $i $tpn 5:00 "$xpath" "uts-scioto" "$T1XL -Q B" "$T1XL -Q H" uts_t1xl
     makefile $i $tpn 5:00 "$xpath" "uts-scioto" "$T1XXL -Q B" "$T1XXL -Q H" uts_t1xxl
@@ -76,7 +86,7 @@ cd bpc
 xpath=$HOME/saws/examples/bpc
 for i in 1 2 4 8 16 24 32 48 64 72
 do
-  for tpn in 24
+  for tpn in 64
   do
     makefile $i $tpn 5:00 "$xpath" "bpc" "-B" bpc_nobounce_base
     makefile $i $tpn 5:00 "$xpath" "bpc" "-H" bpc_nobounce_half
@@ -91,7 +101,7 @@ cd madness
 xpath=$HOME/saws/examples/madness
 for i in 1 2 4 8 16 24 32 48 64 72
 do
-  for tpn in 24
+  for tpn in 64
   do
     makefile $i $tpn 5:00 "$xpath" "mad3d" "-t 10e-9 -B" "-t 10e-9 -H" mad3d
   done

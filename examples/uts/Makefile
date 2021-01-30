@@ -1,5 +1,5 @@
 ### UTS - Unbalanced Tree Search  ###
-TC_TOP=../../..
+TC_TOP=../..
 
 include $(TC_TOP)/tc.mk
 
