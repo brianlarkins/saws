@@ -77,7 +77,6 @@ void gtc_destroy_sdc(gtc_t gtc) {
   tc_t *tc = gtc_lookup(gtc);
 
   sdc_shrb_destroy(tc->shared_rb);
-  //shrb_destroy(tc->inbox);
   GTC_EXIT();
 }
 
@@ -91,7 +90,6 @@ void gtc_reset_sdc(gtc_t gtc) {
   GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
   sdc_shrb_reset(tc->shared_rb);
-  //shrb_reset(tc->inbox);
   GTC_EXIT();
 }
 
@@ -117,7 +115,6 @@ char *gtc_queue_name_sdc() {
 void gtc_progress_sdc(gtc_t gtc) {
   GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
-  //TC_START_TIMER(tc, t[0]);
   TC_START_TIMER(tc,progress);
 
 #if 0 /* no task pushing */
@@ -143,7 +140,6 @@ void gtc_progress_sdc(gtc_t gtc) {
   // Attempt to reclaim space
   sdc_shrb_reclaim_space(tc->shared_rb);
   ((sdc_shrb_t *)tc->shared_rb)->nprogress++;
-  //TC_STOP_TIMER(tc,t[0]);
   TC_STOP_TIMER(tc,progress);
   GTC_EXIT();
 }
@@ -189,7 +185,7 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
 
   tc->ct.getcalls++;
   TC_START_TIMER(tc, getbuf);
-  __gtc_marker[0] = -1;
+  
   // Invoke the progress engine
   gtc_progress(gtc);
 
@@ -236,11 +232,9 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
       target_rb = rb_buf;
 
       TC_START_TIMER(tc,poptail); // this counts as attempting to steal
-      // sdc_shrb_fetch_remote_trb(tc->shared_rb, target_rb, v);
-      __gtc_marker[0] = v;
       shmem_getmem(target_rb, tc->shared_rb, sizeof(sdc_shrb_t), v);
       TC_STOP_TIMER(tc,poptail);
-      __gtc_marker[0] = -2;
+
       // Poll the target for work.  In between polls, maintain progress on termination detection.
       for (steal_attempts = 0, steal_done = 0;
            !steal_done && !tc->terminated && steal_attempts < max_steal_attempts;
@@ -324,7 +318,6 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
     free(rb_buf);
   } else {
     tc->ct.getlocal++;
-  __gtc_marker[0] = 0;
   }
 
 #ifndef NO_SEATBELTS

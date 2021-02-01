@@ -8,7 +8,7 @@
 #include <tc.h>
 
 #define SAWS_MAX_EPOCHS           2L
-#define SAWS_MAX_STEALS_PER_EPOCH 30
+#define SAWS_MAX_STEALS_PER_EPOCH 22
 
 typedef enum {
   SAWSPopTailTime,
@@ -59,7 +59,7 @@ struct saws_shrb_s {
   int64_t           tail;      // Index of tail element (between 0 and rb_size-1)
   int64_t           vtail;     // Index of public tail element
   uint64_t          steal_val; // Concatenation of tail, isteals, and asteals
-  uint32_t         *targets; 
+  uint32_t         *targets;   // Holds the last known queue state for all other nodes 
   int64_t           split;     // index of split between local-only and local-shared elements
   int               nlocal;    // Number of elements in the local portion of the queue
   int               nshared;

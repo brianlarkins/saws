@@ -74,7 +74,6 @@ void gtc_destroy_saws(gtc_t gtc) {
   tc_t *tc = gtc_lookup(gtc);
 
   saws_shrb_destroy(tc->shared_rb);
-  //shrb_destroy(tc->inbox);
   GTC_EXIT();
 }
 
@@ -88,7 +87,6 @@ void gtc_reset_saws(gtc_t gtc) {
   GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
   saws_shrb_reset(tc->shared_rb);
-  //shrb_reset(tc->inbox);
   GTC_EXIT();
 }
 
@@ -190,7 +188,7 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
   int     v, steal_size;
   int     passive = 0;
   int     searching = 0;
-  //uint64_t asteals, itasks;
+  
   gtc_vs_state_t vs_state = {0, 0, 0};
 
   tc->ct.getcalls++;
@@ -201,9 +199,7 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
 
   // Try to take my own work first.  We take from the head of our own queue.
   // When we steal, we take work off of the tail of the target's queue.
-  __gtc_marker[0] = -1;
   got_task = gtc_get_local_buf(gtc, priority, buf);
-  __gtc_marker[0] = -2;
   // Time dispersion.  If I had work to start this should be ~0.
   if (!tc->dispersed) TC_START_TIMER(tc, dispersion);
 
@@ -234,7 +230,6 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
 
       // Select the next target
       v = gtc_select_target(gtc, &vs_state);
-      __gtc_marker[0] = v;
       max_steal_attempts = tc->ldbal_cfg.max_steal_attempts_remote;
 
       // ZZZ clean this up - make look more like sciotwo code
@@ -258,11 +253,7 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
             searching = 0;
           }
 
-          // Perform a steal/try_steal
-          //if (tc->ldbal_cfg.steals_can_abort){
-          __gtc_marker[0] = -3;
           steal_size = gtc_steal_tail(gtc, v);
-          __gtc_marker[0] = -4;
           // Steal succeeded: Got some work from remote node
           if (steal_size > 0) {
             tc->ct.tasks_stolen += steal_size;
@@ -325,7 +316,6 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
   gtc_lprintf(DBGGET, " Thread %d: gtc_get() %s\n", _c->rank, got_task? "got work":"no work");
   if (got_task) tc->state = STATE_WORKING;
   TC_STOP_TIMER(tc,getbuf);
-  __gtc_marker[0] = 0;
   GTC_EXIT(got_task);
 }
 

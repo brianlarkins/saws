@@ -14,6 +14,7 @@ function makefile() {
 
   cputask=$(($cpn / $tpn))    # threads/proc = tasks/node / cores/node
   ntasks=$((n * $tpn))        # ntasks = nodes * tasks/node
+  total_mem=$((2 * $ntasks))
   printf -v pntasks "%04d" $ntasks
 
   blockpin=0
@@ -33,14 +34,15 @@ function makefile() {
   echo "nodes: $n total tasks: $ntasks tpn: $tpn cputasks: $cputask $uenv $exe $label $sfname"
 
   echo '#!/bin/bash' > $sfname
-  echo '#SBATCH -A ccu104' >> $sfname
+  echo '#SBATCH --account=ccu104' >> $sfname
   echo '#SBATCH -p compute' >> $sfname
   echo "#SBATCH -t $wtime" >> $sfname
   echo "#SBATCH -n $ntasks" >> $sfname
   echo "#SBATCH -N $n" >> $sfname
   echo "#SBATCH --ntasks-per-node=$tpn" >> $sfname
   echo "#SBATCH -c $cputask" >> $sfname
-  echo "#SBATCH --exclusive" >> $sfname
+  #echo "#SBATCH --mem=$total_mem" >> $sfname
+
   if [[ $blockpin -eq 1 ]]; then
     echo "#SBATCH -m block:block" >> $sfname
   fi 
@@ -50,8 +52,8 @@ function makefile() {
   echo "$runner -o $HOME/saws/runs/$exe/$exe.$pntasks.${label}_half $uenv $xpath/$exe $args_h" >> $sfname
 }
 
-if [ ! -d uts_scioto ]; then
-	mkdir uts_scioto;
+if [ ! -d uts-scioto ]; then
+	mkdir uts-scioto;
 fi
 if [ ! -d bpc ]; then
 	mkdir bpc;
