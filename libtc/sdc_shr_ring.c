@@ -233,7 +233,6 @@ int sdc_shrb_reclaim_space(sdc_shrb_t *rb) {
       reclaimed = rb->max_size - vtail + tail;
 
     assert(reclaimed > 0);
-    //rb->nreclaimed++;
   }
 
   rb->nreccalls++;
@@ -247,7 +246,6 @@ void sdc_shrb_ensure_space(sdc_shrb_t *rb, int n) {
   GTC_ENTRY();
   // Ensure that there is enough free space in the queue.  If there isn't
   // wait until others finish their deferred copies so we can reclaim space.
-  __gtc_marker[1] = 1;
   TC_START_TIMER(rb->tc, ensure);
   if (rb->max_size - (sdc_shrb_local_size(rb) + sdc_shrb_public_size(rb)) < n) {
     sdc_shrb_lock(rb, rb->procid);
@@ -267,7 +265,6 @@ void sdc_shrb_ensure_space(sdc_shrb_t *rb, int n) {
     sdc_shrb_unlock(rb, rb->procid);
   }
   TC_STOP_TIMER(rb->tc, ensure);
-  __gtc_marker[1] = 0;
   GTC_EXIT();
 }
 

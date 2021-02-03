@@ -490,8 +490,6 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
   }
 
   shmem_atomic_set(&rb->steal_val, steal_val, rb->procid);
-  //assert(!saws_shrb_local_isempty(rb) || (saws_shrb_isempty(rb) && saws_shrb_local_isempty(rb)));
-  //assert(rb->tail >= 0 && rb->tail < rb->max_size);
   TC_STOP_TIMER(rb->tc, reacquire);
   GTC_EXIT();
 }
@@ -621,7 +619,7 @@ int saws_shrb_pop_tail(saws_shrb_t *rb, int proc, void *buf) {
  *  @return      The number of tasks stolen or -1 on failure
  */
 static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, void *e, int steal_vol, int trylock) {
-  __gtc_marker[1] = 1;
+  
   TC_START_TIMER(myrb->tc, poptail);
   int valid, ntasks = 0, stolen = 0;
   uint64_t steal_val, asteals, tasks_left, itasks, increment, maxsteals;
@@ -633,12 +631,6 @@ static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, 
   //   grab remote stealval and check - if work, then retry else return 0
   // else
   //   claim work
-  //   calculate steal volume
-  //   wrap or no wrap?
-  //     get tasks
-  //     wait
-  //   atomic advance tail (tail wrap or no wrap?)
-  shmem_quiet();
 test:
   if (myrb->targets[proc] == FullQueue)
     steal_val = shmem_atomic_fetch_add(&myrb->steal_val, increment, proc);
@@ -651,7 +643,6 @@ test:
     gtc_lprintf(DBGSHRB, "remote queue invalid PE: %d : valid: %d\n", proc, valid);
     return 0;
   }
-  __gtc_marker[1] = 2;
   maxsteals = saws_max_steals(itasks);
 
   if (asteals >= maxsteals) {
@@ -687,38 +678,35 @@ test:
   if (rtail + stolen + ntasks < myrb->max_size) {
     // No wrap
     shmem_getmem_nbi(e, rptr, ntasks * myrb->elem_size, proc);
+  
+  // If the steal wraps around the end of the queue it requires two communications.
+  // In the case that the previous steal was a wrapping steal and the queue has not been reset
+  // only one steal is needed with a recalculated start index.
   } else {
-    // steal wraps, use two communications
-
     // calculate how many tasks from thosealready stolen to the end of the queue
     int part_size = myrb->max_size - (rtail + stolen);
     gtc_lprintf(DBGSHRB, "nmax_size: %d  stolen: %d  part size: %d\n", myrb->max_size, rtail + stolen, part_size);
-    // steal from just after already stolen tasks
+    
     if (part_size > 0) {
       shmem_getmem_nbi(saws_shrb_buff_elem_addr(myrb, e, 0), rptr, part_size * myrb->elem_size, proc);
       // steal from beginning of queue the remaining tasks
       shmem_getmem_nbi(saws_shrb_buff_elem_addr(myrb, e, part_size),
           saws_shrb_elem_addr(myrb, proc, 0),
           (ntasks - part_size) * myrb->elem_size, proc);
-    }
-    else // the previous steal on this process was also a wrapping steal
-    {
+    } else { // the previous steal on this process was also a wrapping steal
         void * new_start = &myrb->q[0] + (abs(part_size) * myrb->elem_size);
-        //gtc_lprintf(DBGSHRB, "starting steal from indes %d\n", new_start);
-
         shmem_getmem_nbi(e, new_start, ntasks * myrb->elem_size, proc);
     }
   }
-  shmem_quiet();
-  __gtc_marker[1] = -1;
+  shmem_quiet(); // this might not be needed.
+ 
   gtc_lprintf(DBGSHRB, "sending completion to epoch %d index %d\n", valid, index);
   shmem_atomic_add(&myrb->completed[valid].status[index], ntasks, proc);
-
 
   shmem_quiet(); // this is required to wait for the non-blocking shmem_getmem_nbi's
   TC_STOP_TIMER(myrb->tc, poptail);
   return ntasks;
-  __gtc_marker[1] = 0;
+ 
 }
 
 

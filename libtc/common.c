@@ -140,10 +140,6 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
       break;
   }
 
-  // save a copy for sanity/corruption checking 
-  _sanity->tcs[gtc] = shmem_calloc(1, sizeof(tc_t));
-  memcpy(_sanity->tcs[gtc], tc, sizeof(tc_t));
-
   GTC_EXIT(gtc);
 }
 
