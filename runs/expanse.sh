@@ -1,9 +1,14 @@
 #!/bin/bash
 
-# this works for comet
+cpn=128
+acct="ccu104"
+queue="compute"
+total_mem="248G"
 
+# load makefile function
 source ./makegen.sh
 
+# make directories
 mkdir -p uts-scioto;
 mkdir -p bpc;
 mkdir -p mad3d;
@@ -15,9 +20,9 @@ mkdir -p uts
 cd uts
 . $HOME/saws/examples/uts/sample_trees.sh
 xpath=$HOME/saws/examples/uts
-for i in 1 2 4 8 16 24 32 48 64 72
+for i in 1 2 3 4 8 12 16 20 24 28 32
 do
-  for tpn in 24
+  for tpn in 64 128
   do
     makefile $i $tpn 5:00 "$xpath" "uts-scioto" "$T1XL -Q B" "$T1XL -Q H" uts_t1xl
     makefile $i $tpn 5:00 "$xpath" "uts-scioto" "$T1XXL -Q B" "$T1XXL -Q H" uts_t1xxl
@@ -30,9 +35,9 @@ cd ..
 mkdir -p bpc
 cd bpc
 xpath=$HOME/saws/examples/bpc
-for i in 1 2 4 8 16 24 32 48 64 72
+for i in 1 2 3 4 8 12 16 20 24 28 32
 do
-  for tpn in 24
+  for tpn in 64 128
   do
     makefile $i $tpn 5:00 "$xpath" "bpc" "-B" bpc_nobounce_base
     makefile $i $tpn 5:00 "$xpath" "bpc" "-H" bpc_nobounce_half
@@ -45,9 +50,9 @@ cd ..
 mkdir -p madness
 cd madness
 xpath=$HOME/saws/examples/madness
-for i in 1 2 4 8 16 24 32 48 64 72
+for i in 1 2 3 4 8 12 16 20 24 28 32
 do
-  for tpn in 24
+  for tpn in 64 128
   do
     makefile $i $tpn 5:00 "$xpath" "mad3d" "-t 10e-9 -B" "-t 10e-9 -H" mad3d
   done
@@ -58,9 +63,9 @@ cd ..
 mkdir -p td
 cd td
 xpath=$HOME/saws/tests/microbenchmarks
-for i in 1 2 4 8 16 24 32 48 64 72
+for i in 1 2 3 4 8 12 16 20 24 28 32
 do
-  for tpn in 24
+  for tpn in 64 128
   do
     makefile $i $tpn 5:00 "$xpath" "time-td" "100" "100" td
   done
