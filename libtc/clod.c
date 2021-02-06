@@ -4,20 +4,20 @@
 /*    (c) 2020 see COPYRIGHT in top-level                */
 /*                                                       */
 /*********************************************************/
-#include <stdio.h>
-#include <stdlib.h>
-#include "clod.h"
+
+#include "tc.h"
 
 /** Create a new CLOD.  This is a collective call.
  *  @param max_size Max number of entries in this CLOD.
  */
 clod_t clod_create(int max_size) {
-  clod_t clod = malloc(sizeof(struct clod_s) + max_size*sizeof(void*));
+  GTC_ENTRY();
+  clod_t clod = gtc_calloc(1, sizeof(struct clod_s) + max_size*sizeof(void*));
 
   clod->max_size = max_size;
   clod->nextfree = 0;
 
-  return clod;
+  GTC_EXIT(clod);
 }
 
 
@@ -26,7 +26,9 @@ clod_t clod_create(int max_size) {
  *  @param clod The clod to be destroyed.
  */
 void clod_destroy(clod_t clod) {
+  GTC_ENTRY();
   free(clod);
+  GTC_EXIT();
 }
 
 
@@ -35,7 +37,9 @@ void clod_destroy(clod_t clod) {
  *  @param clod The clod to be reset.
  */
 void clod_reset(clod_t clod) {
+  GTC_ENTRY();
   clod->nextfree = 0;
+  GTC_EXIT();
 }
 
 
@@ -46,10 +50,11 @@ void clod_reset(clod_t clod) {
  *  \return     A pointer to the CLO.
  */
 void *clod_lookup(clod_t clod, clod_key_t id) {
+  GTC_ENTRY();
   // Make sure this id is valid on this clod
   assert(id >= 0 && id < clod->nextfree);
 
-  return clod->objects[id];
+  GTC_EXIT(clod->objects[id]);
 }
 
 
@@ -60,10 +65,12 @@ void *clod_lookup(clod_t clod, clod_key_t id) {
  *  @param target Local pointer to the new object to reference in <clod, id>.
  */
 void clod_assign(clod_t clod, clod_key_t id, void *target) {
+  GTC_ENTRY();
   // Make sure this id is valid on this clod
   assert(id >= 0 && id < clod->nextfree);
 
   clod->objects[id] = target;
+  GTC_EXIT();
 }
 
 /** Allocate a new entry in the CLOD.  Once entries are allocated they cannot be
@@ -72,6 +79,7 @@ void clod_assign(clod_t clod, clod_key_t id, void *target) {
  *  @param clod The clod to allocate on.
  */
 clod_key_t clod_nextfree(clod_t clod) {
+  GTC_ENTRY();
   int id;
 
   // Is there still space available in this clod?
@@ -80,4 +88,5 @@ clod_key_t clod_nextfree(clod_t clod) {
   id = clod->nextfree;
   clod->nextfree++;
   return id;
+  GTC_EXIT();
 }

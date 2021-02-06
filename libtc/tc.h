@@ -82,6 +82,7 @@ extern "C" {
 #define gtc_lookup(_GTCLKUP) _c->tcs[_GTCLKUP]
 
 #define SCIOTO_DEBUG
+#define SCIOTO_TRACING
 #ifdef SCIOTO_DEBUG
   #define gtc_dprintf(...) gtc_dbg_printf(__VA_ARGS__)
   #define gtc_lprintf(lvl, ...) gtc_lvl_dbg_printf(lvl, __VA_ARGS__)
@@ -89,24 +90,24 @@ extern "C" {
 
 #ifdef SCIOTO_TRACING
   #define GTC_ENTRY(...)  do {\
-                             strncpy(_sanity->curfun, __func__, GTC_MAX_FNAMELEN);\
-                             strncpy(_sanity->curfile, __FILE__, GTC_MAX_FNAMELEN);\
-                             _sanity->curline =  __LINE__;\
+                             strncpy(_c->curfun, __func__, GTC_MAX_FNAMELEN);\
+                             strncpy(_c->curfile, __FILE__, GTC_MAX_FNAMELEN);\
+                             _c->curline =  __LINE__;\
                           } while(0)
 
   #define GTC_EXIT(ret)  do {\
-                             strncpy(_sanity->curfun, "non-saws", GTC_MAX_FNAMELEN);\
-                             strncpy(_sanity->curfile, "non-saws", GTC_MAX_FNAMELEN);\
-                             _sanity->curline = 0;\
+                             strncpy(_c->curfun, "non-saws", GTC_MAX_FNAMELEN);\
+                             strncpy(_c->curfile, "non-saws", GTC_MAX_FNAMELEN);\
+                             _c->curline = 0;\
                              return ret;\
                          } while(0)
 
   #define GTC_CHECKPOINT(...) do {\
-                                 strncpy(_sanity->curfile, __FILE__, GTC_MAX_FNAMELEN);\
-                                 _sanity->curline = __LINE__;\
+                                 strncpy(_c->curfile, __FILE__, GTC_MAX_FNAMELEN);\
+                                 _c->curline = __LINE__;\
                               } while(0)
 #else  // SCIOTO TRACING
-  #define GTC_ENTRY(...)   
+  #define GTC_ENTRY(...)
   #define GTC_EXIT(ret)        return ret
   #define GTC_CHECKPOINT(...)
 #endif // SCIOTO_TRACING
@@ -116,7 +117,7 @@ extern "C" {
   #define gtc_lprintf(...) while (0) {};
   #define gtc_eprintf(...) while (0) {};
 
-  #define GTC_ENTRY(...)   
+  #define GTC_ENTRY(...)
   #define GTC_EXIT(ret)        return ret
   #define GTC_CHECKPOINT(...)
 #endif
@@ -247,7 +248,6 @@ struct tc_timers_s {
   tc_timer_t getsteal;
   tc_timer_t getfail;
   tc_timer_t getmeta;
-  tc_timer_t sanity;
   tc_timer_t t[5]; // general purpose
 };
 typedef struct tc_timers_s tc_timers_t;
@@ -348,6 +348,8 @@ struct gtc_context_s {
   int                 quiet;
   int                 size;
   int                 rank;
+  int                 allocsize;
+  int                 shmallocsize;
   char                curfun[GTC_MAX_FNAMELEN];
   char                curfile[GTC_MAX_FNAMELEN];
   int                 curline;
@@ -364,7 +366,6 @@ typedef enum gtc_status_e gtc_status_t;
 
 // Global variables
 extern gtc_context_t *_c;
-extern gtc_context_t *_sanity;
 extern int gtc_is_initialized;
 extern char *target_methods[2];
 extern char *steal_methods[3];
@@ -439,7 +440,6 @@ int                gtc_dbg_printf(const char *format, ...);
 int                gtc_lvl_dbg_printf(int lvl, const char *format, ...);
 int                gtc_lvl_dbg_eprintf(int lvl, const char *format, ...);
 double             gtc_tsc_calibrate(void);
-void               gtc_sanity_check(void);
 
 // collection-sdc.c
 gtc_t   gtc_create_sdc(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg_t *ldbal_cfg);
@@ -455,7 +455,6 @@ void    gtc_task_inplace_create_and_add_finish_sdc(gtc_t gtc, task_t *t);
 void    gtc_print_stats_sdc(gtc_t gtc);
 void    gtc_print_gstats_sdc(gtc_t gtc);
 void    gtc_queue_reset_sdc(gtc_t gtc);
-void    gtc_sdc_sanity(tc_t *tc, tc_t *sanity);
 
 // collection-saws.c
 gtc_t   gtc_create_saws(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg_t *cfg);
@@ -474,7 +473,6 @@ void    gtc_task_inplace_create_and_add_finish_saws(gtc_t gtc, task_t *);
 void    gtc_print_stats_saws(gtc_t gtc);
 void    gtc_print_gstats_saws(gtc_t gtc);
 void    gtc_queue_reset_saws(gtc_t gtc);
-void    gtc_saws_sanity(tc_t *tc, tc_t *sanity);
 
 
 // tc-clod.c - common local object routines
@@ -506,6 +504,50 @@ static inline void gtc_barrier(void) {
   shmem_barrier_all();
 }
 
+/**
+ * gtc_malloc - wrapper for malloc
+ */
+static inline void *gtc_malloc(size_t size) {
+#ifdef SCIOTO_TRACING
+  gtc_dprintf("gtc_malloc: %s of %d\n", _c->curfun, size);
+#endif
+  _c->allocsize += size;
+  return malloc(size);
+}
+
+/**
+ * gtc_calloc - wrapper for calloc
+ */
+static inline void *gtc_calloc(size_t nmemb, size_t size) {
+#ifdef SCIOTO_TRACING
+  gtc_dprintf("gtc_calloc: %s of %d\n", _c->curfun, nmemb * size);
+#endif
+  _c->allocsize += (nmemb * size);
+  return calloc(nmemb,size);
+}
+
+/**
+ * gtc_shmem_malloc - wrapper for shmem_malloc
+ */
+static inline void *gtc_shmem_malloc(size_t size) {
+#ifdef SCIOTO_TRACING
+  gtc_dprintf("gtc_shmem_malloc: %s of %d\n", _c->curfun, size);
+#endif
+  _c->shmallocsize += size;
+  return shmem_malloc(size);
+}
+
+/**
+ * gtc_calloc - wrapper for shmem_calloc
+ */
+static inline void *gtc_shmem_calloc(size_t nmemb, size_t size) {
+#ifdef SCIOTO_TRACING
+  gtc_dprintf("gtc_shmem_calloc: %s of %d\n", _c->curfun, nmemb*size);
+#endif
+  _c->shmallocsize += (nmemb * size);
+  return shmem_calloc(nmemb,size);
+}
+
 /* timing routines */
 
 /**
@@ -516,7 +558,7 @@ static inline struct timespec gtc_get_wtime() {
 #if __APPLE__
       clock_gettime(_CLOCK_MONOTONIC, &ts);
 #else
-        clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+      clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
 #endif // clock_gettime
           return ts;
 }

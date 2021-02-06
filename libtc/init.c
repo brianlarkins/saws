@@ -6,7 +6,6 @@
 /********************************************************/
 
 #define _GNU_SOURCE 1
-#include <alloca.h>
 #include <assert.h>
 #include <execinfo.h>
 #include <fcntl.h>
@@ -23,7 +22,6 @@ int __gtc_marker[5] = { 0, 0, 0, 0, 0};
 static void gtc_exit_handler(void);
 
 gtc_context_t *_c;
-gtc_context_t *_sanity;
 int gtc_is_initialized = 0;
 
 
@@ -38,6 +36,10 @@ gtc_context_t *gtc_init(void) {
 
   // allocate context structure
   _c = (gtc_context_t *)calloc(1, sizeof(gtc_context_t));
+  _c->allocsize += sizeof(gtc_context_t);
+#ifdef SCIOTO_TRACING
+  eprintf("gtc_calloc: gtc_init of %d\n", sizeof(gtc_context_t));
+#endif
 
   // set gdb backtraces if possible
   setenv("SHMEM_BACKTRACE", "gdb", 1);
@@ -75,8 +77,6 @@ gtc_context_t *gtc_init(void) {
   sigaction(SIGBUS, &sa, NULL);
 
   _c->tsc_cpu_hz = gtc_tsc_calibrate();
-
-  _sanity = _c;
 
   return _c;
 }
@@ -118,7 +118,7 @@ void gtc_bthandler(int sig, siginfo_t *si, void *vctx) {
   size = backtrace(a, 100);
   printf("rank: %d pid : %d signal: %d marker: %d %d %d %d %d\n", _c->rank, getpid(), sig,
       __gtc_marker[0], __gtc_marker[1], __gtc_marker[2], __gtc_marker[3], __gtc_marker[4]);
-  printf("func: %s  file %s:%d\n", _sanity->curfun, _sanity->curfile, _sanity->curline);
+  printf("func: %s  file %s:%d\n", _c->curfun, _c->curfile, _c->curline);
   fflush(stdout);
 
   //backtrace_symbols_fd(a,size, STDERR_FILENO);

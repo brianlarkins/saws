@@ -40,7 +40,9 @@ unsigned long synch_mutex_lock_ncalls            = 0;
   *  NOTE: This must be a collective call
   */
 void synch_mutex_init(synch_mutex_t *m) {
-  m->locks = shmem_calloc(shmem_n_pes(), sizeof(long));
+  GTC_ENTRY();
+  m->locks = gtc_shmem_calloc(shmem_n_pes(), sizeof(long));
+  GTC_EXIT();
 }
 
 
@@ -51,6 +53,7 @@ void synch_mutex_init(synch_mutex_t *m) {
   *  @param[in] proc Processor id to index into lock array.
   */
 void synch_mutex_lock(synch_mutex_t *m, int proc) {
+  GTC_ENTRY();
   int nattempts = 0, backoff;
   volatile long lock_val = SYNCH_MUTEX_UNLOCKED;
 
@@ -83,6 +86,7 @@ void synch_mutex_lock(synch_mutex_t *m, int proc) {
   } while (lock_val != SYNCH_MUTEX_UNLOCKED);
 
 #endif /* USING_SHMEM_LOCKS */
+  GTC_EXIT();
 }
 
 
@@ -119,6 +123,7 @@ int synch_mutex_trylock(synch_mutex_t *m, int proc) {
   * @param[in] proc Processor id to index into lock array.
   */
 void synch_mutex_unlock(synch_mutex_t *m, int proc) {
+  GTC_ENTRY();
   gtc_lprintf(DBGSYNCH, "synch_mutex_unlock (%p, %d)\n", m, proc);
 
 #ifdef USING_SHMEM_LOCKS
@@ -130,5 +135,5 @@ void synch_mutex_unlock(synch_mutex_t *m, int proc) {
   shmem_atomic_set(&m->locks[proc], SYNCH_MUTEX_UNLOCKED, proc);
 
 #endif /* USING_SHMEM_LOCKS */
-
+  GTC_EXIT();
 }

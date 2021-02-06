@@ -2,7 +2,7 @@
  *
  * Author: James Dinan <dinan.10@osu.edu>
  * Date  : August, 2008
- * 
+ *
  * An example Scioto parallel program that executes a tree of tasks.  Execution
  * begins with a single root task, this task spawns nchildren tasks, each child
  * spawns nchildren tasks, and so on until the maxdepth is reached.  We keep
@@ -69,7 +69,7 @@ typedef struct {
 void create_task(gtc_t gtc, task_class_t tclass, int level, int index, int ntasks_key, int nproducers_key, int nconsumers_key) {
     //printf("(%d) here\n", _c->rank);
 #ifdef NO_INPLACE
-  task_t   *task = gtc_task_create(tclass);        
+  task_t   *task = gtc_task_create(tclass);
 #else
   task_t   *task = gtc_task_inplace_create_and_add(gtc, tclass);
 #endif
@@ -105,9 +105,9 @@ void create_task(gtc_t gtc, task_class_t tclass, int level, int index, int ntask
 void producer_task_fcn(gtc_t gtc, task_t *descriptor) {
   int       i;
   pctask_t *tt   = (pctask_t *) gtc_task_body(descriptor);
-  int      *ctr  = (int *) gtc_clo_lookup(gtc, tt->ntasks_key); 
-  int      *pctr = (int *) gtc_clo_lookup(gtc, tt->nproducers_key); 
-    
+  int      *ctr  = (int *) gtc_clo_lookup(gtc, tt->ntasks_key);
+  int      *pctr = (int *) gtc_clo_lookup(gtc, tt->nproducers_key);
+
   if (tt->level < maxdepth) {
     if (bouncing)
       create_task(gtc, producer_tclass, tt->level + 1, tt->index, tt->ntasks_key, tt->nproducers_key, tt->nconsumers_key);
@@ -118,14 +118,14 @@ void producer_task_fcn(gtc_t gtc, task_t *descriptor) {
     if (!bouncing)
       create_task(gtc, producer_tclass, tt->level + 1, tt->index, tt->ntasks_key, tt->nproducers_key, tt->nconsumers_key);
   }
-  
+
   *ctr  += 1;
   *pctr += 1;
 
   nanosleep(&psleep, NULL);
   //busy_wait(producer_work_units*busy_val);
 
-  if (verbose) printf("  + Producer task (%2d, %d:%d) processed by worker %d\n", 
+  if (verbose) printf("  + Producer task (%2d, %d:%d) processed by worker %d\n",
     tt->parent_id, tt->level, tt->index, me);
 }
 
@@ -138,16 +138,16 @@ void producer_task_fcn(gtc_t gtc, task_t *descriptor) {
 **/
 void consumer_task_fcn(gtc_t gtc, task_t *descriptor) {
   pctask_t *tt   = (pctask_t *) gtc_task_body(descriptor);
-  int      *ctr  = (int *) gtc_clo_lookup(gtc, tt->ntasks_key); 
-  int      *cctr = (int *) gtc_clo_lookup(gtc, tt->nconsumers_key); 
-    
+  int      *ctr  = (int *) gtc_clo_lookup(gtc, tt->ntasks_key);
+  int      *cctr = (int *) gtc_clo_lookup(gtc, tt->nconsumers_key);
+
   *ctr  += 1;
   *cctr += 1;
 
   //busy_wait(consumer_work_units*busy_val);
   nanosleep(&csleep, NULL);
 
-  if (verbose) printf("  - Consumer task (%2d, %d:%d) processed by worker %d\n", 
+  if (verbose) printf("  - Consumer task (%2d, %d:%d) processed by worker %d\n",
     tt->parent_id, tt->level, tt->index, me);
 }
 
@@ -272,7 +272,7 @@ int main(int argc, char **argv) {
   if (me == 0) {
     printf("SCIOTO Producer-Consumer uBench starting with %d threads\n", nproc);
     printf("-----------------------------------------------------------------------------\n\n");
-    printf("Max depth = %d, nchildren = %d, producer tasks = %7d, consumer tasks = %7d\n", maxdepth, nchildren, 
+    printf("Max depth = %d, nchildren = %d, producer tasks = %7d, consumer tasks = %7d\n", maxdepth, nchildren,
         expected_nproducers, expected_nconsumers);
     printf("Work unit size = %.2f ms, Producer work units = %.2f, Consumer work units = %.2f\n", work_time * 1000.0,
         producer_work_units, consumer_work_units);
@@ -300,7 +300,7 @@ int main(int argc, char **argv) {
   // Set by hand above
   // busy_val = tune_busy_wait(work_time);
   // printf("Busy_val = %d\n", busy_val);
-  
+
   if (me == 0) {
     if (bouncing)
       printf("Bouncing Producer-Consumer test starting...\n");
@@ -330,7 +330,7 @@ int main(int argc, char **argv) {
     printf("Total consumer tasks  = %7d, expected = %7d: %s\n", final_nconsumers, expected_nconsumers,
       (final_nconsumers == expected_nconsumers) ? "SUCCESS" : "FAILURE");
     double atime = TC_READ_ATIMER_SEC(time); // was having conversion issues, probably fixed now, but whatever
-    printf("Actual Walltime = %f sec, %0.2f tasks/sec (%0.2f tasks/sec/process)\n", TC_READ_ATIMER_SEC(time), 
+    printf("Actual Walltime = %f sec, %0.2f tasks/sec (%0.2f tasks/sec/process)\n", TC_READ_ATIMER_SEC(time),
       final_ntasks/atime, final_ntasks/atime/nproc);
     printf(" Ideal Walltime = %f sec, %0.2f tasks/sec (%0.2f tasks/sec/process)\n\n", ideal_walltime,
       final_ntasks/ideal_walltime, final_ntasks/ideal_walltime/nproc);

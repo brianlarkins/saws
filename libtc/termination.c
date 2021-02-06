@@ -115,7 +115,7 @@ static void pass_token_up(td_t *td) {
   */
 td_t *td_create() {
   GTC_ENTRY();
-  td_t *td = shmem_malloc(sizeof(td_t));
+  td_t *td = gtc_shmem_malloc(sizeof(td_t));
 
   assert(td != NULL);
 

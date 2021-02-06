@@ -9,7 +9,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-#include <alloca.h>
 #include <math.h>
 
 #include "tc.h"
@@ -118,7 +117,7 @@ void gtc_progress_saws(gtc_t gtc) {
     void *work;
 
     ntasks = 100;
-    work   = malloc((tc->max_body_size+sizeof(task_t))*ntasks);
+    work   = gtc_malloc((tc->max_body_size+sizeof(task_t))*ntasks);
     npopped= shrb_pop_n_tail(tc->inbox, _c->rank, ntasks, work, STEAL_CHUNK);
 
     saws_shrb_push_n_head(tc->shrb, _c->rank, work, npopped);
@@ -188,7 +187,7 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
   int     v, steal_size;
   int     passive = 0;
   int     searching = 0;
-  
+
   gtc_vs_state_t vs_state = {0, 0, 0};
 
   tc->ct.getcalls++;
@@ -491,16 +490,16 @@ void gtc_print_gstats_saws(gtc_t gtc) {
   uint64_t *counts, *mincounts, *maxcounts, *sumcounts;
 
   int ntimes = 16;
-  times     = shmem_calloc(ntimes, sizeof(double));
-  mintimes  = shmem_calloc(ntimes, sizeof(double));
-  maxtimes  = shmem_calloc(ntimes, sizeof(double));
-  sumtimes  = shmem_calloc(ntimes, sizeof(double));
+  times     = gtc_shmem_calloc(ntimes, sizeof(double));
+  mintimes  = gtc_shmem_calloc(ntimes, sizeof(double));
+  maxtimes  = gtc_shmem_calloc(ntimes, sizeof(double));
+  sumtimes  = gtc_shmem_calloc(ntimes, sizeof(double));
 
   int ncounts = 13;
-  counts     = shmem_calloc(ncounts, sizeof(uint64_t));
-  mincounts  = shmem_calloc(ncounts, sizeof(uint64_t));
-  maxcounts  = shmem_calloc(ncounts, sizeof(uint64_t));
-  sumcounts  = shmem_calloc(ncounts, sizeof(uint64_t));
+  counts     = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
+  mincounts  = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
+  maxcounts  = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
+  sumcounts  = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
 
 
   times[SAWSPopTailTime]        = TC_READ_TIMER_MSEC(tc,poptail);
@@ -541,6 +540,8 @@ void gtc_print_gstats_saws(gtc_t gtc) {
   shmem_max_reduce(SHMEM_TEAM_WORLD, maxcounts, counts, ncounts);
   shmem_sum_reduce(SHMEM_TEAM_WORLD, sumcounts, counts, ncounts);
   shmem_barrier_all();
+
+  eprintf("        : shared heap memory allocated: %d    local heap memory allocated: %d\n", _c->shmallocsize, _c->allocsize);
 
   eprintf("        : gets         %6lu (%6.2f/%3lu/%3lu) time %6.2fms/%6.2fms/%6.2fms per %6.2fms/%6.2fms/%6.2fms\n",
       sumcounts[SAWSNumGets], sumcounts[SAWSNumGets]/(double)_c->size, mincounts[SAWSNumGets], maxcounts[SAWSNumGets],
@@ -591,7 +592,7 @@ void gtc_print_gstats_saws(gtc_t gtc) {
       sumcounts[SAWSReleaseCalls]/(double)_c->size, mincounts[SAWSReleaseCalls], maxcounts[SAWSReleaseCalls],
       sumtimes[SAWSReleaseTime]/_c->size, mintimes[SAWSReleaseTime], maxtimes[SAWSReleaseTime],
       sumtimes[SAWSPerReleaseTime]/_c->size, mintimes[SAWSPerReleaseTime], maxtimes[SAWSPerReleaseTime]);
-  
+
   eprintf("&&&  %6.2f %6.2f ", sumtimes[SAWSPopTailTime]/_c->size, sumtimes[SAWSReacquireTime]/_c->size);
 
   shmem_free(times);

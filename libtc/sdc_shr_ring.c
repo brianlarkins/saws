@@ -75,7 +75,7 @@ sdc_shrb_t *sdc_shrb_create(int elem_size, int max_size, tc_t *tc) {
   gtc_lprintf(DBGSHRB, "  Thread %d: sdc_shrb_create()\n", procid);
 
   // Allocate the struct and the buffer contiguously in shared space
-  rb = shmem_malloc(sizeof(sdc_shrb_t) + elem_size*max_size);
+  rb = gtc_shmem_malloc(sizeof(sdc_shrb_t) + elem_size*max_size);
 
   rb->procid  = procid;
   rb->nproc  = nproc;

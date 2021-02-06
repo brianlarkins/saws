@@ -9,7 +9,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-#include <alloca.h>
 #include <math.h>
 
 #include <tc.h>
@@ -37,6 +36,7 @@ static int gtc_is_seeded = 0;
 gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg_t *ldbal_cfg, gtc_qtype_t qtype) {
   gtc_t     gtc;
   tc_t     *tc;
+  int       localalloc = 0;
 
   UNUSED(chunk_size);
 
@@ -57,14 +57,14 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
   }
 
   // allocate collection
-  tc = shmem_calloc(1, sizeof(tc_t));
+  tc = gtc_shmem_calloc(1, sizeof(tc_t));
   assert(tc != NULL);
 
   // add to global registry
   gtc = gtc_handle_register(tc);
 
   // allocate timers
-  tc->timers = calloc(1, sizeof(tc_timers_t));
+  tc->timers = gtc_calloc(1, sizeof(tc_timers_t));
   TC_INIT_TIMER(tc,process);
   TC_INIT_TIMER(tc,passive);
   TC_INIT_TIMER(tc,search);
@@ -93,8 +93,9 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
   TC_INIT_TIMER(tc, getmeta);
 
   if (!ldbal_cfg) {
-    ldbal_cfg = alloca(sizeof(gtc_ldbal_cfg_t));
+    ldbal_cfg = gtc_malloc(sizeof(gtc_ldbal_cfg_t));
     gtc_ldbal_cfg_init(ldbal_cfg);
+    localalloc = 1;
   }
 
   switch (qtype) {
@@ -112,9 +113,9 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
     max_body_size = gtc_task_class_largest_body_size();
 
   if (ldbal_cfg->steal_method == STEAL_CHUNK) {
-    tc->steal_buf = malloc(ldbal_cfg->chunk_size*(sizeof(task_t)+max_body_size));
+    tc->steal_buf = gtc_malloc(ldbal_cfg->chunk_size*(sizeof(task_t)+max_body_size));
   } else {
-    tc->steal_buf = malloc(__GTC_MAX_STEAL_SIZE*(sizeof(task_t)+max_body_size));
+    tc->steal_buf = gtc_malloc((shrb_size/2)*(sizeof(task_t)+max_body_size));
   }
   tc->qtype = qtype;
 
@@ -139,6 +140,9 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
       exit(1);
       break;
   }
+
+  if (localalloc)
+    free(ldbal_cfg);
 
   GTC_EXIT(gtc);
 }
@@ -238,7 +242,7 @@ void gtc_print_config(gtc_t gtc) {
   GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
   int idx = 0, size = 1000;
-  char *msg = alloca(size*sizeof(char));
+  char *msg = gtc_malloc(size*sizeof(char));
 
   idx += snprintf(msg+idx, size-idx, "Queue: %s", gtc_queue_name(gtc));
 
@@ -263,6 +267,7 @@ void gtc_print_config(gtc_t gtc) {
   }
 
   printf("Task collection %d -- %s\n", gtc, msg);
+  free(msg);
   GTC_EXIT();
 }
 
@@ -513,11 +518,8 @@ int gtc_try_steal_tail(gtc_t gtc, int target) {
  */
 int gtc_select_target(gtc_t gtc, gtc_vs_state_t *state) {
   GTC_ENTRY();
-  int v;
-  tc_t *tc;
-
-  tc = gtc_lookup(gtc);
-  v  = -1;
+  int v = -1;
+  tc_t *tc = gtc_lookup(gtc);
 
   /* SINGLE: Single processor run
   */
@@ -588,7 +590,7 @@ void gtc_process(gtc_t gtc) {
   struct xmit_task_s *xtask;
   const int           xtask_size = sizeof(struct xmit_task_s) + tc->max_body_size;
 
-  xtask = malloc(xtask_size);
+  xtask = gtc_malloc(xtask_size);
   xtask->terminated = 0;
 
   // default we are just grabbing a task and running with it:
@@ -681,16 +683,16 @@ void gtc_print_gstats(gtc_t gtc) {
   shmem_barrier_all();
 
   int ntimes = 7;
-  times     = shmem_calloc(ntimes, sizeof(double));
-  mintimes  = shmem_calloc(ntimes, sizeof(double));
-  maxtimes  = shmem_calloc(ntimes, sizeof(double));
-  sumtimes  = shmem_calloc(ntimes, sizeof(double));
+  times     = gtc_shmem_calloc(ntimes, sizeof(double));
+  mintimes  = gtc_shmem_calloc(ntimes, sizeof(double));
+  maxtimes  = gtc_shmem_calloc(ntimes, sizeof(double));
+  sumtimes  = gtc_shmem_calloc(ntimes, sizeof(double));
 
   int ncounts = 4;
-  counts     = shmem_calloc(ncounts, sizeof(uint64_t));
-  mincounts  = shmem_calloc(ncounts, sizeof(uint64_t));
-  maxcounts  = shmem_calloc(ncounts, sizeof(uint64_t));
-  sumcounts  = shmem_calloc(ncounts, sizeof(uint64_t));
+  counts     = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
+  mincounts  = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
+  maxcounts  = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
+  sumcounts  = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
 
   assert(times && mintimes && maxtimes && sumtimes);
   assert(counts && mincounts && maxcounts && sumcounts);
@@ -791,16 +793,16 @@ void gtc_print_stats(gtc_t gtc) {
   shmem_barrier_all();
 
   int ntimes = 7;
-  times     = shmem_calloc(ntimes, sizeof(double));
-  mintimes  = shmem_calloc(ntimes, sizeof(double));
-  maxtimes  = shmem_calloc(ntimes, sizeof(double));
-  sumtimes  = shmem_calloc(ntimes, sizeof(double));
+  times     = gtc_shmem_calloc(ntimes, sizeof(double));
+  mintimes  = gtc_shmem_calloc(ntimes, sizeof(double));
+  maxtimes  = gtc_shmem_calloc(ntimes, sizeof(double));
+  sumtimes  = gtc_shmem_calloc(ntimes, sizeof(double));
 
   int ncounts = 4;
-  counts     = shmem_calloc(ncounts, sizeof(uint64_t));
-  mincounts  = shmem_calloc(ncounts, sizeof(uint64_t));
-  maxcounts  = shmem_calloc(ncounts, sizeof(uint64_t));
-  sumcounts  = shmem_calloc(ncounts, sizeof(uint64_t));
+  counts     = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
+  mincounts  = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
+  maxcounts  = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
+  sumcounts  = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
 
   assert(times && mintimes && maxtimes && sumtimes);
   assert(counts && mincounts && maxcounts && sumcounts);
@@ -852,9 +854,10 @@ void gtc_print_stats(gtc_t gtc) {
 
   tc->cb.print_gstats(gtc);
 
+
   //this is the graph data.
   // num_processes, average_time, passive_time, search_time, average_dispersion_time, dispersion_attempts, tasks_completed, idk
-  eprintf("&&&&  %lu      %.5f %lu %.5f %.5f %6.2f %6.2f %.2f %.2f\n", _c->size, sumtimes[ProcessTime]/_c->size,      
+  eprintf("&&&&  %lu      %.5f %lu %.5f %.5f %6.2f %6.2f %.2f %.2f\n", _c->size, sumtimes[ProcessTime]/_c->size,
       sumtimes[PassiveTime]/_c->size, sumtimes[SearchTime]/_c->size, sumtimes[DispersionTime]/_c->size,
       sumcounts[DispersionAttempts]/_c->size,
       sumcounts[TasksCompleted], sumtimes[TasksCompleted]/(sumtimes[ProcessTime]/_c->size));

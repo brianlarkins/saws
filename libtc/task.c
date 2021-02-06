@@ -76,13 +76,14 @@ int gtc_task_class_largest_body_size(void) {
  * Create a new task object.
  */
 task_t *gtc_task_alloc(int body_size) {
+  GTC_ENTRY();
   task_t *task;
 
   // printf("size of task_t + body_size: %ld\n", sizeof(task_t) + body_size);
-  task = calloc(1, sizeof(task_t) + body_size);
+  task = gtc_calloc(1, sizeof(task_t) + body_size);
   assert(task != NULL);
 
-  return task;
+  GTC_EXIT(task);
 }
 
 

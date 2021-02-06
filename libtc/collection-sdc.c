@@ -9,7 +9,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-#include <alloca.h>
 #include <math.h>
 
 #include "tc.h"
@@ -124,7 +123,7 @@ void gtc_progress_sdc(gtc_t gtc) {
     void *work;
 
     ntasks = 100;
-    work   = malloc((tc->max_body_size+sizeof(task_t))*ntasks);
+    work   = gtc_malloc((tc->max_body_size+sizeof(task_t))*ntasks);
     npopped= shrb_pop_n_tail(tc->inbox, _c->rank, ntasks, work, STEAL_CHUNK);
 
     sdc_shrb_push_n_head(tc->shared_rb, _c->rank, work, npopped);
@@ -181,11 +180,11 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
   int     passive = 0;
   int     searching = 0;
   gtc_vs_state_t vs_state = {0, 0, 0};
-  void *rb_buf;
+  sdc_shrb_t rb_buf;
 
   tc->ct.getcalls++;
   TC_START_TIMER(tc, getbuf);
-  
+
   // Invoke the progress engine
   gtc_progress(gtc);
 
@@ -208,15 +207,12 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
     tc->ct.passive_count++;
 #endif
 
-    rb_buf = malloc(tc->qsize);
-    assert(rb_buf != NULL);
-
     vs_state.last_target = tc->last_target;
 
     // Keep searching until we find work or detect termination
     while (!got_task && !tc->terminated) {
       int      max_steal_attempts, steal_attempts, steal_done;
-      void *target_rb;
+      void *target_rb = &rb_buf;
 
       tc->state = STATE_SEARCHING;
 
@@ -229,7 +225,6 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
       v = gtc_select_target(gtc, &vs_state);
 
       max_steal_attempts = tc->ldbal_cfg.max_steal_attempts_remote;
-      target_rb = rb_buf;
 
       TC_START_TIMER(tc,poptail); // this counts as attempting to steal
       shmem_getmem(target_rb, tc->shared_rb, sizeof(sdc_shrb_t), v);
@@ -315,7 +310,6 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
         got_task = gtc_get_local_buf(gtc, priority, buf);
     }
 
-    free(rb_buf);
   } else {
     tc->ct.getlocal++;
   }
@@ -371,7 +365,7 @@ int gtc_add_sdc(gtc_t gtc, task_t *task, int proc) {
   if (proc == _c->rank) {
     // Local add: put it straight onto the local work list
     sdc_shrb_push_head(tc->shared_rb, _c->rank, task, sizeof(task_t) + gtc_task_body_size(task));
-  } 
+  }
 #if 0 /* no task pushing */
   else {
     // Remote adds: put this in the remote node's inbox
@@ -515,16 +509,16 @@ void gtc_print_gstats_sdc(gtc_t gtc) {
   uint64_t *counts, *mincounts, *maxcounts, *sumcounts;
 
   int ntimes = 14;
-  times     = shmem_calloc(ntimes, sizeof(double));
-  mintimes  = shmem_calloc(ntimes, sizeof(double));
-  maxtimes  = shmem_calloc(ntimes, sizeof(double));
-  sumtimes  = shmem_calloc(ntimes, sizeof(double));
+  times     = gtc_shmem_calloc(ntimes, sizeof(double));
+  mintimes  = gtc_shmem_calloc(ntimes, sizeof(double));
+  maxtimes  = gtc_shmem_calloc(ntimes, sizeof(double));
+  sumtimes  = gtc_shmem_calloc(ntimes, sizeof(double));
 
   int ncounts = 13;
-  counts     = shmem_calloc(ncounts, sizeof(uint64_t));
-  mincounts  = shmem_calloc(ncounts, sizeof(uint64_t));
-  maxcounts  = shmem_calloc(ncounts, sizeof(uint64_t));
-  sumcounts  = shmem_calloc(ncounts, sizeof(uint64_t));
+  counts     = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
+  mincounts  = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
+  maxcounts  = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
+  sumcounts  = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
 
 
   times[SDCPopTailTime]        = TC_READ_TIMER_MSEC(tc,poptail);
@@ -565,6 +559,8 @@ void gtc_print_gstats_sdc(gtc_t gtc) {
   shmem_sum_reduce(SHMEM_TEAM_WORLD, sumcounts, counts, ncounts);
   shmem_barrier_all();
 
+  eprintf("        : shared heap memory allocated: %d    local heap memory allocated: %d\n", _c->shmallocsize, _c->allocsize);
+
   eprintf("        : gets         %6lu (%6.2f/%3lu/%3lu) time %6.2fms/%6.2fms/%6.2fms per %6.2fms/%6.2fms/%6.2fms\n",
       sumcounts[SDCNumGets], sumcounts[SDCNumGets]/(double)_c->size, mincounts[SDCNumGets], maxcounts[SDCNumGets],
       sumtimes[SDCPopTailTime]/_c->size, mintimes[SDCPopTailTime], maxtimes[SDCPopTailTime],
@@ -579,19 +575,19 @@ void gtc_print_gstats_sdc(gtc_t gtc) {
       sumtimes[SDCPerGetMetaTime]/_c->size, mintimes[SDCPerGetMetaTime], maxtimes[SDCPerGetMetaTime]);
 
   eprintf("        :   localget   %6lu (%6.2f/%3lu/%3lu)\n",
-      sumcounts[SDCGetLocalCalls], sumcounts[SDCGetLocalCalls]/(double)_c->size, 
+      sumcounts[SDCGetLocalCalls], sumcounts[SDCGetLocalCalls]/(double)_c->size,
       mincounts[SDCGetLocalCalls], maxcounts[SDCGetLocalCalls]);
   eprintf("        :   steals     %6lu (%6.2f/%3lu/%3lu)\n",
-      sumcounts[SDCNumSteals], sumcounts[SDCNumSteals]/(double)_c->size, 
+      sumcounts[SDCNumSteals], sumcounts[SDCNumSteals]/(double)_c->size,
       mincounts[SDCNumSteals], maxcounts[SDCNumSteals]);
   eprintf("        :   fails lock %6lu (%6.2f/%3lu/%3lu)\n",
-      sumcounts[SDCStealFailsLocked], sumcounts[SDCStealFailsLocked]/(double)_c->size, 
+      sumcounts[SDCStealFailsLocked], sumcounts[SDCStealFailsLocked]/(double)_c->size,
       mincounts[SDCStealFailsLocked], maxcounts[SDCStealFailsLocked]);
   eprintf("        :   fails un   %6lu (%6.2f/%3lu/%3lu)\n",
-      sumcounts[SDCStealFailsUnlocked], sumcounts[SDCStealFailsUnlocked]/(double)_c->size, 
+      sumcounts[SDCStealFailsUnlocked], sumcounts[SDCStealFailsUnlocked]/(double)_c->size,
       mincounts[SDCStealFailsUnlocked], maxcounts[SDCStealFailsUnlocked]);
   eprintf("        :   fails ab   %6lu (%6.2f/%3lu/%3lu)\n",
-      sumcounts[SDCAbortedSteals], sumcounts[SDCAbortedSteals]/(double)_c->size, 
+      sumcounts[SDCAbortedSteals], sumcounts[SDCAbortedSteals]/(double)_c->size,
       mincounts[SDCAbortedSteals], maxcounts[SDCAbortedSteals]);
 
   eprintf("        : progress   %6.2f/%3lu/%3lu time %6.2fus/%6.2fus/%6.2fus per %6.2fus/%6.2fus/%6.2fus\n",
