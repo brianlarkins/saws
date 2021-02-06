@@ -87,6 +87,5 @@ clod_key_t clod_nextfree(clod_t clod) {
 
   id = clod->nextfree;
   clod->nextfree++;
-  return id;
-  GTC_EXIT();
+  GTC_EXIT(id);
 }

@@ -78,7 +78,6 @@ saws_shrb_t *saws_shrb_create(int elem_size, int max_size, tc_t *tc) {
   gtc_lprintf(DBGSHRB, "  Thread %d: saws_shrb_create()\n", procid);
 
   // Allocate the struct and the buffer contiguously in shared space
-  eprintf("meta: %d queue: %d\n", sizeof(saws_shrb_t), elem_size * max_size);
   rb = gtc_shmem_malloc(sizeof(saws_shrb_t) + elem_size*max_size);
 
   targets = (uint32_t *) gtc_calloc(nproc, sizeof(uint32_t));

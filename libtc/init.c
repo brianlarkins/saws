@@ -37,9 +37,6 @@ gtc_context_t *gtc_init(void) {
   // allocate context structure
   _c = (gtc_context_t *)calloc(1, sizeof(gtc_context_t));
   _c->allocsize += sizeof(gtc_context_t);
-#ifdef SCIOTO_TRACING
-  eprintf("gtc_calloc: gtc_init of %d\n", sizeof(gtc_context_t));
-#endif
 
   // set gdb backtraces if possible
   setenv("SHMEM_BACKTRACE", "gdb", 1);
@@ -49,6 +46,11 @@ gtc_context_t *gtc_init(void) {
 
   _c->rank = shmem_my_pe();
   _c->size = shmem_n_pes();
+
+#ifdef SCIOTO_TRACING
+  if (_c->rank == 0)
+    printf("      gtc_calloc: gtc_init of %ld\n", sizeof(gtc_context_t));
+#endif
 
   _c->total_tcs = 0;
   for (int i=0; i< GTC_MAX_TC; i++) {
