@@ -378,7 +378,7 @@ int gtc_add_sdc(gtc_t gtc, task_t *task, int proc) {
   if (proc == _c->rank) {
     // Local add: put it straight onto the local work list
     sdc_shrb_push_head(tc->shared_rb, _c->rank, task, sizeof(task_t) + gtc_task_body_size(task));
-  } 
+  }
 #if 0 /* no task pushing */
   else {
     // Remote adds: put this in the remote node's inbox
@@ -522,16 +522,22 @@ void gtc_print_gstats_sdc(gtc_t gtc) {
   uint64_t *counts, *mincounts, *maxcounts, *sumcounts;
 
   int ntimes = 14;
-  times     = shmem_calloc(ntimes, sizeof(double));
-  mintimes  = shmem_calloc(ntimes, sizeof(double));
-  maxtimes  = shmem_calloc(ntimes, sizeof(double));
-  sumtimes  = shmem_calloc(ntimes, sizeof(double));
+  times     = shmem_malloc(ntimes * sizeof(double));
+  mintimes  = shmem_malloc(ntimes * sizeof(double));
+  maxtimes  = shmem_malloc(ntimes * sizeof(double));
+  sumtimes  = shmem_malloc(ntimes * sizeof(double));
+  for (int i=0; i<ntimes; i++) {
+    times[i] = mintimes[i] = maxtimes[i] = sumtimes[i] = 0;
+  }
 
   int ncounts = 13;
-  counts     = shmem_calloc(ncounts, sizeof(uint64_t));
-  mincounts  = shmem_calloc(ncounts, sizeof(uint64_t));
-  maxcounts  = shmem_calloc(ncounts, sizeof(uint64_t));
-  sumcounts  = shmem_calloc(ncounts, sizeof(uint64_t));
+  counts     = shmem_malloc(ncounts * sizeof(uint64_t));
+  mincounts  = shmem_malloc(ncounts * sizeof(uint64_t));
+  maxcounts  = shmem_malloc(ncounts * sizeof(uint64_t));
+  sumcounts  = shmem_malloc(ncounts * sizeof(uint64_t));
+  for (int i=0; i<ncounts; i++) {
+    counts[i] = mincounts[i] = maxcounts[i] = sumcounts[i] = 0;
+  }
 
 
   times[SDCPopTailTime]        = TC_READ_TIMER_MSEC(tc,poptail);
@@ -563,7 +569,7 @@ void gtc_print_gstats_sdc(gtc_t gtc) {
   counts[SDCReacquireCalls]     = rb->nreacquire;
   counts[SDCReleaseCalls]       = rb->nrelease;
 
-#ifndef GTC_USE_OLD_SHMEM_COLLECTIVES
+#ifndef GTC_USE_SHMEM14_COMPAT
   shmem_min_reduce(SHMEM_TEAM_WORLD, mintimes, times, ntimes);
   shmem_max_reduce(SHMEM_TEAM_WORLD, maxtimes, times, ntimes);
   shmem_sum_reduce(SHMEM_TEAM_WORLD, sumtimes, times, ntimes);
@@ -579,7 +585,7 @@ void gtc_print_gstats_sdc(gtc_t gtc) {
   gtc_min_reduce_uint64(mincounts, counts, ncounts);
   gtc_max_reduce_uint64(maxcounts, counts, ncounts);
   gtc_sum_reduce_uint64(sumcounts, counts, ncounts);
-#endif // GTC_USE_OLD_SHMEM_COLLECTIVES
+#endif // GTC_USE_SHMEM14_COMPAT
   shmem_barrier_all();
 
   eprintf("        : gets         %6lu (%6.2f/%3lu/%3lu) time %6.2fms/%6.2fms/%6.2fms per %6.2fms/%6.2fms/%6.2fms\n",
@@ -596,19 +602,19 @@ void gtc_print_gstats_sdc(gtc_t gtc) {
       sumtimes[SDCPerGetMetaTime]/_c->size, mintimes[SDCPerGetMetaTime], maxtimes[SDCPerGetMetaTime]);
 
   eprintf("        :   localget   %6lu (%6.2f/%3lu/%3lu)\n",
-      sumcounts[SDCGetLocalCalls], sumcounts[SDCGetLocalCalls]/(double)_c->size, 
+      sumcounts[SDCGetLocalCalls], sumcounts[SDCGetLocalCalls]/(double)_c->size,
       mincounts[SDCGetLocalCalls], maxcounts[SDCGetLocalCalls]);
   eprintf("        :   steals     %6lu (%6.2f/%3lu/%3lu)\n",
-      sumcounts[SDCNumSteals], sumcounts[SDCNumSteals]/(double)_c->size, 
+      sumcounts[SDCNumSteals], sumcounts[SDCNumSteals]/(double)_c->size,
       mincounts[SDCNumSteals], maxcounts[SDCNumSteals]);
   eprintf("        :   fails lock %6lu (%6.2f/%3lu/%3lu)\n",
-      sumcounts[SDCStealFailsLocked], sumcounts[SDCStealFailsLocked]/(double)_c->size, 
+      sumcounts[SDCStealFailsLocked], sumcounts[SDCStealFailsLocked]/(double)_c->size,
       mincounts[SDCStealFailsLocked], maxcounts[SDCStealFailsLocked]);
   eprintf("        :   fails un   %6lu (%6.2f/%3lu/%3lu)\n",
-      sumcounts[SDCStealFailsUnlocked], sumcounts[SDCStealFailsUnlocked]/(double)_c->size, 
+      sumcounts[SDCStealFailsUnlocked], sumcounts[SDCStealFailsUnlocked]/(double)_c->size,
       mincounts[SDCStealFailsUnlocked], maxcounts[SDCStealFailsUnlocked]);
   eprintf("        :   fails ab   %6lu (%6.2f/%3lu/%3lu)\n",
-      sumcounts[SDCAbortedSteals], sumcounts[SDCAbortedSteals]/(double)_c->size, 
+      sumcounts[SDCAbortedSteals], sumcounts[SDCAbortedSteals]/(double)_c->size,
       mincounts[SDCAbortedSteals], maxcounts[SDCAbortedSteals]);
 
   eprintf("        : progress   %6.2f/%3lu/%3lu time %6.2fus/%6.2fus/%6.2fus per %6.2fus/%6.2fus/%6.2fus\n",

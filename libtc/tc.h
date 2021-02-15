@@ -55,7 +55,7 @@ extern "C" {
 #define GTC_USE_INTERNAL_TIMERS
 #define GTC_USE_TSC_TIMERS
 
-#define GTC_USE_OLD_SHMEM_COLLECTIVES
+#define GTC_USE_SHMEM14_COMPAT
 
 
 // Enable/Disable different classes of debugging statements by OR-ing these flags
@@ -89,6 +89,7 @@ extern "C" {
   #define gtc_lprintf(lvl, ...) gtc_lvl_dbg_printf(lvl, __VA_ARGS__)
   #define gtc_eprintf(lvl, ...) gtc_lvl_dbg_eprintf(lvl, __VA_ARGS__)
 
+#ifdef SCIOTO_TRACING
   #define GTC_ENTRY(...)  do {\
                              strncpy(_sanity->curfun, __func__, GTC_MAX_FNAMELEN);\
                              strncpy(_sanity->curfile, __FILE__, GTC_MAX_FNAMELEN);\
@@ -106,6 +107,11 @@ extern "C" {
                                  strncpy(_sanity->curfile, __FILE__, GTC_MAX_FNAMELEN);\
                                  _sanity->curline = __LINE__;\
                               } while(0)
+#else  // SCIOTO_TRACING
+  #define GTC_ENTRY(...)   
+  #define GTC_EXIT(ret)        return ret
+  #define GTC_CHECKPOINT(...)
+#endif // SCIOTO_TRACING
 
 #else
   #define gtc_dprintf(...) while (0) {};
@@ -436,14 +442,14 @@ int                gtc_lvl_dbg_printf(int lvl, const char *format, ...);
 int                gtc_lvl_dbg_eprintf(int lvl, const char *format, ...);
 double             gtc_tsc_calibrate(void);
 void               gtc_sanity_check(void);
-#ifdef GTC_USE_OLD_SHMEM_COLLECTIVES
+#ifdef GTC_USE_SHMEM14_COMPAT
 void               gtc_min_reduce_uint64(uint64_t *dest, uint64_t *source, size_t nreduce);
 void               gtc_max_reduce_uint64(uint64_t *dest, uint64_t *source, size_t nreduce);
 void               gtc_sum_reduce_uint64(uint64_t *dest, uint64_t *source, size_t nreduce);
 void               gtc_min_reduce_double(double *dest, double *source, size_t nreduce);
 void               gtc_max_reduce_double(double *dest, double *source, size_t nreduce);
 void               gtc_sum_reduce_double(double *dest, double *source, size_t nreduce);
-#endif // GTC_USE_OLD_SHMEM_COLLECTIVES
+#endif // GTC_USE_SHMEM14_COMPAT
 
 // collection-sdc.c
 gtc_t   gtc_create_sdc(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg_t *ldbal_cfg);

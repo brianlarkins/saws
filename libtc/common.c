@@ -57,7 +57,8 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
   }
 
   // allocate collection
-  tc = shmem_calloc(1, sizeof(tc_t));
+  tc = shmem_malloc(sizeof(tc_t));
+  memset(tc, 0, sizeof(tc_t));
   assert(tc != NULL);
 
   // add to global registry
@@ -141,7 +142,7 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
   }
 
   // save a copy for sanity/corruption checking
-  _sanity->tcs[gtc] = shmem_calloc(1, sizeof(tc_t));
+  _sanity->tcs[gtc] = shmem_malloc(sizeof(tc_t));
   memcpy(_sanity->tcs[gtc], tc, sizeof(tc_t));
   shmem_barrier_all();
 
@@ -686,16 +687,22 @@ void gtc_print_gstats(gtc_t gtc) {
   shmem_barrier_all();
 
   int ntimes = 7;
-  times     = shmem_calloc(ntimes, sizeof(double));
-  mintimes  = shmem_calloc(ntimes, sizeof(double));
-  maxtimes  = shmem_calloc(ntimes, sizeof(double));
-  sumtimes  = shmem_calloc(ntimes, sizeof(double));
+  times     = shmem_malloc(ntimes * sizeof(double));
+  mintimes  = shmem_malloc(ntimes * sizeof(double));
+  maxtimes  = shmem_malloc(ntimes * sizeof(double));
+  sumtimes  = shmem_malloc(ntimes * sizeof(double));
+  for (int i=0; i<ntimes; i++) {
+    times[i] = mintimes[i] = maxtimes[i] = sumtimes[i] = 0;
+  }
 
   int ncounts = 4;
-  counts     = shmem_calloc(ncounts, sizeof(uint64_t));
-  mincounts  = shmem_calloc(ncounts, sizeof(uint64_t));
-  maxcounts  = shmem_calloc(ncounts, sizeof(uint64_t));
-  sumcounts  = shmem_calloc(ncounts, sizeof(uint64_t));
+  counts     = shmem_malloc(ncounts * sizeof(uint64_t));
+  mincounts  = shmem_malloc(ncounts * sizeof(uint64_t));
+  maxcounts  = shmem_malloc(ncounts * sizeof(uint64_t));
+  sumcounts  = shmem_malloc(ncounts * sizeof(uint64_t));
+  for (int i=0; i<ncounts; i++) {
+    counts[i] = mincounts[i] = maxcounts[i] = sumcounts[i] = 0.0;
+  }
 
   assert(times && mintimes && maxtimes && sumtimes);
   assert(counts && mincounts && maxcounts && sumcounts);
@@ -715,7 +722,7 @@ void gtc_print_gstats(gtc_t gtc) {
   counts[TasksStolen]        = tc->ct.tasks_stolen;
   counts[NumSteals]          = tc->ct.num_steals;
 
-#ifndef GTC_USE_OLD_SHMEM_COLLECTIVES
+#ifndef GTC_USE_SHMEM14_COMPAT
   shmem_min_reduce(SHMEM_TEAM_WORLD, mintimes, times, ntimes);
   shmem_max_reduce(SHMEM_TEAM_WORLD, maxtimes, times, ntimes);
   shmem_sum_reduce(SHMEM_TEAM_WORLD, sumtimes, times, ntimes);
@@ -731,7 +738,7 @@ void gtc_print_gstats(gtc_t gtc) {
   gtc_min_reduce_uint64(mincounts, counts, ncounts);
   gtc_max_reduce_uint64(maxcounts, counts, ncounts);
   gtc_sum_reduce_uint64(sumcounts, counts, ncounts);
-#endif // GTC_USE_OLD_SHMEM_COLLECTIVES
+#endif // GTC_USE_SHMEM14_COMPAT
 
   shmem_barrier_all();
 
@@ -807,16 +814,16 @@ void gtc_print_stats(gtc_t gtc) {
   shmem_barrier_all();
 
   int ntimes = 7;
-  times     = shmem_calloc(ntimes, sizeof(double));
-  mintimes  = shmem_calloc(ntimes, sizeof(double));
-  maxtimes  = shmem_calloc(ntimes, sizeof(double));
-  sumtimes  = shmem_calloc(ntimes, sizeof(double));
+  times     = shmem_malloc(ntimes * sizeof(double));
+  mintimes  = shmem_malloc(ntimes * sizeof(double));
+  maxtimes  = shmem_malloc(ntimes * sizeof(double));
+  sumtimes  = shmem_malloc(ntimes * sizeof(double));
 
   int ncounts = 4;
-  counts     = shmem_calloc(ncounts, sizeof(uint64_t));
-  mincounts  = shmem_calloc(ncounts, sizeof(uint64_t));
-  maxcounts  = shmem_calloc(ncounts, sizeof(uint64_t));
-  sumcounts  = shmem_calloc(ncounts, sizeof(uint64_t));
+  counts     = shmem_malloc(ncounts * sizeof(uint64_t));
+  mincounts  = shmem_malloc(ncounts * sizeof(uint64_t));
+  maxcounts  = shmem_malloc(ncounts * sizeof(uint64_t));
+  sumcounts  = shmem_malloc(ncounts * sizeof(uint64_t));
 
   assert(times && mintimes && maxtimes && sumtimes);
   assert(counts && mincounts && maxcounts && sumcounts);
@@ -837,7 +844,7 @@ void gtc_print_stats(gtc_t gtc) {
   counts[NumSteals]          = tc->ct.num_steals;
   counts[DispersionAttempts] = tc->ct.dispersion_attempts_locked + tc->ct.dispersion_attempts_unlocked;
 
-#ifndef GTC_USE_OLD_SHMEM_COLLECTIVES
+#ifndef GTC_USE_SHMEM14_COMPAT
   shmem_min_reduce(SHMEM_TEAM_WORLD, mintimes, times, ntimes);
   shmem_max_reduce(SHMEM_TEAM_WORLD, maxtimes, times, ntimes);
   shmem_sum_reduce(SHMEM_TEAM_WORLD, sumtimes, times, ntimes);
@@ -853,7 +860,7 @@ void gtc_print_stats(gtc_t gtc) {
   gtc_min_reduce_uint64(mincounts, counts, ncounts);
   gtc_max_reduce_uint64(maxcounts, counts, ncounts);
   gtc_sum_reduce_uint64(sumcounts, counts, ncounts);
-#endif // GTC_USE_OLD_SHMEM_COLLECTIVES
+#endif // GTC_USE_SHMEM14_COMPAT
   shmem_barrier_all();
 
 

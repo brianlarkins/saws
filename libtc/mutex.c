@@ -40,7 +40,8 @@ unsigned long synch_mutex_lock_ncalls            = 0;
   *  NOTE: This must be a collective call
   */
 void synch_mutex_init(synch_mutex_t *m) {
-  m->locks = shmem_calloc(shmem_n_pes(), sizeof(long));
+  m->locks = shmem_malloc(shmem_n_pes() * sizeof(long));
+  memset(m->locks, 0, shmem_n_pes() * sizeof(long));
 }
 
 
@@ -68,7 +69,11 @@ void synch_mutex_lock(synch_mutex_t *m, int proc) {
 
   do {
 
+#ifndef GTC_USE_SHMEM14_COMPAT
     lock_val = shmem_atomic_swap(&m->locks[proc], SYNCH_MUTEX_LOCKED, proc);
+#else
+    lock_val = shmem_swap(&m->locks[proc], SYNCH_MUTEX_LOCKED, proc);
+#endif // GTC_USE_SHMEM14_COMPAT
 
 #ifdef LINEAR_BACKOFF
     // Linear backoff to avoid flooding the network and bogging down the
@@ -104,7 +109,11 @@ int synch_mutex_trylock(synch_mutex_t *m, int proc) {
   ret = shmem_test_lock(&m->locks[proc]);
 #else  /* !USING_SHMEM_LOCKS */
 
+#ifndef GTC_USE_SHMEM14_COMPAT
     lock_val = shmem_atomic_swap(&m->locks[proc], SYNCH_MUTEX_LOCKED, proc);
+#else
+    lock_val = shmem_swap(&m->locks[proc], SYNCH_MUTEX_LOCKED, proc);
+#endif // GTC_USE_SHMEM14_COMPAT
     ret = (lock_val == SYNCH_MUTEX_UNLOCKED);
 
 #endif /*  USING_SHMEM_LOCKS */
@@ -127,7 +136,11 @@ void synch_mutex_unlock(synch_mutex_t *m, int proc) {
 
 #else  /* !USING_SHMEM_LOCKS */
 
+#ifndef GTC_USE_SHMEM14_COMPAT
   shmem_atomic_set(&m->locks[proc], SYNCH_MUTEX_UNLOCKED, proc);
+#else
+  shmem_set(&m->locks[proc], SYNCH_MUTEX_UNLOCKED, proc);
+#endif // GTC_USE_SHMEM14_COMPAT
 
 #endif /* USING_SHMEM_LOCKS */
 

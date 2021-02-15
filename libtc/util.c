@@ -31,7 +31,7 @@ int eprintf(const char *format, ...) {
 int gtc_dbg_printf(const char *format, ...) {
   va_list ap;
   int len, ret;
-  char buf[1024], obuf[1024];
+  char buf[1024], obuf[1234];
 
   va_start(ap, format);
   ret = vsprintf(buf, format, ap);
@@ -56,7 +56,7 @@ int gtc_dbg_printf(const char *format, ...) {
 int gtc_lvl_dbg_printf(int lvl, const char *format, ...) {
   va_list ap;
   int len, ret = 0;
-  char buf[1024], obuf[1024];
+  char buf[1024], obuf[1234];
 
   if (lvl &= _c->dbglvl) {
     va_start(ap, format);
