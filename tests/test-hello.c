@@ -105,7 +105,7 @@ int main(int argc, char **argv)
   // Find the ideal execution time
   //MPI_Reduce(&sleep_time, &ideal_time, 1, MPI_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
   //gtc_reduce(&sleep_time, &ideal_time, GtcReduceOpSum, LongType, 1);
-#ifndef GTC_USE_OLD_SHMEM_COLLECTIVES
+#ifndef GTC_USE_SHMEM14_COMPAT
   shmem_sum_reduce(SHMEM_TEAM_WORLD, &ideal_time, &sleep_time, 1);
 #else
   gtc_sum_reduce_uint64(&ideal_time, &sleep_time, 1);

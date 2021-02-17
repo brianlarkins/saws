@@ -79,7 +79,7 @@ int main(int argc, char **argv)
   t_td            = TC_READ_ATIMER_MSEC(tdtime);
   t_armci_barrier = TC_READ_ATIMER_MSEC(barriertime);
 
-#ifndef GTC_USE_OLD_SHMEM_COLLECTIVES
+#ifndef GTC_USE_SHMEM14_COMPAT
   shmem_max_reduce(SHMEM_TEAM_WORLD, &t_td_max, &t_td, 1);
   shmem_max_reduce(SHMEM_TEAM_WORLD, &t_armci_max, &t_armci_barrier, 1);
 #else

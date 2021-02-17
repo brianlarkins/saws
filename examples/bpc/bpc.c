@@ -36,10 +36,10 @@ static const double work_time = 0.001;   //  1 ms
 static double consumer_work_units = 10;
 static double producer_work_units = 1;
 
-static int initial_producers = 1;
+static uint64_t initial_producers = 1;
 static int nchildren = 10;
 static int maxdepth  = 2000;
-static int bouncing  = 0;
+static uint64_t bouncing  = 0;
 static int verbose   = 0;
 static gtc_qtype_t qtype = GtcQueueSAWS;
 
@@ -220,7 +220,7 @@ void process_args(int argc, char **argv) {
         printf("Options: (flag, argument type, default value)\n");
         printf("  -d int   %5d  Max depth\n", maxdepth);
         printf("  -n int   %5d  Number of children per node\n", nchildren);
-        printf("  -i int   %5d  Number of initial producers\n", initial_producers);
+        printf("  -i int   %5ld  Number of initial producers\n", initial_producers);
         printf("  -p dbl   %5.2f  Producer work size (units of %.2f ms)\n", producer_work_units, work_time);
         printf("  -c dbl   %5.2f  Consumer work size (units of %.2f ms)\n", consumer_work_units, work_time);
         printf("  -b              Enable bouncing mode\n");
@@ -239,21 +239,21 @@ void process_args(int argc, char **argv) {
 
 
 int main(int argc, char **argv) {
-  int           expected_ntasks;     // Used to check the final result
-  int           expected_nproducers;
-  int           expected_nconsumers;
+  uint64_t          expected_ntasks;     // Used to check the final result
+  uint64_t           expected_nproducers;
+  uint64_t           expected_nconsumers;
   double        ideal_walltime;
   gtc_t         gtc;              // Portable reference to the task collection
   int           ntasks_key;       // Portable references to common local copies of the counters
   int           nproducers_key;
   int           nconsumers_key;
   tc_timer_t   time;
-  static int    ntasks     = 0;   // Count the number of tasks executed
-  static int    nproducers = 0;   // Count the number of producer tasks executed
-  static int    nconsumers = 0;   // Count the number of consumer tasks executed
-  static int    final_ntasks;     // Collective sum of everyone's stats
-  static int    final_nproducers;
-  static int    final_nconsumers;
+  static uint64_t    ntasks     = 0;   // Count the number of tasks executed
+  static uint64_t    nproducers = 0;   // Count the number of producer tasks executed
+  static uint64_t    nconsumers = 0;   // Count the number of consumer tasks executed
+  static uint64_t    final_ntasks;     // Collective sum of everyone's stats
+  static uint64_t    final_nproducers;
+  static uint64_t    final_nconsumers;
 
   setenv("SCIOTO_DISABLE_PERNODE_STATS", "1", 1);
   //setenv("GTC_RECLAIM_FREQ", "10", 1);
@@ -272,7 +272,7 @@ int main(int argc, char **argv) {
   if (me == 0) {
     printf("SCIOTO Producer-Consumer uBench starting with %d threads\n", nproc);
     printf("-----------------------------------------------------------------------------\n\n");
-    printf("Max depth = %d, nchildren = %d, producer tasks = %7d, consumer tasks = %7d\n", maxdepth, nchildren, 
+    printf("Max depth = %d, nchildren = %d, producer tasks = %7ld, consumer tasks = %7ld\n", maxdepth, nchildren, 
         expected_nproducers, expected_nconsumers);
     printf("Work unit size = %.2f ms, Producer work units = %.2f, Consumer work units = %.2f\n", work_time * 1000.0,
         producer_work_units, consumer_work_units);
@@ -292,7 +292,7 @@ int main(int argc, char **argv) {
   // Add the initial producer tasks to the task collection
   // FIXME: these are going to all get stuck on one process due to SMP-awareness
   if (me == 0) {
-    int i;
+    uint64_t i;
     for (i = 0; i < initial_producers; i++)
       create_task(gtc, producer_tclass, 0, i, ntasks_key, nproducers_key, nconsumers_key);
   }
@@ -317,17 +317,25 @@ int main(int argc, char **argv) {
   // printf("(%d) ntasks: %d, nproducers: %d, nconsumers: %d\n", me, ntasks, nproducers, nconsumers);
 
   // Check if the correct number of tasks were processed
+#ifndef GTC_USE_SHMEM14_COMPAT
+  shmem_sum_reduce(SHMEM_TEAM_WORLD, &final_ntasks, &ntasks, 1);
   shmem_sum_reduce(SHMEM_TEAM_WORLD, &final_ntasks, &ntasks, 1);
   shmem_sum_reduce(SHMEM_TEAM_WORLD, &final_nproducers, &nproducers, 1);
-  shmem_sum_reduce(SHMEM_TEAM_WORLD, &final_nconsumers, &nconsumers, 1);
-
+#else
+  //printf("fuck this shit im out\n");
+  //uint64_t * p = (uint64_t *) &final_nconsumers;
+  gtc_sum_reduce_uint64( &final_ntasks, &ntasks, 1);
+ // printf("we got 1 atleast\n");
+  gtc_sum_reduce_uint64( &final_nconsumers, &nconsumers, 1);
+  gtc_sum_reduce_uint64( &final_nproducers, &nproducers, 1);
+#endif
   if (me == 0) {
     printf("\n");
-    printf("Total tasks processed = %7d, expected = %7d: %s\n", final_ntasks, expected_ntasks,
+    printf("Total tasks processed = %7ld, expected = %7ld: %s\n", final_ntasks, expected_ntasks,
       (final_ntasks == expected_ntasks) ? "SUCCESS" : "FAILURE");
-    printf("Total producer tasks  = %7d, expected = %7d: %s\n", final_nproducers, expected_nproducers,
+    printf("Total producer tasks  = %7ld, expected = %7ld: %s\n", final_nproducers, expected_nproducers,
       (final_nproducers == expected_nproducers) ? "SUCCESS" : "FAILURE");
-    printf("Total consumer tasks  = %7d, expected = %7d: %s\n", final_nconsumers, expected_nconsumers,
+    printf("Total consumer tasks  = %7ld, expected = %7ld: %s\n", final_nconsumers, expected_nconsumers,
       (final_nconsumers == expected_nconsumers) ? "SUCCESS" : "FAILURE");
     double atime = TC_READ_ATIMER_SEC(time); // was having conversion issues, probably fixed now, but whatever
     printf("Actual Walltime = %f sec, %0.2f tasks/sec (%0.2f tasks/sec/process)\n", TC_READ_ATIMER_SEC(time), 

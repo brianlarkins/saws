@@ -110,7 +110,7 @@ int main(int argc, char **argv)
   shmem_barrier_all();
 
   // Find the ideal execution time
-#ifndef GTC_USE_OLD_SHMEM_COLLECTIVES
+#ifndef GTC_USE_SHMEM14_COMPAT
   shmem_sum_reduce(SHMEM_TEAM_WORLD, &ideal_time, &sleep_time, 1);
 #else
   gtc_sum_reduce_uint64(&ideal_time, &sleep_time, 1);

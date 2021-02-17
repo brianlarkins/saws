@@ -132,7 +132,7 @@ int main(int argc, char **argv) {
         gtc_process(gtc2);
         gtc_reset(gtc2);
 
-#ifndef GTC_USE_OLD_SHMEM_COLLECTIVES
+#ifndef GTC_USE_SHMEM14_COMPAT
         shmem_sum_reduce(SHMEM_TEAM_WORLD, &this_iter, &counter, 1);
 #else
         gtc_sum_reduce_uint64(&this_iter, &counter, 1);

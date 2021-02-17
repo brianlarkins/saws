@@ -163,7 +163,7 @@ void gtc_sanity_check(void) {
   }
 }
 
-#ifdef GTC_USE_OLD_SHMEM_COLLECTIVES
+#ifdef GTC_USE_SHMEM14_COMPAT
 typedef enum { GtcReduceMin, GtcReduceMax, GtcReduceSum } gtc_reduce_op_t;
 typedef enum { GtcTypeLong, GtcTypeDouble } gtc_reduce_type_t;
 static  long   psync[SHMEM_REDUCE_SYNC_SIZE];
@@ -181,15 +181,15 @@ static void gtc_reduce(void *dest, void *source, size_t nreduce, gtc_reduce_op_t
       {
         switch (op) {
           case GtcReduceMin:
-            gtc_dprintf("lmin\n");
+            //gtc_dprintf("lmin\n");
             shmem_long_min_to_all((long *)dest, (long *)source, nreduce, 0, 0, _c->size, longwork, psync);
             break;
           case GtcReduceMax:
-            gtc_dprintf("lmax\n");
+            //gtc_dprintf("lmax\n");
             shmem_long_max_to_all((long *)dest, (long *)source, nreduce, 0, 0, _c->size, longwork, psync);
             break;
           case GtcReduceSum:
-            gtc_dprintf("lsum\n");
+            //gtc_dprintf("lsum\n");
             shmem_long_sum_to_all((long *)dest, (long *)source, nreduce, 0, 0, _c->size, longwork, psync);
             break;
         }
@@ -198,19 +198,19 @@ static void gtc_reduce(void *dest, void *source, size_t nreduce, gtc_reduce_op_t
     case GtcTypeDouble:
       {
         for (size_t i=0; i<nreduce; i++) {
-          gtc_dprintf("%d: %f\n", i, ((double *)source)[i]);
+          //gtc_dprintf("%d: %f\n", i, ((double *)source)[i]);
         }
         switch (op) {
           case GtcReduceMin:
-            gtc_dprintf("dmin\n");
+            //gtc_dprintf("dmin\n");
             shmem_double_min_to_all((double *)dest, (double *)source, nreduce, 0, 0, _c->size, doublework, psync);
             break;
           case GtcReduceMax:
-            gtc_dprintf("dmax\n");
+            //gtc_dprintf("dmax\n");
             shmem_double_max_to_all((double *)dest, (double *)source, nreduce, 0, 0, _c->size, doublework, psync);
             break;
           case GtcReduceSum:
-            gtc_dprintf("dsum\n");
+            //gtc_dprintf("dsum\n");
             shmem_double_sum_to_all((double *)dest, (double *)source, nreduce, 0, 0, _c->size, doublework, psync);
             break;
         }
@@ -218,7 +218,7 @@ static void gtc_reduce(void *dest, void *source, size_t nreduce, gtc_reduce_op_t
       break;
   }
   shmem_barrier_all();
-  gtc_dprintf("done\n");
+  //gtc_dprintf("done\n");
 }
 
 void gtc_min_reduce_uint64(uint64_t *dest, uint64_t *source, size_t nreduce) {

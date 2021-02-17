@@ -136,7 +136,7 @@ int main(int argc, char **argv) {
   gtc_process(gtc);
     printf("thread %d after gtc_process\n", _c->rank);
   // Check if the correct number of tasks were processed
-#ifndef GTC_USE_OLD_SHMEM_COLLECTIVES
+#ifndef GTC_USE_SHMEM14_COMPAT
   shmem_sum_reduce(SHMEM_TEAM_WORLD, &sum, &counter, 1);
 #else
   gtc_sum_reduce_uint64(&sum, &counter, 1);

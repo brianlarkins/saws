@@ -74,7 +74,7 @@ extern "C" {
 #define DBGMP     2048
 #define DBGSTEAL  4096
 
-#define GTC_DEFAULT_DEBUGLEVEL DBGERR | DBGWARN | DBGINIT // | DBGTD | DBGGET | DBGSHRB
+//#define GTC_DEFAULT_DEBUGLEVEL DBGERR | DBGWARN | DBGINIT // | DBGTD | DBGGET | DBGSHRB
 #ifndef GTC_DEFAULT_DEBUGLEVEL
  #define GTC_DEFAULT_DEBUGLEVEL  0
 #endif
@@ -128,8 +128,8 @@ extern "C" {
 #endif // offsetof
 
 #define __GTC_MAX_STEAL_SIZE                 500000   // max # of tasks to steal when doing work sp
-//#define __GTC_RECLAIM_POLLFREQ                    1 // how often do we call ensure()/reclaim()?
-#define __GTC_RECLAIM_POLLFREQ                     20 // use for UTS
+#define __GTC_RECLAIM_POLLFREQ                    1 // how often do we call ensure()/reclaim()?
+//#define __GTC_RECLAIM_POLLFREQ                     20 // use for UTS
 
 // forward refs
 struct task_s;

@@ -22,7 +22,7 @@ extern "C" {
 #include "rng/rng.h"
 
 #define UTS_VERSION "2.1"
-
+#define GTC_USE_SHMEM14_COMPAT
 /***********************************************************
  *  Tree node descriptor and statistics                    *
  ***********************************************************/
