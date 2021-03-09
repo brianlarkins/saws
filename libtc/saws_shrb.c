@@ -303,7 +303,7 @@ int saws_shrb_reclaim_space(saws_shrb_t *rb) {
     // if so, update tail index accordingly.
     if (sum == rb->completed[rb->last].itasks) {
       rb->tail = rb->completed[rb->cur].vtail;
-      memset(&rb->completed[rb->last], 0, sizeof(rb->completed[rb->last]));
+     // memset(&rb->completed[rb->last], 0, sizeof(rb->completed[rb->last]));
       rb->completed[rb->last].done = 1;
     }
   }
@@ -665,16 +665,13 @@ test:
   }
   // calculate steal volume for our attempt
   ntasks = (tasks_left != 1) ? tasks_left >> 1 : 1;
-  assert(ntasks > 0);
   if(ntasks <= 0)
     return 0;
   gtc_lprintf(DBGGET, "attempting from (%d), starting at index %d\n", ntasks, proc, rtail + stolen);
-  __gtc_marker[1] = 3;
   // determine base address of tasks to steal
   rptr = &myrb->q[0] + ((rtail + stolen) * myrb->elem_size);
 
   // check to see if the task block wraps around the end of the queue
-  shmem_quiet();
   if (rtail + stolen + ntasks < myrb->max_size) {
     // No wrap
     shmem_getmem_nbi(e, rptr, ntasks * myrb->elem_size, proc);
@@ -698,7 +695,6 @@ test:
         shmem_getmem_nbi(e, new_start, ntasks * myrb->elem_size, proc);
     }
   }
-  shmem_quiet(); // this might not be needed.
  
   gtc_lprintf(DBGSHRB, "sending completion to epoch %d index %d\n", valid, index);
   shmem_atomic_add(&myrb->completed[valid].status[index], ntasks, proc);

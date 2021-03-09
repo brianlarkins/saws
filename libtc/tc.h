@@ -82,7 +82,7 @@ extern "C" {
 #define gtc_lookup(_GTCLKUP) _c->tcs[_GTCLKUP]
 
 #define SCIOTO_DEBUG
-#define SCIOTO_TRACING
+// #define SCIOTO_TRACING
 #ifdef SCIOTO_DEBUG
   #define gtc_dprintf(...) gtc_dbg_printf(__VA_ARGS__)
   #define gtc_lprintf(lvl, ...) gtc_lvl_dbg_printf(lvl, __VA_ARGS__)

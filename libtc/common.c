@@ -841,7 +841,7 @@ void gtc_print_stats(gtc_t gtc) {
       sumtimes[SearchTime]/_c->size);
   eprintf("        : tasks completed %lu, %.2f tasks/sec (%.2f tasks/sec/PE)\n",
       sumcounts[TasksCompleted],
-      sumtimes[TasksCompleted]/(sumtimes[ProcessTime]/_c->size),
+      sumcounts[TasksCompleted]/(sumtimes[ProcessTime]/_c->size),
       sumcounts[TasksCompleted]/sumtimes[ProcessTime]);
 
   eprintf("        : dispersion %6.2fms/%6.2fms/%6.2fms attempts %6.2f (%6.2f/%6.2f/%6.2f)\n",
@@ -856,12 +856,9 @@ void gtc_print_stats(gtc_t gtc) {
 
 
   //this is the graph data.
-  // num_processes, average_time, passive_time, search_time, average_dispersion_time, dispersion_attempts, tasks_completed, idk
-  eprintf("&&&&  %lu      %.5f %lu %.5f %.5f %6.2f %6.2f %.2f %.2f\n", _c->size, sumtimes[ProcessTime]/_c->size,
-      sumtimes[PassiveTime]/_c->size, sumtimes[SearchTime]/_c->size, sumtimes[DispersionTime]/_c->size,
-      sumcounts[DispersionAttempts]/_c->size,
-      sumcounts[TasksCompleted], sumtimes[TasksCompleted]/(sumtimes[ProcessTime]/_c->size));
-
+  // num_processes, average_time, passive_time, search_time, average_dispersion_time, dispersion_attempts, tasks/sec, tasks/sec/pe
+  eprintf("c  %lu      %.5f %.5f %.5f %6.2f %6.2f %6.2f %.2f %d \n", _c->size, sumtimes[ProcessTime]/_c->size,
+      sumtimes[PassiveTime]/_c->size, sumtimes[SearchTime]/_c->size, sumtimes[DispersionTime]/_c->size, sumcounts[DispersionAttempts]/_c->size, sumcounts[TasksCompleted]/sumtimes[ProcessTime], sumcounts[TasksCompleted]/(sumtimes[ProcessTime]/_c->size), tc->td->num_attempts);
   shmem_free(times);
   shmem_free(mintimes);
   shmem_free(maxtimes);

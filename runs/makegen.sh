@@ -43,6 +43,6 @@ function makefile() {
 
   echo ' ' >> $sfname
 
-  echo "$runner -o $HOME/saws/runs/$exe/$exe.$pntasks.${label}_base $uenv $xpath/$exe $args_b" >> $sfname
-  echo "$runner -o $HOME/saws/runs/$exe/$exe.$pntasks.${label}_half $uenv $xpath/$exe $args_h" >> $sfname
+  echo "$runner --mpi=pmi2 -o $HOME/saws/runs/$exe/$exe.$pntasks.${label}_base $uenv $xpath/$exe $args_b" >> $sfname
+  echo "$runner --mpi=pmi2 -o $HOME/saws/runs/$exe/$exe.$pntasks.${label}_half $uenv $xpath/$exe $args_h" >> $sfname
 }

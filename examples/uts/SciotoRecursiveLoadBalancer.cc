@@ -83,7 +83,7 @@ double ldbal_scioto(UTSIterator iter) {
 #endif
 
   setenv("SCIOTO_DISABLE_PERNODE_STATS", "1", 1);
-  setenv("GTC_RECLAIM_FREQ", "20", 1);
+  setenv("GTC_RECLAIM_FREQ", "24", 1);
 
   // Initialize the Task Collection
   gtc_ldbal_cfg_t cfg;
