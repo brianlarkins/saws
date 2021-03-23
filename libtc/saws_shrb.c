@@ -298,12 +298,12 @@ int saws_shrb_reclaim_space(saws_shrb_t *rb) {
   TC_START_TIMER(rb->tc, reclaim);
   if (!rb->completed[rb->last].done) {
     for (int i = 0; i < rb->completed[rb->last].maxsteals; i++){
+      if (rb->completed[rb->last].status[i] == 0) { TC_STOP_TIMER(rb->tc, reclaim); GTC_EXIT(0);}
       sum += rb->completed[rb->last].status[i];
     }
     // if so, update tail index accordingly.
     if (sum == rb->completed[rb->last].itasks) {
       rb->tail = rb->completed[rb->cur].vtail;
-     // memset(&rb->completed[rb->last], 0, sizeof(rb->completed[rb->last]));
       rb->completed[rb->last].done = 1;
     }
   }
@@ -501,7 +501,6 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
 static inline void saws_shrb_push_n_head_impl(saws_shrb_t *rb, int proc, void *e, int n, int size) {
   int head, old_head;
 
-  assert(size <= rb->elem_size);
   assert(size == rb->elem_size || n == 1);  // n > 1 ==> size == rb->elem_size
   assert(proc == rb->procid);
   TC_START_TIMER(rb->tc, pushhead);
@@ -580,7 +579,6 @@ int saws_shrb_pop_head(void *b, int proc, void *buf) {
   int   old_head;
   int   buf_valid = 0;
 
-  assert(proc == rb->procid);
 
   // If we are out of local work, try to reacquire
   if (saws_shrb_local_isempty(rb))
@@ -626,7 +624,7 @@ static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, 
   int64_t  rtail;
   void *rptr = NULL;
   increment = 1L << 40;
-
+  shmem_quiet();
   // if target is in empty mode
   //   grab remote stealval and check - if work, then retry else return 0
   // else
@@ -680,6 +678,7 @@ test:
   // In the case that the previous steal was a wrapping steal and the queue has not been reset
   // only one steal is needed with a recalculated start index.
   } else {
+    shmem_quiet();
     // calculate how many tasks from thosealready stolen to the end of the queue
     int part_size = myrb->max_size - (rtail + stolen);
     gtc_lprintf(DBGSHRB, "nmax_size: %d  stolen: %d  part size: %d\n", myrb->max_size, rtail + stolen, part_size);
