@@ -187,7 +187,6 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
   int     v, steal_size;
   int     passive = 0;
   int     searching = 0;
-
   gtc_vs_state_t vs_state = {0, 0, 0};
 
   tc->ct.getcalls++;
@@ -214,11 +213,8 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
     tc->ct.passive_count++;
 #endif
 
-    vs_state.last_target = tc->last_target;
-
     // Keep searching until we find work or detect termination
     while (!got_task && !tc->terminated) {
-      int      max_steal_attempts, steal_attempts, steal_done;
 
       tc->state = STATE_SEARCHING;
 
@@ -229,68 +225,36 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
 
       // Select the next target
       v = gtc_select_target(gtc, &vs_state);
-      max_steal_attempts = tc->ldbal_cfg.max_steal_attempts_remote;
 
-      // ZZZ clean this up - make look more like sciotwo code
+      tc->state = STATE_STEALING;
 
-      // Poll the target for work.  In between polls, maintain progress on termination detection.
-      for (steal_attempts = 0, steal_done = 0;
-           !steal_done && !tc->terminated && steal_attempts < max_steal_attempts;
-           steal_attempts++) {
-        // Apply linear backoff to avoid flooding remote nodes
-        if (steal_attempts > 0) {
-          int j;
-          for (j = 0; j < steal_attempts*1000; j++)
-            gtc_get_dw += 1.0;
-        }
-          tc->state = STATE_STEALING;
+      // attempt remote steal
+      steal_size = gtc_steal_tail(gtc, v);
+      // Steal succeeded: Got some work from remote node
+      if (steal_size > 0) {
+        tc->ct.tasks_stolen += steal_size;
+        tc->ct.num_steals += 1;
+        tc->last_target = v;
 
-          if (searching) {
-#ifndef NO_SEATBELTS
-            TC_STOP_TIMER(tc, search);
-#endif
-            searching = 0;
-          }
+        // Steal failed: Got the lock, no longer any work on remote node
+      } else {
+        tc->ct.failed_steals_unlocked++;
+      }
 
-          steal_size = gtc_steal_tail(gtc, v);
-          // Steal succeeded: Got some work from remote node
-          if (steal_size > 0) {
-            tc->ct.tasks_stolen += steal_size;
-            tc->ct.num_steals += 1;
-            steal_done = 1;
-            tc->last_target = v;
+      // Invoke the progress engine
+      gtc_progress(gtc);
 
-          // Steal failed: Got the lock, no longer any work on remote node
-          } else {
-            tc->ct.failed_steals_locked++;
-            steal_done = 1;
+      // Still no work? Lock to be sure and check for termination.
+      // Locking is only needed here if we allow pushing.
+      // TODO: New TD should not require locking.  Remove locks and test.
+      if (gtc_tasks_avail(gtc) == 0 && !tc->external_work_avail) {
+        td_set_counters(tc->td, tc->ct.tasks_spawned, tc->ct.tasks_completed);
+        tc->terminated = td_attempt_vote(tc->td);
 
-          // Steal aborted: Didn't get the lock, refresh target metadata and try again
-          //} else {
-          //  if (steal_attempts + 1 == max_steal_attempts)
-          //    tc->ct.aborted_steals++;
-          //  vs_state.target_retry = 1;
-          }
-
-          steal_done = 1;
-        }
-
-        // Invoke the progress engine
-        gtc_progress(gtc);
-
-        // Still no work? Lock to be sure and check for termination.
-        // Locking is only needed here if we allow pushing.
-        // TODO: New TD should not require locking.  Remove locks and test.
-        if (gtc_tasks_avail(gtc) == 0 && !tc->external_work_avail) {
-            td_set_counters(tc->td, tc->ct.tasks_spawned, tc->ct.tasks_completed);
-            tc->terminated = td_attempt_vote(tc->td);
-
-        // We have work, done stealing
-        } else {
-          steal_done = 1;
-        }
-      if (gtc_tasks_avail(gtc))
+      // We have work, done stealing
+      } else if (gtc_tasks_avail(gtc)) {
         got_task = gtc_get_local_buf(gtc, priority, buf);
+      }
     } //end whileloop for td
 
   } else {
