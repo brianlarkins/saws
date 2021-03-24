@@ -1,4 +1,4 @@
-/********************************************************/
+/*i*******************************************************/
 /*                                                      */
 /*  tc.h - shmem task collections                       */
 /*                                                      */
@@ -70,9 +70,9 @@ extern "C" {
 #define DBGERR     512
 #define DBGWARN   1024
 #define DBGMP     2048
-#define DBGSTEAL  4096
+#define DBGMEM    4096
 
-#define GTC_DEFAULT_DEBUGLEVEL DBGERR | DBGWARN | DBGINIT // | DBGTD | DBGGET | DBGSHRB
+#define GTC_DEFAULT_DEBUGLEVEL DBGERR | DBGWARN | DBGINIT // | DBGTD | DBGGET | DBGSHRB | DBGMEM | DBGPROCESS | DBGTASK | DBGSYNCH
 #ifndef GTC_DEFAULT_DEBUGLEVEL
  #define GTC_DEFAULT_DEBUGLEVEL  0
 #endif
@@ -509,7 +509,7 @@ static inline void gtc_barrier(void) {
  */
 static inline void *gtc_malloc(size_t size) {
 #ifdef SCIOTO_TRACING
-  gtc_dprintf("gtc_malloc: %s of %d\n", _c->curfun, size);
+  gtc_lprintf(DBGMEM,"gtc_malloc: %s of %d\n", _c->curfun, size);
 #endif
   _c->allocsize += size;
   return malloc(size);
@@ -520,7 +520,7 @@ static inline void *gtc_malloc(size_t size) {
  */
 static inline void *gtc_calloc(size_t nmemb, size_t size) {
 #ifdef SCIOTO_TRACING
-  gtc_dprintf("gtc_calloc: %s of %d\n", _c->curfun, nmemb * size);
+  gtc_lprintf(DBGMEM,"gtc_calloc: %s of %d\n", _c->curfun, nmemb * size);
 #endif
   _c->allocsize += (nmemb * size);
   return calloc(nmemb,size);
@@ -531,7 +531,7 @@ static inline void *gtc_calloc(size_t nmemb, size_t size) {
  */
 static inline void *gtc_shmem_malloc(size_t size) {
 #ifdef SCIOTO_TRACING
-  gtc_dprintf("gtc_shmem_malloc: %s of %d\n", _c->curfun, size);
+  gtc_lprintf(DBGMEM, "gtc_shmem_malloc: %s of %d\n", _c->curfun, size);
 #endif
   _c->shmallocsize += size;
   return shmem_malloc(size);
@@ -542,7 +542,7 @@ static inline void *gtc_shmem_malloc(size_t size) {
  */
 static inline void *gtc_shmem_calloc(size_t nmemb, size_t size) {
 #ifdef SCIOTO_TRACING
-  gtc_dprintf("gtc_shmem_calloc: %s of %d\n", _c->curfun, nmemb*size);
+  gtc_lprintf(DBGMEM,"gtc_shmem_calloc: %s of %d\n", _c->curfun, nmemb*size);
 #endif
   _c->shmallocsize += (nmemb * size);
   return shmem_calloc(nmemb,size);
