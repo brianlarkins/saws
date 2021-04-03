@@ -44,7 +44,7 @@ static int verbose   = 0;
 static gtc_qtype_t qtype = GtcQueueSAWS;
 
 static struct timespec psleep = { 0, 1000000L };      // 1  ms
-static struct timespec csleep = { 0, 10 * 1000000L }; // 10 ms
+static struct timespec csleep = { 0, 5 * 1000000L }; // 10 ms
 
 typedef struct {
   int        parent_id;

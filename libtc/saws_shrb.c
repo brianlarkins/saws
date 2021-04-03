@@ -119,7 +119,10 @@ void saws_shrb_reset(saws_shrb_t *rb) {
   rb->nreacquire = 0;
   rb->nwaited    = 0;
   rb->nreclaimed = 0;
-
+  uint64_t sv = 3;
+  rb->steal_val |= sv << 38;
+ //rb->steal_val = sv;
+  
   memset(rb->claimed, 0, sizeof(rb->claimed));
   memset(rb->completed, 0, sizeof(rb->completed));
   rb->completed[rb->last].done = 1;
@@ -624,18 +627,18 @@ static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, 
   int64_t  rtail;
   void *rptr = NULL;
   increment = 1L << 40;
-  shmem_quiet();
+  //shmem_quiet();
   // if target is in empty mode
   //   grab remote stealval and check - if work, then retry else return 0
   // else
   //   claim work
-test:
-  if (myrb->targets[proc] == FullQueue)
-    steal_val = shmem_atomic_fetch_add(&myrb->steal_val, increment, proc);
-  else
-    steal_val = shmem_atomic_fetch(&myrb->steal_val, proc);
-
-  valid = saws_get_stealval(steal_val, &asteals, &itasks, &rtail);
+//test:
+ // if (myrb->targets[proc] == FullQueue)
+   // steal_val = shmem_atomic_fetch_add(&myrb->steal_val, increment, proc);
+  //else
+  //  steal_val = shmem_atomic_fetch(&myrb->steal_val, proc);
+ steal_val = shmem_atomic_fetch_add(&myrb->steal_val, increment, proc);
+ valid = saws_get_stealval(steal_val, &asteals, &itasks, &rtail);
 
   if (valid >= SAWS_MAX_EPOCHS) {
     gtc_lprintf(DBGSHRB, "remote queue invalid PE: %d : valid: %d\n", proc, valid);
@@ -644,11 +647,11 @@ test:
   maxsteals = saws_max_steals(itasks);
 
   if (asteals >= maxsteals) {
-    myrb->targets[proc] = EmptyQueue;
+    //myrb->targets[proc] = EmptyQueue;
     return 0;
-  } else if (myrb->targets[proc] == EmptyQueue) {
-    myrb->targets[proc] = FullQueue;
-    goto test;
+  //} else if (myrb->targets[proc] == EmptyQueue) {
+   // myrb->targets[proc] = FullQueue;
+    //goto test;
   }
 
   gtc_lprintf(DBGSHRB, "Calculating steal volume, maxsteals %"PRIu64", asteals %"PRIu64" itasks %"PRIu64"\n",
@@ -678,7 +681,7 @@ test:
   // In the case that the previous steal was a wrapping steal and the queue has not been reset
   // only one steal is needed with a recalculated start index.
   } else {
-    shmem_quiet();
+ //   shmem_quiet();
     // calculate how many tasks from thosealready stolen to the end of the queue
     int part_size = myrb->max_size - (rtail + stolen);
     gtc_lprintf(DBGSHRB, "nmax_size: %d  stolen: %d  part size: %d\n", myrb->max_size, rtail + stolen, part_size);
