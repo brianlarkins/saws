@@ -31,8 +31,12 @@ function makefile() {
   echo "nodes: $n total tasks: $ntasks tpn: $tpn cputasks: $cputask $uenv $exe $label $sfname"
 
   echo '#!/bin/bash' > $sfname
-  echo "#SBATCH --account=$acct" >> $sfname
-  echo "#SBATCH -p $queue" >> $sfname
+  if  [ ! -z "acct" ]; then
+    echo "#SBATCH --account=$acct" >> $sfname
+  fi
+  if  [ ! -z "queue" ]; then
+    echo "#SBATCH -p $queue" >> $sfname
+  fi
   echo "#SBATCH -t $wtime" >> $sfname
   echo "#SBATCH -n $ntasks" >> $sfname
   echo "#SBATCH -N $n" >> $sfname

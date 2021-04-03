@@ -5,11 +5,11 @@
 .DS_Store
 examples/bpc/bpc
 examples/bpc/busy_wait
-examples/iterators/uts/uts-scioto
-examples/iterators/uts/uts-scioto-initial-bfs
-examples/iterators/uts/uts-scioto-initial-bfs-strict-dfs
-examples/iterators/uts/uts-scioto-strict-dfs
-examples/iterators/uts/uts-iter-sequential
+examples/uts/uts-scioto
+examples/uts/uts-scioto-initial-bfs
+examples/uts/uts-scioto-initial-bfs-strict-dfs
+examples/uts/uts-scioto-strict-dfs
+examples/uts/uts-iter-sequential
 examples/madness/mad3d
 tests/util/busy_wait
 tests/core
@@ -22,3 +22,4 @@ tests/test-tasktree
 tests/test-termination
 tests/test-timer
 include/
+runs/scripts
