@@ -24,8 +24,6 @@ for i in 1 2 3 4 8 12 16 20 24 28 32 36 40 44
 do
   for tpn in 48
   do
-    makefile $i $tpn 5:00 "$xpath" "uts-scioto" "$T1XL -Q B" "$T1XL -Q H" uts_t1xl
-    makefile $i $tpn 5:00 "$xpath" "uts-scioto" "$T1XXL -Q B" "$T1XXL -Q H" uts_t1xxl
     makefile $i $tpn 5:00 "$xpath" "uts-scioto" "$T1WL -Q B" "$T1WL -Q H" uts_t1w
   done
 done
@@ -41,7 +39,7 @@ do
   do
     makefile $i $tpn 5:00 "$xpath" "bpc" "-B" bpc_nobounce_base
     makefile $i $tpn 5:00 "$xpath" "bpc" "-H" bpc_nobounce_half
-    makefile $i $tpn 5:00 "$xpath" "bpc" "-d 300 -n 16384 -b -B" "-d 300 -n 16384 -b -H" bpc
+    makefile $i $tpn 5:00 "$xpath" "bpc" "-d 500 -n 8192 -b -B" "-d 500 -n 8192 -b -H" bpc
   done
 done
 cd ..

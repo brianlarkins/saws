@@ -699,9 +699,9 @@ static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, 
   }
  
   gtc_lprintf(DBGSHRB, "sending completion to epoch %d index %d\n", valid, index);
+  shmem_quiet(); // this is required to wait for the non-blocking shmem_getmem_nbi's
   shmem_atomic_add(&myrb->completed[valid].status[index], ntasks, proc);
 
-  shmem_quiet(); // this is required to wait for the non-blocking shmem_getmem_nbi's
   TC_STOP_TIMER(myrb->tc, poptail);
   return ntasks;
  
