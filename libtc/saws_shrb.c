@@ -666,8 +666,17 @@ static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, 
   }
   // calculate steal volume for our attempt
   ntasks = (tasks_left != 1) ? tasks_left >> 1 : 1;
-  if(ntasks <= 0)
+  if(ntasks <= 0) {
     return 0;
+  }
+
+  // we have to handle dispersion and search timers here 
+  // because our discovery and steal is all donen here
+  if (!myrb->tc->dispersed) {
+    TC_STOP_TIMER(myrb->tc, dispersion);
+  }
+  TC_STOP_TIMER(myrb->tc,search);
+
   gtc_lprintf(DBGGET, "attempting from (%d), starting at index %d\n", ntasks, proc, rtail + stolen);
   // determine base address of tasks to steal
   rptr = &myrb->q[0] + ((rtail + stolen) * myrb->elem_size);

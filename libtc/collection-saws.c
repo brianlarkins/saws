@@ -198,6 +198,7 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
   // Try to take my own work first.  We take from the head of our own queue.
   // When we steal, we take work off of the tail of the target's queue.
   got_task = gtc_get_local_buf(gtc, priority, buf);
+
   // Time dispersion.  If I had work to start this should be ~0.
   if (!tc->dispersed) TC_START_TIMER(tc, dispersion);
 
@@ -235,6 +236,7 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
         tc->ct.tasks_stolen += steal_size;
         tc->ct.num_steals += 1;
         tc->last_target = v;
+        searching = 1;
 
         // Steal failed: Got the lock, no longer any work on remote node
       } else {
@@ -264,13 +266,13 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
 #ifndef NO_SEATBELTS
   if (passive) TC_STOP_TIMER(tc, passive);
   if (passive) TC_STOP_TIMER(tc, imbalance);
-  if (searching) TC_STOP_TIMER(tc, search);
+  //if (searching) TC_STOP_TIMER(tc, search);
 #endif
 
   // Record how many attempts it took for our first get, this is the number of
   // attempts during the work dispersion phase.
   if (!tc->dispersed) {
-    if (passive) TC_STOP_TIMER(tc, dispersion);
+    //if (passive) TC_STOP_TIMER(tc, dispersion);
     tc->dispersed = 1;
     tc->ct.dispersion_attempts_unlocked = tc->ct.failed_steals_unlocked;
     tc->ct.dispersion_attempts_locked   = tc->ct.failed_steals_locked;

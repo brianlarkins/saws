@@ -37,8 +37,8 @@ for i in 1 2 3 4 8 12 16 20 24 28 32 36 40 44
 do
   for tpn in 48
   do
-    makefile $i $tpn 5:00 "$xpath" "bpc" "-B" bpc_nobounce_base
-    makefile $i $tpn 5:00 "$xpath" "bpc" "-H" bpc_nobounce_half
+    #makefile $i $tpn 5:00 "$xpath" "bpc" "-B" bpc_nobounce_base
+    #makefile $i $tpn 5:00 "$xpath" "bpc" "-H" bpc_nobounce_half
     makefile $i $tpn 5:00 "$xpath" "bpc" "-d 500 -n 8192 -b -B" "-d 500 -n 8192 -b -H" bpc
   done
 done
