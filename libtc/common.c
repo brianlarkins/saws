@@ -856,9 +856,18 @@ void gtc_print_stats(gtc_t gtc) {
 
 
   //this is the graph data.
-  // num_processes, average_time, passive_time, search_time, average_dispersion_time, dispersion_attempts, tasks/sec, tasks/sec/pe
-  eprintf("c  %lu      %.5f %.5f %.5f %6.2f %6.2f %6.2f %.2f %d \n", _c->size, sumtimes[ProcessTime]/_c->size,
-      sumtimes[PassiveTime]/_c->size, sumtimes[SearchTime]/_c->size, sumtimes[DispersionTime]/_c->size, sumcounts[DispersionAttempts]/_c->size, sumcounts[TasksCompleted]/sumtimes[ProcessTime], sumcounts[TasksCompleted]/(sumtimes[ProcessTime]/_c->size), tc->td->num_attempts);
+  // num_processes, average_time, passive_time, search_time, average_dispersion_time, dispersion_attempts, tasks/sec, tasks/sec/pe, passive_pct
+  eprintf("c  %lu      %.5f %.5f %.5f %6.2f %6.2f %6.2f %.2f %d %4.2f\n",
+                        _c->size,
+                       (sumtimes[ProcessTime]/_c->size),
+                       (sumtimes[PassiveTime]/_c->size),
+                       (sumtimes[SearchTime]/_c->size),
+                       (sumtimes[DispersionTime]/_c->size),
+                       0.0,
+                       (sumcounts[TasksCompleted]/sumtimes[ProcessTime]),
+                       (sumcounts[TasksCompleted]/(sumtimes[ProcessTime]/_c->size)),
+                       tc->td->num_attempts,
+                       (sumtimes[PassiveTime]/sumtimes[ProcessTime])*100.0);
   shmem_free(times);
   shmem_free(mintimes);
   shmem_free(maxtimes);
