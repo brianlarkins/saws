@@ -121,8 +121,8 @@ void saws_shrb_reset(saws_shrb_t *rb) {
   rb->nreclaimed = 0;
   uint64_t sv = 3;
   rb->steal_val |= sv << 38;
- //rb->steal_val = sv;
-  
+  //rb->steal_val = sv;
+
   memset(rb->claimed, 0, sizeof(rb->claimed));
   memset(rb->completed, 0, sizeof(rb->completed));
   rb->completed[rb->last].done = 1;
@@ -405,7 +405,7 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
   uint64_t steal_val, asteals, itasks, amount;
   uint64_t sum;
   int64_t vtail;
-  int tasks_left, stolen;
+  int tasks_left, stolen, astealcount, completedindex;
 
   if ((saws_shrb_shared_size(rb) <= rb->nlocal) || rb->nlocal != 0)
     return;
@@ -420,7 +420,7 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
 
   // assert that all steals from the last epoch have completed.
   if (!rb->completed[rb->last].done) {
-    retry:
+retry:
     sum = 0;
     for (int i = 0; i < rb->completed[rb->last].maxsteals; i++) {
       sum += rb->completed[rb->last].status[i];
@@ -433,16 +433,17 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
   }
 
   // determine the number of unclaimed tasks available in queue
-  int temp = asteals;
+  astealcount = asteals;
   tasks_left = itasks;
 
-  for (stolen = 0, tasks_left = itasks; temp > 0; temp--) {
+  for (stolen = 0, tasks_left = itasks; astealcount > 0; astealcount--) {
     tasks_left  = (tasks_left != 1) ? tasks_left >> 1 : 1; // # of stolen tasks for this steal
     stolen += tasks_left;                                  // add to total amount stolen
     tasks_left  = itasks - stolen;
   }
-  if (tasks_left == 1) amount = 1;
-  else amount = tasks_left / 2 + tasks_left % 2;
+
+
+  amount = (tasks_left == 1) ? 1 : tasks_left / 2 + tasks_left % 2;
 
   // any tasks to acquire?
   if (amount > 0) {
@@ -461,15 +462,15 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
 
 
     // update tail wrt completed steals
-    temp = rb->completed[rb->last].vtail;
+    completedindex = rb->completed[rb->last].vtail;
     for (int i = 0; i < rb->completed[rb->last].maxsteals; i++) {
       //gtc_lprintf(DBGSHRB, "c[%d] = %d ", i, rb->completed[rb->last].status[i]);
       if (rb->completed[rb->last].status[i] == 0)
         break;
-      temp += rb->completed[rb->last].status[i];
+      completedindex += rb->completed[rb->last].status[i];
     }
-    if (temp > rb->tail)
-        rb->tail = temp % rb->max_size;
+    if (completedindex > rb->tail)
+      rb->tail = completedindex % rb->max_size;
 
     // correct old epoch incase there's outstanding steals
     rb->completed[rb->last].itasks = stolen;
@@ -620,38 +621,38 @@ int saws_shrb_pop_tail(saws_shrb_t *rb, int proc, void *buf) {
  *  @return      The number of tasks stolen or -1 on failure
  */
 static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, void *e, int steal_vol, int trylock) {
-  
-  TC_START_TIMER(myrb->tc, poptail);
   int valid, ntasks = 0, stolen = 0;
   uint64_t steal_val, asteals, tasks_left, itasks, increment, maxsteals;
   int64_t  rtail;
   void *rptr = NULL;
   increment = 1L << 40;
+  tc_timer_t gotwork;
+  TC_INIT_ATIMER(gotwork);
+  TC_START_ATIMER(gotwork);
+
   //shmem_quiet();
   // if target is in empty mode
   //   grab remote stealval and check - if work, then retry else return 0
   // else
   //   claim work
-//test:
- // if (myrb->targets[proc] == FullQueue)
-   // steal_val = shmem_atomic_fetch_add(&myrb->steal_val, increment, proc);
+  //test:
+  // if (myrb->targets[proc] == FullQueue)
+  // steal_val = shmem_atomic_fetch_add(&myrb->steal_val, increment, proc);
   //else
   //  steal_val = shmem_atomic_fetch(&myrb->steal_val, proc);
- steal_val = shmem_atomic_fetch_add(&myrb->steal_val, increment, proc);
- valid = saws_get_stealval(steal_val, &asteals, &itasks, &rtail);
+
+  steal_val = shmem_atomic_fetch_add(&myrb->steal_val, increment, proc);
+  valid = saws_get_stealval(steal_val, &asteals, &itasks, &rtail);
 
   if (valid >= SAWS_MAX_EPOCHS) {
     gtc_lprintf(DBGSHRB, "remote queue invalid PE: %d : valid: %d\n", proc, valid);
-    return 0;
+    goto notfound;
   }
   maxsteals = saws_max_steals(itasks);
 
   if (asteals >= maxsteals) {
     //myrb->targets[proc] = EmptyQueue;
-    return 0;
-  //} else if (myrb->targets[proc] == EmptyQueue) {
-   // myrb->targets[proc] = FullQueue;
-    //goto test;
+    goto notfound;
   }
 
   gtc_lprintf(DBGSHRB, "Calculating steal volume, maxsteals %"PRIu64", asteals %"PRIu64" itasks %"PRIu64"\n",
@@ -664,20 +665,21 @@ static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, 
     stolen += tasks_left;                          // add to total amount stolen
     tasks_left  = itasks - stolen;
   }
+
   // calculate steal volume for our attempt
   ntasks = (tasks_left != 1) ? tasks_left >> 1 : 1;
-  if(ntasks <= 0) {
-    return 0;
-  }
+  if(ntasks <= 0)
+    goto notfound; // no work
 
-  // we have to handle dispersion and search timers here 
-  // because our discovery and steal is all donen here
+  // we have to handle dispersion and search timers here
+  // because our discovery and steal is all done here
   if (!myrb->tc->dispersed) {
     TC_STOP_TIMER(myrb->tc, dispersion);
   }
   TC_STOP_TIMER(myrb->tc,search);
 
   gtc_lprintf(DBGGET, "attempting from (%d), starting at index %d\n", ntasks, proc, rtail + stolen);
+
   // determine base address of tasks to steal
   rptr = &myrb->q[0] + ((rtail + stolen) * myrb->elem_size);
 
@@ -685,35 +687,38 @@ static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, 
   if (rtail + stolen + ntasks < myrb->max_size) {
     // No wrap
     shmem_getmem_nbi(e, rptr, ntasks * myrb->elem_size, proc);
-  
-  // If the steal wraps around the end of the queue it requires two communications.
-  // In the case that the previous steal was a wrapping steal and the queue has not been reset
-  // only one steal is needed with a recalculated start index.
+
   } else {
- //   shmem_quiet();
+    // If the steal wraps around the end of the queue it requires two communications.
+    // In the case that the previous steal was a wrapping steal and the queue has not been reset
+    // only one steal is needed with a recalculated start index.
+
     // calculate how many tasks from thosealready stolen to the end of the queue
     int part_size = myrb->max_size - (rtail + stolen);
     gtc_lprintf(DBGSHRB, "nmax_size: %d  stolen: %d  part size: %d\n", myrb->max_size, rtail + stolen, part_size);
-    
+
     if (part_size > 0) {
       shmem_getmem_nbi(saws_shrb_buff_elem_addr(myrb, e, 0), rptr, part_size * myrb->elem_size, proc);
       // steal from beginning of queue the remaining tasks
       shmem_getmem_nbi(saws_shrb_buff_elem_addr(myrb, e, part_size),
           saws_shrb_elem_addr(myrb, proc, 0),
           (ntasks - part_size) * myrb->elem_size, proc);
-    } else { // the previous steal on this process was also a wrapping steal
-        void * new_start = &myrb->q[0] + (abs(part_size) * myrb->elem_size);
-        shmem_getmem_nbi(e, new_start, ntasks * myrb->elem_size, proc);
+    } else {
+      // the previous steal on this process was also a wrapping steal
+      void * new_start = &myrb->q[0] + (abs(part_size) * myrb->elem_size);
+      shmem_getmem_nbi(e, new_start, ntasks * myrb->elem_size, proc);
     }
   }
- 
+
   gtc_lprintf(DBGSHRB, "sending completion to epoch %d index %d\n", valid, index);
   shmem_quiet(); // this is required to wait for the non-blocking shmem_getmem_nbi's
   shmem_atomic_add(&myrb->completed[valid].status[index], ntasks, proc);
 
-  TC_STOP_TIMER(myrb->tc, poptail);
+  TC_STOP_ATIMER(gotwork);
+  TC_ADD_TIMER(myrb->tc, poptail, gotwork);
+
+notfound:
   return ntasks;
- 
 }
 
 

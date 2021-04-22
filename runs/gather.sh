@@ -13,9 +13,10 @@ bind="unknown"
 
 cd $bench
 outfile="../data/$bench.dat"
-echo "# $bench benchmark $tpn" > $outfile
-echo "# baseline first" > $outfile
-echo "# steal-half second" > $outfile
+rm $outfile
+#echo "# $bench benchmark $tpn" > $outfile
+#echo "# baseline first" > $outfile
+#echo "# steal-half second" > $outfile
 
 for i in *base
 do
