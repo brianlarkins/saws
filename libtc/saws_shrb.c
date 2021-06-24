@@ -635,13 +635,13 @@ static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, 
   //   grab remote stealval and check - if work, then retry else return 0
   // else
   //   claim work
-  //test:
-  // if (myrb->targets[proc] == FullQueue)
-  // steal_val = shmem_atomic_fetch_add(&myrb->steal_val, increment, proc);
-  //else
-  //  steal_val = shmem_atomic_fetch(&myrb->steal_val, proc);
+  test:
+   if (myrb->targets[proc] == FullQueue)
+   steal_val = shmem_atomic_fetch_add(&myrb->steal_val, increment, proc);
+  else
+   steal_val = shmem_atomic_fetch(&myrb->steal_val, proc);
 
-  steal_val = shmem_atomic_fetch_add(&myrb->steal_val, increment, proc);
+//  steal_val = shmem_atomic_fetch_add(&myrb->steal_val, increment, proc);
   valid = saws_get_stealval(steal_val, &asteals, &itasks, &rtail);
 
   if (valid >= SAWS_MAX_EPOCHS) {
@@ -651,8 +651,11 @@ static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, 
   maxsteals = saws_max_steals(itasks);
 
   if (asteals >= maxsteals) {
-    //myrb->targets[proc] = EmptyQueue;
+    myrb->targets[proc] = EmptyQueue;
     goto notfound;
+  } else if (myrb->targets[proc] == EmptyQueue) {
+    myrb->targets[proc] = FullQueue;
+    goto test;
   }
 
   gtc_lprintf(DBGSHRB, "Calculating steal volume, maxsteals %"PRIu64", asteals %"PRIu64" itasks %"PRIu64"\n",
