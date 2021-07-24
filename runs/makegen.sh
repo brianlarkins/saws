@@ -47,6 +47,8 @@ function makefile() {
 
   echo ' ' >> $sfname
 
-  echo "$runner --mpi=pmi2 -o $HOME/saws/runs/$exe/$exe.$pntasks.${label}_half $uenv $xpath/$exe $args_h" >> $sfname
-  echo "$runner --mpi=pmi2 -o $HOME/saws/runs/$exe/$exe.$pntasks.${label}_base $uenv $xpath/$exe $args_b" >> $sfname
+  echo "for i in \$(seq -w 01 10); do" >> $sfname
+  echo "  $runner --mpi=pmi2 -o $HOME/saws/runs/$exe/$exe.$pntasks.${label}_half.\$i $uenv $xpath/$exe $args_h" >> $sfname
+  echo "  $runner --mpi=pmi2 -o $HOME/saws/runs/$exe/$exe.$pntasks.${label}_base.\$i $uenv $xpath/$exe $args_b" >> $sfname
+  echo "done" >> $sfname
 }
