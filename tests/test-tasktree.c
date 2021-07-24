@@ -2,6 +2,7 @@
  *
  * Author: James Dinan <dinan.10@osu.edu>
  * Date  : August, 2008
+ * Copyright (c) 2021
  * 
  * An example Scioto parallel program that executes a tree of tasks.  Execution
  * begins with a single root task, this task spawns NCHILDREN tasks, each child

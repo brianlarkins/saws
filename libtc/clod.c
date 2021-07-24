@@ -1,7 +1,7 @@
 /*********************************************************/
 /*                                                       */
 /*  clod.c - scioto openshmem common local object db     */
-/*    (c) 2020 see COPYRIGHT in top-level                */
+/*    (c) 2021 see COPYRIGHT in top-level                */
 /*                                                       */
 /*********************************************************/
 

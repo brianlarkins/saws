@@ -1,7 +1,7 @@
 /***********************************************************/
 /*                                                         */
 /*  handle.c - scioto openshmem TC handle implementation   */
-/*    (c) 2020 see COPYRIGHT in top-level                  */
+/*    (c) 2021 see COPYRIGHT in top-level                  */
 /*                                                         */
 /***********************************************************/
 

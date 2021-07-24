@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019. See COPYRIGHT in top-level directory.
+ * Copyright (c) 2021. See COPYRIGHT in top-level directory.
  */
 
 #pragma once

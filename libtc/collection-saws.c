@@ -1,7 +1,7 @@
 /*********************************************************/
 /*                                                       */
 /*  collection-saws.c - atomic work stealing TC impl     */
-/*    (c) 2020 see COPYRIGHT in top-level                */
+/*    (c) 2021 see COPYRIGHT in top-level                */
 /*                                                       */
 /*********************************************************/
 

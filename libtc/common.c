@@ -1,7 +1,7 @@
 /***********************************************************/
 /*                                                         */
 /*  common.c - scioto openshmem shared TC operations       */
-/*    (c) 2020 see COPYRIGHT in top-level                  */
+/*    (c) 2021 see COPYRIGHT in top-level                  */
 /*                                                         */
 /***********************************************************/
 #define _GNU_SOURCE
@@ -480,8 +480,6 @@ int gtc_try_steal_tail(gtc_t gtc, int target) {
     req_stealsize = __GTC_MAX_STEAL_SIZE;
 
   gtc_lprintf(DBGGET, "attempting to steal from %d\n", target);
-
-  // ZZZ clean up dead code (TRY_POP_N_TAIL not defined?)
 
 #ifdef QUEUE_TRY_POP_N_TAIL
   if (tc->qtype == GtcQueueSAWS)

@@ -1,7 +1,7 @@
 /*************************************************************/
 /*                                                           */
 /*  saws_shrb.c - scioto atomic ring buffer q implementation */
-/*    (c) 2020 see COPYRIGHT in top-level                    */
+/*    (c) 2021 see COPYRIGHT in top-level                    */
 /*                                                           */
 /*************************************************************/
 
