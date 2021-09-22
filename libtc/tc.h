@@ -571,7 +571,7 @@ static inline uint64_t gtc_get_tsctime() {
 
 #ifdef GTC_USE_TSC_TIMERS
 #define TC_CPU_HZ                 _c->tsc_cpu_hz*(double)1e6
-#define TC_INIT_ATIMER(TMR)       do { TMR.total = 0; } while (0)
+#define TC_INIT_ATIMER(TMR)       do { TMR.total = 0; TMR.temp = 0; TMR.last = 0; } while (0)
 #define TC_START_ATIMER(TMR)      TMR.last = gtc_get_tsctime();
 #define TC_STOP_ATIMER(TMR)       do {\
                                       TMR.temp = gtc_get_tsctime();\
