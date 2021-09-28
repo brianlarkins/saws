@@ -13,9 +13,9 @@ TARGETS=test-hello          \
 				test-tasktree       \
 				test-tasktree-twotc \
 				test-termination    \
-				test-sdc-shrb		\
-				test-saws-shrb		\
-				oops               \
+				test-sdc-shrb		    \
+				test-saws-shrb		  \
+				threadtest          \
 				# line eater
 
 TEST_DIRS=clod microbenchmarks shrb synch
@@ -62,8 +62,8 @@ test-saws-shrb: tclibs test_saws_shrb.o
 test-timer: tclibs test-timer.o
 	$(CC) $(CFLAGS) -o $@ test-timer.o $(TC_LIBS)
 
-oops: tclibs oops.o
-	$(CC) $(CFLAGS) -o $@ oops.o $(TC_LIBS)
+threadtest: tclibs threadtest.o
+	$(CC) $(CFLAGS) -o $@ threadtest.o $(TC_LIBS)
 
 clean: tcclean
 	for dir in $(TEST_DIRS); do \

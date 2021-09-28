@@ -24,9 +24,11 @@ void* steal() {
   int foo[9] = {1,10,50,100,250,500,1000,2000,3000};
   int i = 0;
   int nt;
-  tc_timer_t time;
+  volatile tc_timer_t time;
   mytask_t buf[4096];	//create a buffer to copy into
+
   mytask_t bullshit[4096];
+  TC_INIT_ATIMER(time);
 
   while (i<9) { // for # tasks (nt)
     nt = foo[i];
@@ -50,12 +52,12 @@ void* steal() {
     //stop timer
     TC_STOP_ATIMER(time);
     memcpy(&bullshit, &buf, sizeof(buf));
-    gtime = TC_READ_ATIMER_NSEC(time);
-    printf("copied %d tasks %7.4f nsec\n", nt, gtime/reps);
-    gtime = time.total + time.temp;
+    gtime = TC_READ_ATIMER(time);
+    printf("copied %d tasks %7.4f usec\n", nt, (gtime/(1000.0*reps)));
     time.total = 0;
     i++;
   } //end # tasks loop
+  gtime = time.total + time.temp;
   return NULL;
 }
 
