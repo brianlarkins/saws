@@ -13,6 +13,7 @@ HDRS =  mutex.h        			 \
 				tc.h           			 \
 				termination.h  			 \
 				clod.h							 \
+				laws_shrb.h					 \
 				saws_shrb.h					 \
 				# line eater
 
@@ -29,7 +30,8 @@ OBJS =  collection-sdc.o     \
 			  util.o               \
 				clod.o							 \
 				tc-clod.o						 \
-				saws_shrb.o
+				laws_shrb.o          \
+				saws_shrb.o          \
 			 	# line eater
 
 .PHONY: all
