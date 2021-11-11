@@ -164,6 +164,10 @@ void td_reset(td_t *td) {
   td->last_spawned = 0;
   td->last_completed = 0;
 
+  td->last_left = 0;
+  td->last_right = 0;
+  td->last_parent = 0;
+
   td->token_direction = UP;
 
   shmem_barrier_all();
