@@ -16,6 +16,7 @@ TARGETS=test-hello          \
 				test-sdc-shrb		    \
 				test-saws-shrb		  \
 				threadtest          \
+				test-array          \
 				# line eater
 
 TEST_DIRS=clod microbenchmarks shrb synch
@@ -64,6 +65,9 @@ test-timer: tclibs test-timer.o
 
 threadtest: tclibs threadtest.o
 	$(CC) $(CFLAGS) -o $@ threadtest.o $(TC_LIBS)
+
+test-array: tclibs test-array.o
+	$(CC) $(CFLAGS) -o $@ test-array.o $(TC_LIBS)
 
 clean: tcclean
 	for dir in $(TEST_DIRS); do \
