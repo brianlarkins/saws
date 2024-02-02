@@ -41,13 +41,12 @@ typedef enum {
 } gtc_laws_gcountstats_e;
 
 
-struct laws_s {
-  int             itail;     // Index of the intermediate tail (between vtail and tail)
-  int             tail;      // Index of tail element (between 0 and rb_size-1)
+struct laws_local_s {
+  int             vtail;     // out-of-date version of the vtail (functions similarly to itail in SDC; 
+                             // keeps track of which steals have completed)
 
   int             nlocal;    // Number of elements in the local portion of the queue
-  int             vtail;     // Index of the virtual tail
-  int             split;     // index of split between local-only and local-shared elements
+  int             head;      // used along with nlocal to determine split position   
 
   synch_mutex_t   lock;      // lock for shared portion of this queue
   int             waiting;   // Am I currently waiting for transactions to complete?
@@ -77,42 +76,53 @@ struct laws_s {
                              // require "sizeof(struct rb_s) + elem_size*rb_size"
 };
 
-typedef struct laws_s laws_t;
+struct laws_global_s {
+    int                 max_size;
+    int                 elem_size;
+    int                 vtail;     // Index of the virtual tail
+    int                 split;     // index of split between local-only and local-shared elements
+    int                 tail;      // Index of tail element (between 0 and rb_size-1)
+    synch_mutex_t       lock;
+};
 
-laws_t *laws_create(int elem_size, int max_size, tc_t *tc);
-void        laws_destroy(laws_t *rb);
-void        laws_reset(laws_t *rb);
+typedef struct laws_local_s laws_local_t;
 
-void        laws_lock(laws_t *rb, int proc);
-void        laws_unlock(laws_t *rb, int proc);
+typedef struct laws_global_s laws_global_t;
 
-int         laws_head(laws_t *rb);
-int         laws_local_isempty(laws_t *rb);
-int         laws_shared_isempty(laws_t *rb);
-int         laws_local_size(laws_t *rb);
-int         laws_shared_size(laws_t *rb);
-int         laws_reserved_size(laws_t *rb);
-int         laws_public_size(laws_t *rb);
+laws_local_t *laws_create(int elem_size, int max_size, tc_t *tc);
+void        laws_destroy(laws_local_t *rb);
+void        laws_reset(laws_local_t *rb);
 
-void        laws_release(laws_t *rb);
-void        laws_release_all(laws_t *rb);
-int         laws_reacquire(laws_t *rb);
-int         laws_reclaim_space(laws_t *rb);
+void        laws_lock(laws_local_t *rb, int proc);
+void        laws_unlock(laws_local_t *rb, int proc);
 
-void        laws_push_head(laws_t *rb, int proc, void *e, int size);
+int         laws_head(laws_local_t *rb);
+int         laws_local_isempty(laws_local_t *rb);
+int         laws_shared_isempty(laws_local_t *rb);
+int         laws_local_size(laws_local_t *rb);
+int         laws_shared_size(laws_local_t *rb);
+int         laws_reserved_size(laws_local_t *rb);
+int         laws_public_size(laws_local_t *rb);
+
+void        laws_release(laws_local_t *rb);
+void        laws_release_all(laws_local_t *rb);
+int         laws_reacquire(laws_local_t *rb);
+int         laws_reclaim_space(laws_local_t *rb);
+
+void        laws_push_head(laws_local_t *rb, int proc, void *e, int size);
 void        laws_push_n_head(void *b, int proc, void *e, int n);
-void       *laws_alloc_head(laws_t *rb);
+void       *laws_alloc_head(laws_local_t *rb);
 
 int         laws_pop_head(void *b, int proc, void *buf);
-int         laws_pop_tail(laws_t *rb, int proc, void *buf);
+int         laws_pop_tail(laws_local_t *rb, int proc, void *buf);
 int         laws_pop_n_tail(void *b, int proc, int n, void *buf, int steal_vol);
 int         laws_try_pop_n_tail(void *b, int proc, int n, void *buf, int steal_vol);
 
 int         laws_size(void *b);
-int         laws_full(laws_t *rb);
-int         laws_empty(laws_t *rb);
+int         laws_full(laws_local_t *rb);
+int         laws_empty(laws_local_t *rb);
 
-void        laws_print(laws_t *rb);
+void        laws_print(laws_local_t *rb);
 
 #define laws_elem_addr(MYRB, PROC, IDX) ((MYRB)->q + (IDX)*(MYRB)->elem_size)
 #define laws_buff_elem_addr(RB, E, IDX) ((u_int8_t*)(E) + (IDX)*(RB)->elem_size)
