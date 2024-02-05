@@ -42,7 +42,7 @@ typedef enum {
 
 
 struct laws_local_s {
-  int             vtail;     // out-of-date version of the vtail (functions similarly to itail in SDC; 
+  int             vtail;     // out-of-date version of the virtual tail (functions similarly to itail in SDC; 
                              // keeps track of which steals have completed)
 
   int             nlocal;    // Number of elements in the local portion of the queue

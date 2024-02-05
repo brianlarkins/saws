@@ -62,9 +62,9 @@
  */
 
 
-laws_t *laws_create(int elem_size, int max_size, tc_t *tc) {
+laws_local_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   GTC_ENTRY();
-  laws_t  *rb;
+  laws_local_t  *rb;
   int procid, nproc;
 
   setbuf(stdout, NULL);
@@ -75,7 +75,7 @@ laws_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   gtc_lprintf(DBGSHRB, "  Thread %d: laws_create()\n", procid);
 
   // Allocate the struct and the buffer contiguously in shared space
-  rb = gtc_shmem_malloc(sizeof(laws_t) + elem_size*max_size);
+  rb = gtc_shmem_malloc(sizeof(laws_local_t) + elem_size*max_size);
 
   rb->procid  = procid;
   rb->nproc  = nproc;
@@ -94,7 +94,7 @@ laws_t *laws_create(int elem_size, int max_size, tc_t *tc) {
 }
 
 
-void laws_reset(laws_t *rb) {
+void laws_reset(laws_local_t *rb) {
   GTC_ENTRY();
   // Reset state to empty
   rb->nlocal = 0;
@@ -114,13 +114,13 @@ void laws_reset(laws_t *rb) {
 }
 
 
-void laws_destroy(laws_t *rb) {
+void laws_destroy(laws_local_t *rb) {
   GTC_ENTRY();
   shmem_free(rb);
   GTC_EXIT();
 }
 
-void laws_print(laws_t *rb) {
+void laws_print(laws_local_t *rb) {
   GTC_ENTRY();
   printf("rb: %p {\n", rb);
   printf("   procid  = %d\n", rb->procid);
@@ -144,32 +144,32 @@ void laws_print(laws_t *rb) {
 /*==================== STATE QUERIES ====================*/
 
 
-int laws_head(laws_t *rb) {
+int laws_head(laws_local_t *rb) {
   return (rb->split + rb->nlocal - 1) % rb->max_size;
 }
 
 
-int laws_local_isempty(laws_t *rb) {
+int laws_local_isempty(laws_local_t *rb) {
   return rb->nlocal == 0;
 }
 
 
-int laws_shared_isempty(laws_t *rb) {
+int laws_shared_isempty(laws_local_t *rb) {
   return rb->tail == rb->split;
 }
 
 
-int laws_isempty(laws_t *rb) {
+int laws_isempty(laws_local_t *rb) {
   return laws_local_isempty(rb) && laws_shared_isempty(rb);
 }
 
 
-int laws_local_size(laws_t *rb) {
+int laws_local_size(laws_local_t *rb) {
   return rb->nlocal;
 }
 
 
-int laws_shared_size(laws_t *rb) {
+int laws_shared_size(laws_local_t *rb) {
   if (laws_shared_isempty(rb)) // Shared is empty
     return 0;
   else if (rb->tail < rb->split)   // No wrap-around
@@ -179,7 +179,7 @@ int laws_shared_size(laws_t *rb) {
 }
 
 
-int laws_public_size(laws_t *rb) {
+int laws_public_size(laws_local_t *rb) {
   if (rb->vtail == rb->split) {    // Public is empty
     assert (rb->tail == rb->itail && rb->tail == rb->split);
     return 0;
@@ -192,7 +192,7 @@ int laws_public_size(laws_t *rb) {
 
 
 int laws_size(void *b) {
-  laws_t *rb = (laws_t *)b;
+  laws_local_t *rb = (laws_local_t *)b;
   return laws_local_size(rb) + laws_shared_size(rb);
 }
 
@@ -200,17 +200,17 @@ int laws_size(void *b) {
 /*==================== SYNCHRONIZATION ====================*/
 
 
-void laws_lock(laws_t *rb, int proc) {
+void laws_lock(laws_local_t *rb, int proc) {
   synch_mutex_lock(&rb->lock, proc);
 }
 
 
-int laws_trylock(laws_t *rb, int proc) {
+int laws_local_trylock(laws_local_t *rb, int proc) {
   return synch_mutex_trylock(&rb->lock, proc);
 }
 
 
-void laws_unlock(laws_t *rb, int proc) {
+void laws_unlock(laws_local_t *rb, int proc) {
   synch_mutex_unlock(&rb->lock, proc);
 }
 
@@ -218,7 +218,7 @@ void laws_unlock(laws_t *rb, int proc) {
 /*==================== SPLIT MOVEMENT ====================*/
 
 
-int laws_reclaim_space(laws_t *rb) {
+int laws_reclaim_space(laws_local_t *rb) {
   GTC_ENTRY();
   int reclaimed = 0;
   int vtail = rb->vtail;
@@ -242,7 +242,7 @@ int laws_reclaim_space(laws_t *rb) {
 
 
 
-void laws_ensure_space(laws_t *rb, int n) {
+void laws_ensure_space(laws_local_t *rb, int n) {
   GTC_ENTRY();
   // Ensure that there is enough free space in the queue.  If there isn't
   // wait until others finish their deferred copies so we can reclaim space.
@@ -270,7 +270,7 @@ void laws_ensure_space(laws_t *rb, int n) {
 
 
 
-void laws_release(laws_t *rb) {
+void laws_release(laws_local_t *rb) {
   GTC_ENTRY();
   // Favor placing work in the shared portion -- if there is only one task
   // available this scheme will put it in the shared portion.
@@ -287,7 +287,7 @@ void laws_release(laws_t *rb) {
 }
 
 
-void laws_release_all(laws_t *rb) {
+void laws_release_all(laws_local_t *rb) {
   GTC_ENTRY();
   int amount  = laws_local_size(rb);
   rb->nlocal -= amount;
@@ -297,7 +297,7 @@ void laws_release_all(laws_t *rb) {
 }
 
 
-int laws_reacquire(laws_t *rb) {
+int laws_reacquire(laws_local_t *rb) {
   GTC_ENTRY();
   int amount = 0;
 
@@ -330,7 +330,7 @@ int laws_reacquire(laws_t *rb) {
 /*==================== PUSH OPERATIONS ====================*/
 
 
-static inline void laws_push_n_head_impl(laws_t *rb, int proc, void *e, int n, int size) {
+static inline void laws_push_n_head_impl(laws_local_t *rb, int proc, void *e, int n, int size) {
   int head, old_head;
 
   assert(size <= rb->elem_size);
@@ -360,7 +360,7 @@ static inline void laws_push_n_head_impl(laws_t *rb, int proc, void *e, int n, i
   TC_STOP_TIMER(rb->tc, pushhead);
 }
 
-void laws_push_head(laws_t *rb, int proc, void *e, int size) {
+void laws_push_head(laws_local_t *rb, int proc, void *e, int size) {
   GTC_ENTRY();
   // laws_push_n_head_impl(rb, proc, e, 1, size);
   int old_head;
@@ -383,13 +383,13 @@ void laws_push_head(laws_t *rb, int proc, void *e, int size) {
 
 void laws_push_n_head(void *b, int proc, void *e, int n) {
   GTC_ENTRY();
-  laws_t *rb = (laws_t *)b;
+  laws_local_t *rb = (laws_local_t *)b;
   laws_push_n_head_impl(rb, proc, e, n, rb->elem_size);
   GTC_EXIT();
 }
 
 
-void *laws_alloc_head(laws_t *rb) {
+void *laws_alloc_head(laws_local_t *rb) {
   GTC_ENTRY();
   // Make sure there is enough space for 1 element
   laws_ensure_space(rb, 1);
@@ -404,7 +404,7 @@ void *laws_alloc_head(laws_t *rb) {
 
 int laws_pop_head(void *b, int proc, void *buf) {
   GTC_ENTRY();
-  laws_t *rb = (laws_t *)b;
+  laws_local_t *rb = (laws_local_t *)b;
   int   old_head;
   int   buf_valid = 0;
 
@@ -432,7 +432,7 @@ int laws_pop_head(void *b, int proc, void *buf) {
 }
 
 
-int laws_pop_tail(laws_t *rb, int proc, void *buf) {
+int laws_pop_tail(laws_local_t *rb, int proc, void *buf) {
   GTC_ENTRY();
   GTC_EXIT(laws_pop_n_tail(rb, proc, 1, buf, STEAL_HALF));
 }
@@ -453,13 +453,13 @@ int laws_pop_tail(laws_t *rb, int proc, void *buf) {
  *  @return      The number of tasks stolen or -1 on failure
  */
 
-static inline int laws_pop_n_tail_impl(laws_t *myrb, int proc, int n, void *e, int steal_vol, int trylock) {
-  laws_t trb;
+static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void *e, int steal_vol, int trylock) {
+  laws_local_t trb;
   TC_START_TIMER(myrb->tc, poptail);
   __gtc_marker[1] = 3;
   // Attempt to get the lock
   if (trylock) {
-    if (!laws_trylock(myrb, proc)) {
+    if (!laws_local_trylock(myrb, proc)) {
       return -1;
     }
   } else {
@@ -467,7 +467,7 @@ static inline int laws_pop_n_tail_impl(laws_t *myrb, int proc, int n, void *e, i
   }
 
   // Copy the remote RB's metadata
-  shmem_getmem(&trb, myrb, sizeof(laws_t), proc);
+  shmem_getmem(&trb, myrb, sizeof(laws_local_t), proc);
 
   switch (steal_vol) {
     case STEAL_HALF:
@@ -549,12 +549,12 @@ static inline int laws_pop_n_tail_impl(laws_t *myrb, int proc, int n, void *e, i
 
 int laws_pop_n_tail(void *b, int proc, int n, void *e, int steal_vol) {
   GTC_ENTRY();
-  laws_t *myrb = (laws_t *)b;
+  laws_local_t *myrb = (laws_local_t *)b;
   GTC_EXIT(laws_pop_n_tail_impl(myrb, proc, n, e, steal_vol, 0));
 }
 
 int laws_try_pop_n_tail(void *b, int proc, int n, void *e, int steal_vol) {
   GTC_ENTRY();
-  laws_t *myrb = (laws_t *)b;
+  laws_local_t *myrb = (laws_local_t *)b;
   GTC_EXIT(laws_pop_n_tail_impl(myrb, proc, n, e, steal_vol, 1));
 }
