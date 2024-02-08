@@ -53,8 +53,12 @@ struct laws_local_s {
   
   int             procid;
   int             nproc;
+  int             ncores;
+  int             root;      // root process relative to this rank
+  int             rank_in_node;
   int             max_size;  // Max size in number of elements
   int             elem_size; // Size of an element in bytes
+  struct laws_global_s   *global;
 
   tc_t           *tc;        // task collection associated with queue (for stats)
 

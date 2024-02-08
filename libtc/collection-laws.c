@@ -57,7 +57,7 @@ gtc_t gtc_create_laws(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg
   tc->rcb.push_n_head            = laws_push_n_head;
   tc->rcb.work_avail             = laws_size;
 
-  tc->qsize = sizeof(laws_t);
+  tc->qsize = sizeof(laws_local_t);
 
   shmem_barrier_all();
 
@@ -136,7 +136,7 @@ void gtc_progress_laws(gtc_t gtc) {
 
   // Attempt to reclaim space
   laws_reclaim_space(tc->shared_rb);
-  ((laws_t *)tc->shared_rb)->nprogress++;
+  ((laws_local_t *)tc->shared_rb)->nprogress++;
   TC_STOP_TIMER(tc,progress);
   GTC_EXIT();
 }
@@ -177,8 +177,9 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
   int     v, steal_size;
   int     passive = 0;
   int     searching = 0;
+  tc->laws = 1; // Make sure we are aware that we are using LAWS
   gtc_vs_state_t vs_state = {0, 0, 0};
-  laws_t rb_buf;
+  laws_local_t rb_buf;
 
   tc->ct.getcalls++;
   TC_START_TIMER(tc, getbuf);
@@ -220,13 +221,13 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
       }
 
       // Select the next target
-      v = gtc_select_target(gtc, &vs_state);
+      v = gtc_select_target_laws(gtc, &vs_state);
 
       max_steal_attempts = tc->ldbal_cfg.max_steal_attempts_remote;
 
-      TC_START_TIMER(tc,poptail); // this counts as attempting to steal
-      shmem_getmem(target_rb, tc->shared_rb, sizeof(laws_t), v);
-      TC_STOP_TIMER(tc,poptail);
+      //TC_START_TIMER(tc,poptail); // this counts as attempting to steal
+      //shmem_getmem(target_rb, tc->shared_rb, sizeof(laws_local_t), v);
+      //TC_STOP_TIMER(tc,poptail);
 
       // Poll the target for work.  In between polls, maintain progress on termination detection.
       for (steal_attempts = 0, steal_done = 0;

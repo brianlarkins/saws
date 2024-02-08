@@ -12,6 +12,7 @@
 #include <math.h>
 
 #include <tc.h>
+#include <laws_shrb.h>
 
 void gtc_print_my_stats(gtc_t gtc);
 //static int dcomp(const void *a, const void *b);
@@ -101,6 +102,7 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
   switch (qtype) {
     case GtcQueueSDC:
     case GtcQueueSAWS:
+    case GtcQueueLAWS:
       break;
     default:
       gtc_eprintf(DBGERR, "gtc_create: unsupported queue type\n");
@@ -568,6 +570,85 @@ int gtc_select_target(gtc_t gtc, gtc_vs_state_t *state) {
 }
 
 
+/** Internal target selector state machine: Select the next target to attempt a steal from.
+ *
+ * @param[in] gtc   Current task collection
+ * @param[in] state State of the target selector.  The state struct should be
+ *                  initially set to 0
+ * @return          Next target
+ */
+int gtc_select_target_laws(gtc_t gtc, gtc_vs_state_t *state) {
+  GTC_ENTRY();
+  int v = -1;
+  tc_t *tc = gtc_lookup(gtc);
+
+  /* SINGLE: Single processor run
+  */
+  if (_c->size == 1) {
+    v = 0;
+  }
+
+  /* RETRY: Attempt to steal from the same target again.  This is used
+   * with aborting steals which are non-blocking a require retrying.
+   */
+  if (state->target_retry) {
+    // Note: max_steal_retries < 0 means infinite number of retries
+    if (state->num_retries >= tc->ldbal_cfg.max_steal_retries && tc->ldbal_cfg.max_steal_retries > 0) {
+      state->num_retries = 0;
+      tc->ct.aborted_targets++;
+
+    } else {
+      state->target_retry = 0;
+      state->num_retries++;
+      v = state->last_target;
+    }
+  }
+
+  if (v < 0) {
+      laws_local_t *local_md = (laws_local_t *)tc->shared_rb;
+      laws_global_t *global_md = local_md->global;
+
+      shmem_getmem(local_md->global, local_md->global, sizeof(*global_md) * local_md->ncores, local_md->root);
+
+      // loop through all cores on node until work is found
+      for (v = 0; v < local_md->ncores; v++) {
+          laws_global_t curr_md = global_md[v];
+          int tail = curr_md.tail;
+          int split = curr_md.split;
+          int avail = split - tail;
+          if (avail > 0) {
+              break;
+          }
+      }
+  }
+
+  /* FREE: Free target selection.
+  */
+  /*
+  if (v < 0) {
+    // Target Random: Randomly select the next target
+    if (tc->ldbal_cfg.target_selection == TARGET_RANDOM) {
+      do {
+        v = rand() % _c->size;
+      } while (v == _c->rank);
+    }
+
+    // Round Robin: Next target is selected round-robin
+    else if (tc->ldbal_cfg.target_selection == TARGET_ROUND_ROBIN) {
+      v = (state->last_target + 1) % _c->size;
+    }
+
+    else {
+      printf("Unknown target selection method\n");
+      assert(0);
+    }
+  }
+  */
+
+  state->last_target = v;
+
+  GTC_EXIT(v);
+}
 
 /**
  * Processes the task collection. Collective call. Handles load-balancing

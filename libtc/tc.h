@@ -194,7 +194,9 @@ typedef struct {
 /** queue implementation type */
 enum gtc_qtype_e {
   GtcQueueSDC,
-  GtcQueueSAWS
+  GtcQueueSAWS,
+  GtcQueueLAWS
+
 };
 typedef enum gtc_qtype_e gtc_qtype_t;
 
@@ -311,6 +313,7 @@ struct tc_s {
   int                 chunk_size;                 // number of tasks we can steal at a time
   int                 max_body_size;
   int                 last_target;                // Global round robin -- remember our last target
+  int                 laws;                       // Are we using LAWS?
 
   gtc_ldbal_cfg_t     ldbal_cfg;                  // load balancer configuration
 
@@ -405,6 +408,7 @@ int     gtc_get_local_buf(gtc_t gtc, int priority, task_t *buf);
 int     gtc_steal_tail(gtc_t gtc, int target);
 int     gtc_try_steal_tail(gtc_t gtc, int target);
 int     gtc_select_target(gtc_t gtc, gtc_vs_state_t *state);
+int     gtc_select_target_laws(gtc_t gtc, gtc_vs_state_t *state);
 task_t *gtc_get(gtc_t gtc, int priority);
 void    gtc_set_external_work_avail(gtc_t gtc, int flag);
 task_t *gtc_task_inplace_create_and_add(gtc_t gtc, task_class_t tclass);
@@ -455,6 +459,20 @@ void    gtc_task_inplace_create_and_add_finish_sdc(gtc_t gtc, task_t *t);
 void    gtc_print_stats_sdc(gtc_t gtc);
 void    gtc_print_gstats_sdc(gtc_t gtc);
 void    gtc_queue_reset_sdc(gtc_t gtc);
+
+gtc_t   gtc_create_laws(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg_t *ldbal_cfg);
+void    gtc_destroy_laws(gtc_t gtc);
+void    gtc_reset_laws(gtc_t gtc);
+char   *gtc_queue_name_laws();
+void    gtc_progress_laws();
+int     gtc_tasks_avail_laws(gtc_t gtc);
+int     gtc_get_buf_laws(gtc_t, int priority, task_t *buf);
+int     gtc_add_laws(gtc_t gtc, task_t *task, int proc);
+task_t *gtc_task_inplace_create_and_add_laws(gtc_t gtc, task_class_t tclass);
+void    gtc_task_inplace_create_and_add_finish_laws(gtc_t gtc, task_t *t);
+void    gtc_print_stats_laws(gtc_t gtc);
+void    gtc_print_gstats_laws(gtc_t gtc);
+void    gtc_queue_reset_laws(gtc_t gtc);
 
 // collection-saws.c
 gtc_t   gtc_create_saws(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg_t *cfg);
