@@ -83,6 +83,7 @@ laws_local_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   rb->global = gtc_shmem_malloc(sizeof(laws_global_t) * cores_per_node);
 
   laws_global_t *global = rb->global;
+  
 
   rb->rank_in_node = procid % cores_per_node;
   int rank_in_node = rb->rank_in_node;
@@ -93,8 +94,9 @@ laws_local_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   rb->max_size  = max_size;
   rb->root = procid - rank_in_node;
   rb->ncores = cores_per_node;
+  rb->g_meta = &global[rank_in_node];
 
-  laws_reset(rb, &global[rank_in_node]);
+  laws_reset(rb;
 
   rb->tc = tc;
 
@@ -110,7 +112,7 @@ laws_local_t *laws_create(int elem_size, int max_size, tc_t *tc) {
 
 void laws_reset(laws_local_t *rb) {
   GTC_ENTRY();
-  laws_global_t *g = rb->global;
+  laws_global_t *g = rb->g_meta;
   // Reset state to empty
   rb->nlocal = 0;
   g->tail   = 0;
@@ -162,7 +164,7 @@ void laws_print(laws_local_t *rb) {
 
 
 int laws_head(laws_local_t *rb) {
-  return (rb->split + rb->nlocal - 1) % rb->max_size;
+  return rb->head;
 }
 
 
@@ -171,14 +173,14 @@ int laws_local_isempty(laws_local_t *rb) {
 }
 
 
-int laws_shared_isempty(laws_local_t *rb) {
+int laws_shared_isempty(laws_global_t *rb) {
     // how is this going to be checked? Need some way to do this
     // tail is not calculable using only info available in laws_local_t
   return rb->tail == rb->split;
 }
 
 int laws_isempty(laws_local_t *rb) {
-  return laws_local_isempty(rb) && laws_shared_isempty(rb);
+  return laws_local_isempty(rb) && laws_shared_isempty(rb->g_meta);
 }
 
 
@@ -187,7 +189,7 @@ int laws_local_size(laws_local_t *rb) {
 }
 
 
-int laws_shared_size(laws_local_t *rb) {
+int laws_shared_size(laws_global_t *rb) {
   if (laws_shared_isempty(rb)) // Shared is empty
     return 0;
   else if (rb->tail < rb->split)   // No wrap-around
@@ -197,9 +199,9 @@ int laws_shared_size(laws_local_t *rb) {
 }
 
 
-int laws_public_size(laws_local_t *rb) {
+int laws_public_size(laws_global_t *rb) {
   if (rb->vtail == rb->split) {    // Public is empty
-    assert (rb->tail == rb->itail && rb->tail == rb->split);
+    assert (rb->tail == rb->vtail && rb->tail == rb->split);
     return 0;
   }
   else if (rb->vtail < rb->split)  // No wrap-around
@@ -211,24 +213,26 @@ int laws_public_size(laws_local_t *rb) {
 
 int laws_size(void *b) {
   laws_local_t *rb = (laws_local_t *)b;
-  return laws_local_size(rb) + laws_shared_size(rb);
+  return rb->head - rb->vtail;
+  //return laws_local_size(rb) + laws_shared_size(
+   //       &rb->global[rb->rank_in_node]);
 }
 
 
 /*==================== SYNCHRONIZATION ====================*/
 
 
-void laws_lock(laws_local_t *rb, int proc) {
+void laws_lock(laws_global_t *rb, int proc) {
   synch_mutex_lock(&rb->lock, proc);
 }
 
 
-int laws_local_trylock(laws_local_t *rb, int proc) {
+int laws_trylock(laws_global_t *rb, int proc) {
   return synch_mutex_trylock(&rb->lock, proc);
 }
 
 
-void laws_unlock(laws_local_t *rb, int proc) {
+void laws_unlock(laws_global_t *rb, int proc) {
   synch_mutex_unlock(&rb->lock, proc);
 }
 
@@ -248,16 +252,21 @@ int laws_reclaim_space(laws_local_t *rb) {
 int laws_reclaim_space(laws_local_t *rb) {
   GTC_ENTRY();
   int reclaimed = 0;
-  int vtail = rb->vtail;
-  int itail = rb->itail; // Capture these values since we are doing this
-  int tail  = rb->tail;  // without a lock
+  int old_vtail = rb->vtail;
+  laws_global_t g_meta = rb->global[rb->rank_in_node];
+
+  // Update our global metadata
+  shmem_getmem(&g_meta, &g_meta, sizeof(g_meta), 0);
+
+  int g_vtail = g_meta.vtail;
+  int tail = g_meta.tail;
   TC_START_TIMER(rb->tc, reclaim);
-  if (vtail != tail && itail == tail) {
-    rb->vtail = tail;
-    if (tail > vtail)
-      reclaimed = tail - vtail;
+  if (old_vtail != tail && g_vtail == tail) {
+    rb->vtail = g_vtail;
+    if (tail > old_vtail)
+      reclaimed = g_vtail - old_vtail;
     else
-      reclaimed = rb->max_size - vtail + tail;
+      reclaimed = rb->max_size - old_vtail + tail;
 
     assert(reclaimed > 0);
   }
@@ -274,8 +283,9 @@ void laws_ensure_space(laws_local_t *rb, int n) {
   // Ensure that there is enough free space in the queue.  If there isn't
   // wait until others finish their deferred copies so we can reclaim space.
   TC_START_TIMER(rb->tc, ensure);
-  if (rb->max_size - (laws_local_size(rb) + laws_public_size(rb)) < n) {
-    laws_lock(rb, rb->procid);
+  if (rb->max_size - (laws_size(rb)) < n) {
+    // should we lock here?
+    laws_lock(&rb->global[rb->rank_in_node], rb->procid);
     {
       if (rb->max_size - laws_size(rb) < n) {
         // Error: amount of reclaimable space is less than what we need.
@@ -289,7 +299,7 @@ void laws_ensure_space(laws_local_t *rb, int n) {
       rb->waiting = 0;
       rb->nwaited++;
     }
-    laws_unlock(rb, rb->procid);
+    laws_unlock(&rb->global[rb->rank_in_node], rb->procid);
   }
   TC_STOP_TIMER(rb->tc, ensure);
   GTC_EXIT();
@@ -302,12 +312,17 @@ void laws_release(laws_local_t *rb) {
   // Favor placing work in the shared portion -- if there is only one task
   // available this scheme will put it in the shared portion.
   TC_START_TIMER(rb->tc, release);
-  if (laws_local_size(rb) > 0 && laws_shared_size(rb) == 0) {
+  // We'll need to fix this; we won't have access to 
+  // up-to-date info about the global metadata here
+  if (laws_local_size(rb) > 0 && laws_shared_size(&rb->global[rb->rank_in_node]) == 0) {
     int amount  = laws_local_size(rb)/2 + laws_local_size(rb) % 2;
+    int split = rb->head - rb->nlocal;
     rb->nlocal -= amount;
-    rb->split   = (rb->split + amount) % rb->max_size;
+    split   = (split + amount) % rb->max_size;
+    laws_global_t g_meta = rb->global[rb->procid];
+    shmem_putmem(&g_meta.split, &split, sizeof(split), 0);
     rb->nrelease++;
-    gtc_lprintf(DBGSHRB, "release: local size: %d shared size: %d\n", laws_local_size(rb), laws_shared_size(rb));
+    gtc_lprintf(DBGSHRB, "release: local size: %d shared size: %d\n", laws_local_size(rb), laws_shared_size(rb->global));
   }
   TC_STOP_TIMER(rb->tc, release);
   GTC_EXIT();
@@ -331,10 +346,10 @@ int laws_reacquire(laws_local_t *rb) {
   TC_START_TIMER(rb->tc, reacquire);
   // Favor placing work in the local portion -- if there is only one task
   // available this scheme will put it in the local portion.
-  laws_lock(rb, rb->procid);
+  laws_lock(rb->g_meta, rb->procid);
   {
-    if (laws_shared_size(rb) > laws_local_size(rb)) {
-      int diff    = laws_shared_size(rb) - laws_local_size(rb);
+    if (laws_local_size(rb) == 0) {
+      int diff    = laws_shared_size(rb->g_meta) - laws_local_size(rb);
       amount      = diff/2 + diff % 2;
       rb->nlocal += amount;
       rb->split   = (rb->split - amount);
@@ -347,7 +362,7 @@ int laws_reacquire(laws_local_t *rb) {
     // Assertion: laws_local_isempty(rb) => laws_isempty(rb)
     assert(!laws_local_isempty(rb) || (laws_isempty(rb) && laws_local_isempty(rb)));
   }
-  laws_unlock(rb, rb->procid);
+  laws_unlock(rb->g_meta, rb->procid);
   TC_STOP_TIMER(rb->tc, reacquire);
 
   GTC_EXIT(amount);
@@ -496,7 +511,7 @@ static inline int laws_pop_n_tail_impl(laws_global_t *myrb, int proc, int n, voi
   // Copy the remote RB's metadata
   // Don't need; we already have the metadata
   //shmem_getmem(&trb, myrb, sizeof(laws_local_t), proc);
-  laws_global_t stolen = myrb[proc];
+  laws_global_t trb = myrb[proc];
 
   switch (steal_vol) {
     case STEAL_HALF:
@@ -524,24 +539,26 @@ static inline int laws_pop_n_tail_impl(laws_global_t *myrb, int proc, int n, voi
     new_tail    = ((&trb)->tail + n) % (&trb)->max_size;
 
     loc_addr    = &new_tail;
-    rem_addr    = &myrb->tail;
+    rem_addr    = &trb.tail;
     xfer_size   = 1*sizeof(int);
-    shmem_putmem(rem_addr, loc_addr, xfer_size, proc);
+
+    // Put new tail back to proc 0's global array
+    shmem_putmem(rem_addr, loc_addr, xfer_size, 0);
 
     laws_unlock(myrb, proc); // Deferred copy unlocks early
 
     // Transfer work into the local buffer
     if ((&trb)->tail + (n-1) < (&trb)->max_size) {    // No need to wrap around
 
-      shmem_getmem_nbi(e, laws_elem_addr(myrb, proc, (&trb)->tail), n * (&trb)->elem_size, proc);    // Store n elems, starting at remote tail, in e
+      shmem_getmem_nbi(e, laws_elem_addr(trb.local, proc, (&trb)->tail), n * (&trb)->elem_size, proc);    // Store n elems, starting at remote tail, in e
       shmem_quiet();
 
     } else {    // Need to wrap around
       int part_size  = (&trb)->max_size - (&trb)->tail;
 
-      shmem_getmem_nbi(laws_buff_elem_addr(&trb, e, 0), laws_elem_addr(myrb, proc, (&trb)->tail), part_size * (&trb)->elem_size, proc);
+      shmem_getmem_nbi(laws_buff_elem_addr(&trb, e, 0), laws_elem_addr(trb.local, proc, (&trb)->tail), part_size * (&trb)->elem_size, proc);
 
-      shmem_getmem_nbi(laws_buff_elem_addr(&trb, e, part_size), laws_elem_addr(myrb, proc, 0), (n - part_size) * (&trb)->elem_size, proc);
+      shmem_getmem_nbi(laws_buff_elem_addr(&trb, e, part_size), laws_elem_addr(trb.local, proc, 0), (n - part_size) * (&trb)->elem_size, proc);
 
       shmem_quiet();
 
@@ -559,7 +576,7 @@ static inline int laws_pop_n_tail_impl(laws_global_t *myrb, int proc, int n, voi
         itail_inc = n;
       else
         itail_inc = n - (&trb)->max_size;
-      shmem_atomic_fetch_add(&(myrb->itail), itail_inc, proc);
+      shmem_atomic_fetch_add(&trb.vtail, itail_inc, 0);
 
       shmem_quiet();
     }

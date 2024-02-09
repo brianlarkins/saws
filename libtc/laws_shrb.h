@@ -59,6 +59,7 @@ struct laws_local_s {
   int             max_size;  // Max size in number of elements
   int             elem_size; // Size of an element in bytes
   struct laws_global_s   *global;
+  struct laws_global_s   *g_meta;
 
   tc_t           *tc;        // task collection associated with queue (for stats)
 
@@ -86,6 +87,7 @@ struct laws_global_s {
     int                 vtail;     // Index of the virtual tail
     int                 split;     // index of split between local-only and local-shared elements
     int                 tail;      // Index of tail element (between 0 and rb_size-1)
+    struct laws_local_s *local;    // pointer to local metadata and queue
     synch_mutex_t       lock;
 };
 
@@ -97,16 +99,16 @@ laws_local_t *laws_create(int elem_size, int max_size, tc_t *tc);
 void        laws_destroy(laws_local_t *rb);
 void        laws_reset(laws_local_t *rb);
 
-void        laws_lock(laws_local_t *rb, int proc);
-void        laws_unlock(laws_local_t *rb, int proc);
+void        laws_lock(laws_global_t *rb, int proc);
+void        laws_unlock(laws_global_t *rb, int proc);
 
 int         laws_head(laws_local_t *rb);
 int         laws_local_isempty(laws_local_t *rb);
-int         laws_shared_isempty(laws_local_t *rb);
+int         laws_shared_isempty(laws_global_t *rb);
 int         laws_local_size(laws_local_t *rb);
-int         laws_shared_size(laws_local_t *rb);
+int         laws_shared_size(laws_global_t *rb);
 int         laws_reserved_size(laws_local_t *rb);
-int         laws_public_size(laws_local_t *rb);
+int         laws_public_size(laws_global_t *rb);
 
 void        laws_release(laws_local_t *rb);
 void        laws_release_all(laws_local_t *rb);
