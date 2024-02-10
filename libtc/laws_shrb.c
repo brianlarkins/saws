@@ -96,7 +96,7 @@ laws_local_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   rb->ncores = cores_per_node;
   rb->g_meta = &global[rank_in_node];
 
-  laws_reset(rb;
+  laws_reset(rb);
 
   rb->tc = tc;
 
@@ -122,7 +122,7 @@ void laws_reset(laws_local_t *rb) {
   rb->waiting= 0;
 
   // Save global metadata to root process
-  shmem_putmem(&rb->global[rb->rank_in_node], g, sizeof(*g), rb->root);
+  shmem_putmem(&rb->global[rb->rank_in_node], g, sizeof(laws_global_t), rb->root);
   
   // Reset queue statistics
   rb->nrelease   = 0;
@@ -141,20 +141,21 @@ void laws_destroy(laws_local_t *rb) {
 
 void laws_print(laws_local_t *rb) {
   GTC_ENTRY();
+  laws_global_t *g_meta = rb->g_meta;
   printf("rb: %p {\n", rb);
   printf("   procid  = %d\n", rb->procid);
   printf("   nproc  = %d\n", rb->nproc);
   printf("   nlocal    = %d\n", rb->nlocal);
   printf("   head      = %d\n", laws_head(rb));
-  printf("   split     = %d\n", rb->split);
-  printf("   tail      = %d\n", rb->tail);
-  printf("   itail     = %d\n", rb->itail);
+  printf("   split     = %d\n", g_meta->split);
+  printf("   tail      = %d\n", g_meta->tail);
+  printf("   vtail(g)     = %d\n", g_meta->vtail);
   printf("   vtail     = %d\n", rb->vtail);
   printf("   max_size  = %d\n", rb->max_size);
   printf("   elem_size = %d\n", rb->elem_size);
   printf("   local_size = %d\n", laws_local_size(rb));
-  printf("   shared_size= %d\n", laws_shared_size(rb));
-  printf("   public_size= %d\n", laws_public_size(rb));
+  printf("   shared_size= %d\n", laws_shared_size(g_meta));
+  printf("   public_size= %d\n", laws_public_size(g_meta));
   printf("   size       = %d\n", laws_size(rb));
   printf("}\n");
   GTC_EXIT();
@@ -188,6 +189,9 @@ int laws_local_size(laws_local_t *rb) {
   return rb->nlocal;
 }
 
+int laws_reserved_size(laws_local_t *rb) {
+    return rb->head - rb->vtail;
+}
 
 int laws_shared_size(laws_global_t *rb) {
   if (laws_shared_isempty(rb)) // Shared is empty
@@ -213,7 +217,9 @@ int laws_public_size(laws_global_t *rb) {
 
 int laws_size(void *b) {
   laws_local_t *rb = (laws_local_t *)b;
-  return rb->head - rb->vtail;
+  laws_global_t *g_meta = rb->g_meta;
+  int tail = g_meta->tail;
+  return rb->head - tail;
   //return laws_local_size(rb) + laws_shared_size(
    //       &rb->global[rb->rank_in_node]);
 }
@@ -253,13 +259,13 @@ int laws_reclaim_space(laws_local_t *rb) {
   GTC_ENTRY();
   int reclaimed = 0;
   int old_vtail = rb->vtail;
-  laws_global_t g_meta = rb->global[rb->rank_in_node];
+  laws_global_t *g_meta = rb->g_meta;
 
   // Update our global metadata
-  shmem_getmem(&g_meta, &g_meta, sizeof(g_meta), 0);
+  shmem_getmem(g_meta, g_meta, sizeof(*g_meta), 0);
 
-  int g_vtail = g_meta.vtail;
-  int tail = g_meta.tail;
+  int g_vtail = g_meta->vtail;
+  int tail = g_meta->tail;
   TC_START_TIMER(rb->tc, reclaim);
   if (old_vtail != tail && g_vtail == tail) {
     rb->vtail = g_vtail;
@@ -283,10 +289,15 @@ void laws_ensure_space(laws_local_t *rb, int n) {
   // Ensure that there is enough free space in the queue.  If there isn't
   // wait until others finish their deferred copies so we can reclaim space.
   TC_START_TIMER(rb->tc, ensure);
-  if (rb->max_size - (laws_size(rb)) < n) {
+  if (rb->max_size - (laws_reserved_size(rb)) < n) {
     // should we lock here?
-    laws_lock(&rb->global[rb->rank_in_node], rb->procid);
+    laws_lock(rb->g_meta, rb->procid);
     {
+      /* 
+       * Up-to-date version of this would require communication to 
+       * update global metadata
+       *
+       * TODO: Let's worry about this later.
       if (rb->max_size - laws_size(rb) < n) {
         // Error: amount of reclaimable space is less than what we need.
         // Try increasing the size of the queue.
@@ -294,6 +305,7 @@ void laws_ensure_space(laws_local_t *rb, int n) {
         laws_print(rb);
         assert(0);
       }
+      */
       rb->waiting = 1;
       while (laws_reclaim_space(rb) == 0) /* Busy Wait */ ;
       rb->waiting = 0;
@@ -314,13 +326,13 @@ void laws_release(laws_local_t *rb) {
   TC_START_TIMER(rb->tc, release);
   // We'll need to fix this; we won't have access to 
   // up-to-date info about the global metadata here
-  if (laws_local_size(rb) > 0 && laws_shared_size(&rb->global[rb->rank_in_node]) == 0) {
+  if (laws_local_size(rb) > 0 && laws_shared_size(rb->g_meta) == 0) {
     int amount  = laws_local_size(rb)/2 + laws_local_size(rb) % 2;
     int split = rb->head - rb->nlocal;
     rb->nlocal -= amount;
     split   = (split + amount) % rb->max_size;
-    laws_global_t g_meta = rb->global[rb->procid];
-    shmem_putmem(&g_meta.split, &split, sizeof(split), 0);
+    laws_global_t *g_meta = rb->g_meta;
+    shmem_putmem(&g_meta->split, &split, sizeof(split), 0);
     rb->nrelease++;
     gtc_lprintf(DBGSHRB, "release: local size: %d shared size: %d\n", laws_local_size(rb), laws_shared_size(rb->global));
   }
@@ -332,8 +344,12 @@ void laws_release(laws_local_t *rb) {
 void laws_release_all(laws_local_t *rb) {
   GTC_ENTRY();
   int amount  = laws_local_size(rb);
+  laws_global_t *g_meta = rb->g_meta;
   rb->nlocal -= amount;
-  rb->split   = (rb->split + amount) % rb->max_size;
+  rb->head -= amount;
+  
+  g_meta->split   = (g_meta->split + amount) % rb->max_size;
+  shmem_putmem(&g_meta->split, &g_meta->split, sizeof(int), 0);
   rb->nrelease++;
   GTC_EXIT();
 }
@@ -347,16 +363,22 @@ int laws_reacquire(laws_local_t *rb) {
   // Favor placing work in the local portion -- if there is only one task
   // available this scheme will put it in the local portion.
   laws_lock(rb->g_meta, rb->procid);
+  
+  // Update our view of the global metadata before reacquiring
+  shmem_getmem(rb->g_meta, rb->g_meta, sizeof(laws_local_t), 0);
+  laws_global_t *g_meta = rb->g_meta;
   {
     if (laws_local_size(rb) == 0) {
       int diff    = laws_shared_size(rb->g_meta) - laws_local_size(rb);
       amount      = diff/2 + diff % 2;
       rb->nlocal += amount;
-      rb->split   = (rb->split - amount);
-      if (rb->split < 0)
-        rb->split += rb->max_size;
+      rb->head += amount;
+      g_meta->split   = (g_meta->split - amount);
+      if (g_meta->split < 0)
+        g_meta->split += rb->max_size;
+      shmem_putmem(&g_meta->split, &g_meta->split, sizeof(int), 0);
       rb->nreacquire++;
-      gtc_lprintf(DBGSHRB, "reacquire: local size: %d shared size: %d\n", laws_local_size(rb), laws_shared_size(rb));
+      gtc_lprintf(DBGSHRB, "reacquire: local size: %d shared size: %d\n", laws_local_size(rb), laws_shared_size(g_meta));
     }
 
     // Assertion: laws_local_isempty(rb) => laws_isempty(rb)
@@ -386,6 +408,7 @@ static inline void laws_push_n_head_impl(laws_local_t *rb, int proc, void *e, in
   // Proceed with the push
   old_head    = laws_head(rb);
   rb->nlocal += n;
+  rb->head = (old_head + n) % rb->max_size;
   head        = laws_head(rb);
 
   if (head > old_head || old_head == rb->max_size - 1) {
@@ -416,6 +439,7 @@ void laws_push_head(laws_local_t *rb, int proc, void *e, int size) {
   // Proceed with the push
   old_head    = laws_head(rb);
   rb->nlocal += 1;
+  rb->head = (old_head + 1) % rb->max_size;
 
   memcpy(laws_elem_addr(rb, proc, (old_head+1)%rb->max_size), e, size);
 
@@ -437,6 +461,7 @@ void *laws_alloc_head(laws_local_t *rb) {
   laws_ensure_space(rb, 1);
 
   rb->nlocal += 1;
+  rb->head += 1;
 
   GTC_EXIT(laws_elem_addr(rb, rb->procid, laws_head(rb)));
 }
@@ -462,6 +487,7 @@ int laws_pop_head(void *b, int proc, void *buf) {
     memcpy(buf, laws_elem_addr(rb, proc, old_head), rb->elem_size);
 
     rb->nlocal--;
+    rb->head--;
     buf_valid = 1;
   }
 
@@ -495,34 +521,33 @@ int laws_pop_tail(laws_local_t *rb, int proc, void *buf) {
  *  @return      The number of tasks stolen or -1 on failure
  */
 
-static inline int laws_pop_n_tail_impl(laws_global_t *myrb, int proc, int n, void *e, int steal_vol, int trylock) {
-  laws_local_t trb;
+static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void *e, int steal_vol, int trylock) {
   TC_START_TIMER(myrb->tc, poptail);
   __gtc_marker[1] = 3;
   // Attempt to get the lock
   if (trylock) {
-    if (!laws_local_trylock(myrb, proc)) {
+    if (!laws_trylock(&myrb->global[proc], proc)) {
       return -1;
     }
   } else {
-    laws_lock(myrb, proc);
+    laws_lock(&myrb->global[proc], proc);
   }
 
   // Copy the remote RB's metadata
   // Don't need; we already have the metadata
   //shmem_getmem(&trb, myrb, sizeof(laws_local_t), proc);
-  laws_global_t trb = myrb[proc];
+  laws_global_t *trb = &myrb->global[proc];
 
   switch (steal_vol) {
     case STEAL_HALF:
-      n = MIN(laws_shared_size(&trb)/2 + laws_shared_size(&trb) % 2, n);
+      n = MIN(laws_shared_size(trb)/2 + laws_shared_size(trb) % 2, n);
       break;
     case STEAL_ALL:
-      n = MIN(laws_shared_size(&trb), n);
+      n = MIN(laws_shared_size(trb), n);
       break;
     case STEAL_CHUNK:
       // Get as much as possible up to N.
-      n = MIN(n, laws_shared_size(&trb));
+      n = MIN(n, laws_shared_size(trb));
       break;
     default:
       printf("Error: Unknown steal volume heuristic.\n");
@@ -536,29 +561,29 @@ static inline int laws_pop_n_tail_impl(laws_global_t *myrb, int proc, int n, voi
     int  xfer_size;
     int *loc_addr, *rem_addr;
 
-    new_tail    = ((&trb)->tail + n) % (&trb)->max_size;
+    new_tail    = ((trb)->tail + n) % (trb)->max_size;
 
     loc_addr    = &new_tail;
-    rem_addr    = &trb.tail;
+    rem_addr    = &trb->tail;
     xfer_size   = 1*sizeof(int);
 
     // Put new tail back to proc 0's global array
     shmem_putmem(rem_addr, loc_addr, xfer_size, 0);
 
-    laws_unlock(myrb, proc); // Deferred copy unlocks early
+    laws_unlock(&myrb->global[proc], proc); // Deferred copy unlocks early
 
     // Transfer work into the local buffer
     if ((&trb)->tail + (n-1) < (&trb)->max_size) {    // No need to wrap around
 
-      shmem_getmem_nbi(e, laws_elem_addr(trb.local, proc, (&trb)->tail), n * (&trb)->elem_size, proc);    // Store n elems, starting at remote tail, in e
+      shmem_getmem_nbi(e, laws_elem_addr(trb->local, proc, (trb)->tail), n * (trb)->elem_size, proc);    // Store n elems, starting at remote tail, in e
       shmem_quiet();
 
     } else {    // Need to wrap around
-      int part_size  = (&trb)->max_size - (&trb)->tail;
+      int part_size  = (trb)->max_size - (trb)->tail;
 
-      shmem_getmem_nbi(laws_buff_elem_addr(&trb, e, 0), laws_elem_addr(trb.local, proc, (&trb)->tail), part_size * (&trb)->elem_size, proc);
+      shmem_getmem_nbi(laws_buff_elem_addr(trb, e, 0), laws_elem_addr(trb.local, proc, (trb)->tail), part_size * (trb)->elem_size, proc);
 
-      shmem_getmem_nbi(laws_buff_elem_addr(&trb, e, part_size), laws_elem_addr(trb.local, proc, 0), (n - part_size) * (&trb)->elem_size, proc);
+      shmem_getmem_nbi(laws_buff_elem_addr(trb, e, part_size), laws_elem_addr(trb.local, proc, 0), (n - part_size) * (trb)->elem_size, proc);
 
       shmem_quiet();
 

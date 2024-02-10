@@ -87,8 +87,9 @@ struct laws_global_s {
     int                 vtail;     // Index of the virtual tail
     int                 split;     // index of split between local-only and local-shared elements
     int                 tail;      // Index of tail element (between 0 and rb_size-1)
-    struct laws_local_s *local;    // pointer to local metadata and queue
+    struct laws_local_s *local;    // pointer to local metadata and queue (just in case)
     synch_mutex_t       lock;
+    tc_t                *tc;
 };
 
 typedef struct laws_local_s laws_local_t;
