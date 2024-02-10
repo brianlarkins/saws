@@ -604,23 +604,38 @@ int gtc_select_target_laws(gtc_t gtc, gtc_vs_state_t *state) {
     }
   }
 
+  laws_local_t *local_md = (laws_local_t *)tc->shared_rb;
+  laws_global_t *global_md = local_md->global;
   if (v < 0) {
-      laws_local_t *local_md = (laws_local_t *)tc->shared_rb;
-      laws_global_t *global_md = local_md->global;
 
+      // retrieve latest global metadata
       shmem_getmem(local_md->global, local_md->global, sizeof(*global_md) * local_md->ncores, local_md->root);
 
       // loop through all cores on node until work is found
       for (v = 0; v < local_md->ncores; v++) {
-          laws_global_t curr_md = global_md[v];
-          int tail = curr_md.tail;
-          int split = curr_md.split;
+          laws_global_t *curr_md = &global_md[v];
+          int tail = curr_md->tail;
+          int split = curr_md->split;
           int avail = split - tail;
           if (avail > 0) {
               break;
           }
       }
   }
+
+  // we didn't find any work on our node soooo.... 
+  // select a node randomly, and zip through its global metadata for work?
+  // (there may be better ways to do this but we can worry about it later :) )
+  if (v == local_md->ncores) {
+      int num_nodes = local_md->nproc / local_md->ncores; // number of nodes we are using
+      int our_node = local_md->root / local_md->ncores; // our current node
+      do {
+          v = rand() % num_nodes;
+      } while (v == our_node);
+
+
+  }
+
 
   /* FREE: Free target selection.
   */
