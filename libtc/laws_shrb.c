@@ -573,7 +573,7 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
     laws_unlock(&myrb->global[proc], proc); // Deferred copy unlocks early
 
     // Transfer work into the local buffer
-    if ((&trb)->tail + (n-1) < (&trb)->max_size) {    // No need to wrap around
+    if ((trb)->tail + (n-1) < (trb)->max_size) {    // No need to wrap around
 
       shmem_getmem_nbi(e, laws_elem_addr(trb->local, proc, (trb)->tail), n * (trb)->elem_size, proc);    // Store n elems, starting at remote tail, in e
       shmem_quiet();
@@ -581,9 +581,9 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
     } else {    // Need to wrap around
       int part_size  = (trb)->max_size - (trb)->tail;
 
-      shmem_getmem_nbi(laws_buff_elem_addr(trb, e, 0), laws_elem_addr(trb.local, proc, (trb)->tail), part_size * (trb)->elem_size, proc);
+      shmem_getmem_nbi(laws_buff_elem_addr(trb, e, 0), laws_elem_addr(trb->local, proc, (trb)->tail), part_size * (trb)->elem_size, proc);
 
-      shmem_getmem_nbi(laws_buff_elem_addr(trb, e, part_size), laws_elem_addr(trb.local, proc, 0), (n - part_size) * (trb)->elem_size, proc);
+      shmem_getmem_nbi(laws_buff_elem_addr(trb, e, part_size), laws_elem_addr(trb->local, proc, 0), (n - part_size) * (trb)->elem_size, proc);
 
       shmem_quiet();
 
@@ -597,11 +597,11 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
       //int count = sizeof(int);
 
       // How much should we add to the itail?  If we caused a wraparound, we need to also wrap itail.
-      if (new_tail > (&trb)->tail)
+      if (new_tail > (trb)->tail)
         itail_inc = n;
       else
-        itail_inc = n - (&trb)->max_size;
-      shmem_atomic_fetch_add(&trb.vtail, itail_inc, 0);
+        itail_inc = n - (trb)->max_size;
+      shmem_atomic_fetch_add(&trb->vtail, itail_inc, 0);
 
       shmem_quiet();
     }
@@ -611,7 +611,7 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
 #endif
 
   } else /* (n <= 0) */ {
-    laws_unlock(myrb, proc);
+    laws_unlock(trb, proc);
   }
   TC_STOP_TIMER(myrb->tc, poptail);
   __gtc_marker[1] = 0;
@@ -622,7 +622,7 @@ int laws_pop_n_tail(void *b, int proc, int n, void *e, int steal_vol) {
   GTC_ENTRY();
   laws_local_t *myrb = (laws_local_t *)b;
   laws_global_t *global = myrb->global;
-  GTC_EXIT(laws_pop_n_tail_impl(global, proc, n, e, steal_vol, 0));
+  GTC_EXIT(laws_pop_n_tail_impl(myrb, proc, n, e, steal_vol, 0));
 }
 
 int laws_try_pop_n_tail(void *b, int proc, int n, void *e, int steal_vol) {
