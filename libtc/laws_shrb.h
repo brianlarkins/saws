@@ -101,6 +101,7 @@ void        laws_destroy(laws_local_t *rb);
 void        laws_reset(laws_local_t *rb);
 
 void        laws_lock(laws_global_t *rb, int proc);
+int         laws_trylock(laws_global_t *rb, int proc);
 void        laws_unlock(laws_global_t *rb, int proc);
 
 int         laws_head(laws_local_t *rb);

@@ -113,6 +113,8 @@ void gtc_progress_laws(gtc_t gtc) {
   GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
   TC_START_TIMER(tc,progress);
+  laws_local_t *local_md = (laws_local_t *)tc->shared_rb;
+  laws_global_t *global = local_md->global;
 
 #if 0 /* no task pushing */
   // Check the inbox for new work
@@ -130,6 +132,9 @@ void gtc_progress_laws(gtc_t gtc) {
     gtc_lprintf(DBGINBOX, "gtc_progress: Moved %d tasks from inbox to my queue\n", npopped);
   }
 #endif /* no task pushing */
+
+  // Update our view of global metadata
+  shmem_getmem(global, global, sizeof(laws_global_t) * local_md->ncores, local_md->root);
 
   // Update the split
   laws_release(tc->shared_rb);
@@ -185,6 +190,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
   TC_START_TIMER(tc, getbuf);
 
   // Invoke the progress engine
+  // this operation should also retrieve global metadata
   gtc_progress(gtc);
 
   // Try to take my own work first.  We take from the head of our own queue.
@@ -444,7 +450,7 @@ void gtc_task_inplace_create_and_add_finish_laws(gtc_t gtc, task_t *t) {
 void gtc_print_stats_laws(gtc_t gtc) {
   GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
-  laws_t *rb = (laws_t *)tc->shared_rb;
+  laws_local_t *rb = (laws_local_t *)tc->shared_rb;
 
   uint64_t perget, peradd, perinplace, perfinish, perprogress, perreclaim, perensure, perrelease, perreacquire, perpoptail;
 
@@ -503,7 +509,7 @@ void gtc_print_stats_laws(gtc_t gtc) {
 void gtc_print_gstats_laws(gtc_t gtc) {
   GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
-  laws_t *rb = (laws_t *)tc->shared_rb;
+  laws_local_t *rb = (laws_local_t *)tc->shared_rb;
   double   *times, *mintimes, *maxtimes, *sumtimes;
   uint64_t *counts, *mincounts, *maxcounts, *sumcounts;
 

@@ -569,6 +569,24 @@ int gtc_select_target(gtc_t gtc, gtc_vs_state_t *state) {
   GTC_EXIT(v);
 }
 
+int laws_select_proc(laws_global_t *rb, int ncores) {
+
+  // loop through all cores on node until work is found
+  int v;
+  for (v = 0; v < ncores; v++) {
+      laws_global_t *curr_md = &rb[v];
+      int tail = curr_md->tail;
+      int split = curr_md->split;
+      int avail = split - tail;
+      // Problem: we're attempting communication on many processes
+      // Problem: lock's state on root may not match that in our available metadata
+      // which means that we may have an unmatching state
+      if (avail > 0) {
+          return v;
+      }
+  }
+  return v;
+}
 
 /** Internal target selector state machine: Select the next target to attempt a steal from.
  *
@@ -609,35 +627,37 @@ int gtc_select_target_laws(gtc_t gtc, gtc_vs_state_t *state) {
   if (v < 0) {
 
       // retrieve latest global metadata
-      shmem_getmem(local_md->global, local_md->global, sizeof(*global_md) * local_md->ncores, local_md->root);
+      // shouldn't be necessary since we're retrieving latest info using gtc_progress
+      //shmem_getmem(local_md->global, local_md->global, sizeof(*global_md) * local_md->ncores, local_md->root);
 
       // loop through all cores on node until work is found
-      for (v = 0; v < local_md->ncores; v++) {
-          laws_global_t *curr_md = &global_md[v];
-          int tail = curr_md->tail;
-          int split = curr_md->split;
-          int avail = split - tail;
-          if (avail > 0) {
-              break;
-          }
-      }
+      v = laws_select_proc(global_md, local_md->ncores);
   }
 
   // we didn't find any work on our node soooo.... 
   // select a node randomly, and zip through its global metadata for work?
-  // (there may be better ways to do this but we can worry about it later :) )
-  if (v == local_md->ncores) {
+  // (there may be better ways to do this but we can worry about it later :-) )
+  int d = local_md->ncores;
+  int num_nodes = local_md->nproc / local_md->ncores;
+  while (v == local_md->ncores) {
       int num_nodes = local_md->nproc / local_md->ncores; // number of nodes we are using
       int our_node = local_md->root / local_md->ncores; // our current node
+      int selected;
       do {
-          v = rand() % num_nodes;
-      } while (v == our_node);
+          selected = rand() % num_nodes;
+      } while (selected == our_node);
 
+      laws_global_t other_node;
+      shmem_getmem(&other_node, global_md, sizeof(laws_global_t) * local_md->ncores, selected * local_md->ncores);
 
+      v = laws_select_proc(&other_node, local_md->ncores);
   }
 
 
   /* FREE: Free target selection.
+   *
+   * This might be a better option for stealing if locality-aware 
+   * does not work (compared to grabbing a global array from another node).
   */
   /*
   if (v < 0) {
@@ -664,6 +684,7 @@ int gtc_select_target_laws(gtc_t gtc, gtc_vs_state_t *state) {
 
   GTC_EXIT(v);
 }
+
 
 /**
  * Processes the task collection. Collective call. Handles load-balancing
