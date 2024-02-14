@@ -125,6 +125,7 @@ void laws_reset(laws_local_t *rb) {
   g->vtail = 0;
   g->max_size = rb->max_size;
   g->elem_size = rb->elem_size;
+  g->procid = rb->procid;
 
   rb->waiting= 0;
 
@@ -593,15 +594,16 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
     // Transfer work into the local buffer
     if ((trb)->tail + (n-1) < (trb)->max_size) {    // No need to wrap around
 
-      shmem_getmem_nbi(e, laws_elem_addr(trb->local, proc, (trb)->tail), n * (trb)->elem_size, proc);    // Store n elems, starting at remote tail, in e
+      // TODO: proc needs to be the actual rank, not the rank in node
+      shmem_getmem_nbi(e, laws_elem_addr(trb->local, proc, (trb)->tail), n * (trb)->elem_size, trb->procid);    // Store n elems, starting at remote tail, in e
       shmem_quiet();
 
     } else {    // Need to wrap around
       int part_size  = (trb)->max_size - (trb)->tail;
 
-      shmem_getmem_nbi(laws_buff_elem_addr(trb, e, 0), laws_elem_addr(trb->local, proc, (trb)->tail), part_size * (trb)->elem_size, proc);
+      shmem_getmem_nbi(laws_buff_elem_addr(trb, e, 0), laws_elem_addr(trb->local, proc, (trb)->tail), part_size * (trb)->elem_size, trb->procid);
 
-      shmem_getmem_nbi(laws_buff_elem_addr(trb, e, part_size), laws_elem_addr(trb->local, proc, 0), (n - part_size) * (trb)->elem_size, proc);
+      shmem_getmem_nbi(laws_buff_elem_addr(trb, e, part_size), laws_elem_addr(trb->local, proc, 0), (n - part_size) * (trb)->elem_size, trb->procid);
 
       shmem_quiet();
 
@@ -615,6 +617,8 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
       //int count = sizeof(int);
 
       // How much should we add to the itail?  If we caused a wraparound, we need to also wrap itail.
+      // TODO: this might also need to be fixed
+      // (You may have changed new_tail just slightly)
       if (new_tail > (trb)->tail)
         itail_inc = n;
       else
