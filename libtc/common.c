@@ -137,6 +137,9 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
     case GtcQueueSAWS:
       gtc_create_saws(gtc, max_body_size, shrb_size, ldbal_cfg);
       break;
+    case GtcQueueLAWS:
+      gtc_create_laws(gtc, max_body_size, shrb_size, ldbal_cfg);
+      break;
     default:
       gtc_eprintf(DBGERR, "gtc_create: unsupported queue type\n");
       exit(1);

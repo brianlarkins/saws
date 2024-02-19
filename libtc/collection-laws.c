@@ -236,6 +236,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
       //TC_STOP_TIMER(tc,poptail);
 
       // Poll the target for work.  In between polls, maintain progress on termination detection.
+      laws_local_t *local_md = (laws_local_t *)tc->shared_rb;
       for (steal_attempts = 0, steal_done = 0;
            !steal_done && !tc->terminated && steal_attempts < max_steal_attempts;
            steal_attempts++) {
@@ -287,8 +288,14 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
           steal_done = 1;
         }
 
+        // switch roots before reinvoking progress engine
+        if (local_md->alt_root != local_md->our_root) {
+            local_md->root = local_md->our_root;
+        }
+
         // Invoke the progress engine
         gtc_progress(gtc);
+
 
         // Still no work? Lock to be sure and check for termination.
         // Locking is only needed here if we allow pushing.
@@ -309,10 +316,17 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
         } else {
           steal_done = 1;
         }
+
+        // switch roots again so that process can continue to reattempt steals
+        if (local_md->alt_root != local_md->our_root) {
+            local_md->root = local_md->alt_root;
+        }
       }
 
-      laws_local_t *local_md = (laws_local_t *)tc->shared_rb;
+      // Reset root for upcoming steals from other procs
       local_md->root = local_md->our_root;
+      local_md->alt_root = local_md->our_root;
+
       if (gtc_tasks_avail(gtc))
         got_task = gtc_get_local_buf(gtc, priority, buf);
     }

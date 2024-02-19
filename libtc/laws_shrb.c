@@ -95,7 +95,7 @@ laws_local_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   rb->max_size  = max_size;
   rb->root = procid - rank_in_node;
   rb->our_root = rb->root;
-  rb->alt_root = 0;
+  rb->alt_root = rb->our_root;
   rb->ncores = cores_per_node;
   rb->g_meta = &global[rank_in_node];
 
@@ -227,9 +227,11 @@ int laws_public_size(laws_global_t *rb) {
 
 
 int laws_size(void *b) {
-  // problem: this won't be completely accurate w/o a communication
   laws_local_t *rb = (laws_local_t *)b;
   laws_global_t *g_meta = rb->g_meta;
+  // update metadata using communication
+  // (this function is called rarely, so we shouldn't encounter too much of a performance hit)
+  shmem_getmem(rb->g_meta, rb->g_meta, sizeof(laws_global_t), rb->root);
   int tail = g_meta->tail;
   return rb->head - tail;
   //return laws_local_size(rb) + laws_shared_size(
@@ -316,7 +318,6 @@ void laws_ensure_space(laws_local_t *rb, int n) {
        *
        * TODO: Let's worry about this later.
        */
-      shmem_getmem(rb->g_meta, rb->g_meta, sizeof(laws_global_t), rb->root);
       if (rb->max_size - laws_size(rb) < n) {
         // Error: amount of reclaimable space is less than what we need.
         // Try increasing the size of the queue.
@@ -556,8 +557,18 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
   // Copy the remote RB's metadata
   // Don't need; we already have the metadata
   // Actually: we do need (possibly changed before we acquired lock)
-  shmem_getmem(&myrb->global[proc],  &myrb->global[proc], sizeof(laws_global_t), myrb->root);
-  laws_global_t *trb = &myrb->global[proc];
+  // Note: in internode steals, myrb->root is redefined to refer to that proc's node's root process
+  laws_global_t *trb;
+  laws_global_t copy;
+  if (myrb->root == myrb->our_root) {
+      shmem_getmem(&myrb->global[proc],  &myrb->global[proc], sizeof(laws_global_t), myrb->root);
+      trb = &myrb->global[proc];
+  } else {
+      shmem_getmem(&copy, &myrb->global[proc], sizeof(laws_global_t), myrb->root);
+      trb = &copy;
+  }
+
+
 
   switch (steal_vol) {
     case STEAL_HALF:
