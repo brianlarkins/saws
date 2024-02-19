@@ -311,6 +311,8 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
         }
       }
 
+      laws_local_t *local_md = (laws_local_t *)tc->shared_rb;
+      local_md->root = local_md->our_root;
       if (gtc_tasks_avail(gtc))
         got_task = gtc_get_local_buf(gtc, priority, buf);
     }

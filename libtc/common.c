@@ -639,25 +639,34 @@ int gtc_select_target_laws(gtc_t gtc, gtc_vs_state_t *state) {
   // (there may be better ways to do this but we can worry about it later :-) )
   int d = local_md->ncores;
   int num_nodes = local_md->nproc / local_md->ncores;
+  int selected;
   while (v == local_md->ncores) {
       int num_nodes = local_md->nproc / local_md->ncores; // number of nodes we are using
       int our_node = local_md->root / local_md->ncores; // our current node
-      int selected;
       do {
           selected = rand() % num_nodes;
       } while (selected == our_node);
 
+      selected = selected * local_md->ncores;
       laws_global_t other_node;
-      shmem_getmem(&other_node, global_md, sizeof(laws_global_t) * local_md->ncores, selected * local_md->ncores);
+      shmem_getmem(&other_node, global_md, sizeof(laws_global_t) * local_md->ncores, selected);
 
       v = laws_select_proc(&other_node, local_md->ncores);
-  }
 
+      // set the root from which we will grab global metadata to be 
+      // the alt root (at least for now)
+      // Note: only if an available proc was found
+      if (v != local_md->ncores) {
+          local_md->alt_root = selected;
+          local_md->root = local_md->alt_root;
+      }
+  }
 
   /* FREE: Free target selection.
    *
    * This might be a better option for stealing if locality-aware 
    * does not work (compared to grabbing a global array from another node).
+   * (aka. just grab info for one process on one node; completely random pls)
   */
   /*
   if (v < 0) {
