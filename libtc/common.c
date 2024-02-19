@@ -637,8 +637,8 @@ int gtc_select_target_laws(gtc_t gtc, gtc_vs_state_t *state) {
   // we didn't find any work on our node soooo.... 
   // select a node randomly, and zip through its global metadata for work?
   // (there may be better ways to do this but we can worry about it later :-) )
-  int d = local_md->ncores;
-  int num_nodes = local_md->nproc / local_md->ncores;
+  // int d = local_md->ncores;
+  // int num_nodes = local_md->nproc / local_md->ncores;
   int selected;
   while (v == local_md->ncores) {
       int num_nodes = local_md->nproc / local_md->ncores; // number of nodes we are using
