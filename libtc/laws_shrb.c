@@ -94,6 +94,8 @@ laws_local_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   rb->elem_size = elem_size;
   rb->max_size  = max_size;
   rb->root = procid - rank_in_node;
+  rb->our_root = rb->root;
+  rb->alt_root = 0;
   rb->ncores = cores_per_node;
   rb->g_meta = &global[rank_in_node];
 
@@ -643,13 +645,13 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
 int laws_pop_n_tail(void *b, int proc, int n, void *e, int steal_vol) {
   GTC_ENTRY();
   laws_local_t *myrb = (laws_local_t *)b;
-  laws_global_t *global = myrb->global;
+  // laws_global_t *global = myrb->global;
   GTC_EXIT(laws_pop_n_tail_impl(myrb, proc, n, e, steal_vol, 0));
 }
 
 int laws_try_pop_n_tail(void *b, int proc, int n, void *e, int steal_vol) {
   GTC_ENTRY();
   laws_local_t *myrb = (laws_local_t *)b;
-  laws_global_t *global = myrb->global;
+  // laws_global_t *global = myrb->global;
   GTC_EXIT(laws_pop_n_tail_impl(myrb, proc, n, e, steal_vol, 1));
 }
