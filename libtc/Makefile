@@ -20,6 +20,7 @@ HDRS =  mutex.h        			 \
 
 OBJS =  collection-sdc.o     \
 				collection-saws.o	\
+				collection-laws.o	\
 				common.o             \
         handle.o             \
         init.o               \
