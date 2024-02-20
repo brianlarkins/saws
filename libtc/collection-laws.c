@@ -173,7 +173,7 @@ int gtc_tasks_avail_laws(gtc_t gtc) {
  *                 found.  A NULL result here means that global termination
  *                 has occurred.  Returned buffer should be deleted by the user.
  */
-double gtc_get_dummy_work = 0.0;
+double gtc_get_dummy_work_laws = 0.0;
 
 int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
   GTC_ENTRY();
@@ -245,7 +245,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
         if (steal_attempts > 0) {
           int j;
           for (j = 0; j < steal_attempts*1000; j++)
-            gtc_get_dummy_work += 1.0;
+            gtc_get_dummy_work_laws += 1.0;
         }
 
         if (tc->rcb.work_avail(target_rb) > 0) {
