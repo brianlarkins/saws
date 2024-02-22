@@ -492,7 +492,7 @@ void *laws_alloc_head(laws_local_t *rb) {
 int laws_pop_head(void *b, int proc, void *buf) {
   GTC_ENTRY();
   laws_local_t *rb = (laws_local_t *)b;
-  int   old_head;
+  int   old_head = 0;
   int   buf_valid = 0;
 
   assert(proc == rb->procid);
