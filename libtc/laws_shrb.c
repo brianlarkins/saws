@@ -507,8 +507,8 @@ int laws_pop_head(void *b, int proc, void *buf) {
     memcpy(buf, laws_elem_addr(rb, proc, old_head), rb->elem_size);
 
     rb->nlocal--;
-    rb->head--;
     if (rb->head == 0) { rb->head = rb->max_size; };
+    rb->head--;
     buf_valid = 1;
   }
 
