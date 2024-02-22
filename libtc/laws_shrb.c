@@ -386,6 +386,7 @@ int laws_reacquire(laws_local_t *rb) {
   // available this scheme will put it in the local portion.
   printf("Attempting lock\n");
   printf("rb->root: %d\n", rb->root);
+  printf("rb->g_meta: %p\n", rb->g_meta);
   laws_lock(rb->g_meta, rb->root);
   
   // Update our view of the global metadata before reacquiring
