@@ -76,10 +76,13 @@ int main(int argc, char **argv)
 
   // printf("(%d) _c->size: %d\n", _c->rank, _c->size);
 
-  while ((arg = getopt(argc, argv, "BHNn:t:")) != -1) {
+  while ((arg = getopt(argc, argv, "BHNLn:t:")) != -1) {
     switch (arg) {
       case 'B':
         qtype = GtcQueueSDC;
+        break;
+      case 'L':
+        qtype = GtcQueueLAWS;
         break;
       case 'n':
         num_tasks = atoi(optarg);

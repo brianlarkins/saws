@@ -99,18 +99,19 @@ laws_local_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   rb->ncores = cores_per_node;
   rb->g_meta = &global[rank_in_node];
   printf("hello world\n");
-  printf("%p\n", rb->g_meta);
+  printf("procid: %d; g_meta: %p\n", rb->procid, rb->g_meta);
 
   // Set local pointer in our global metadata to memory address of our local metadata
   // Needed to access the queue
   rb->g_meta->local = rb;
-  laws_reset(rb);
 
   rb->tc = tc;
 
   // Initialize the lock (global and local)
   synch_mutex_init(&rb->lock);
   synch_mutex_init(&rb->g_meta->lock);
+
+  laws_reset(rb);
 
   shmem_barrier_all();
 
@@ -246,14 +247,15 @@ int laws_size(void *b) {
 
 void laws_lock(laws_global_t *rb, int proc) {
   printf("procid: %d\n", rb->procid);
-  printf("g_meta: %p\n", &rb->lock);
+  printf("g_meta: %p\n", rb);
+  printf("*g_meta: %p\n", &rb);
   synch_mutex_lock(&rb->lock, proc);
 }
 
 
 int laws_trylock(laws_global_t *rb, int proc) {
   printf("procid: %d\n", rb->procid);
-  printf("g_meta: %p\n", &rb->lock);
+  printf("g_meta: %p\n", rb);
   return synch_mutex_trylock(&rb->lock, proc);
 }
 
@@ -389,8 +391,7 @@ int laws_reacquire(laws_local_t *rb) {
   // Favor placing work in the local portion -- if there is only one task
   // available this scheme will put it in the local portion.
   printf("Attempting lock\n");
-  printf("rb->root: %d\n", rb->root);
-  printf("rb->g_meta: %p\n", rb->g_meta);
+  printf("rb->root: %d; rb->g_meta: %p\n", rb->root, rb->g_meta);
   laws_lock(rb->g_meta, rb->root);
   
   // Update our view of the global metadata before reacquiring
