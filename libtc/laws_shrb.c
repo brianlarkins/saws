@@ -98,6 +98,7 @@ laws_local_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   rb->alt_root = rb->our_root;
   rb->ncores = cores_per_node;
   rb->g_meta = &global[rank_in_node];
+  printf("%p\n", rb->g_meta);
 
   // Set local pointer in our global metadata to memory address of our local metadata
   // Needed to access the queue
