@@ -382,6 +382,8 @@ int laws_reacquire(laws_local_t *rb) {
   TC_START_TIMER(rb->tc, reacquire);
   // Favor placing work in the local portion -- if there is only one task
   // available this scheme will put it in the local portion.
+  printf("Attempting lock\n");
+  printf("rb->root: %d\n", rb->root);
   laws_lock(rb->g_meta, rb->root);
   
   // Update our view of the global metadata before reacquiring
