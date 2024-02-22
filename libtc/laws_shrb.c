@@ -515,7 +515,7 @@ int laws_pop_head(void *b, int proc, void *buf) {
   // Assertion: !buf_valid => laws_isempty(rb)
   assert(buf_valid || (!buf_valid && laws_isempty(rb)));
 
-  printf("(%d) popped head\n", rb->procid);
+  printf("(%d) popped head; head num: %d\n", rb->procid, old_head);
 
   GTC_EXIT(buf_valid);
 }
