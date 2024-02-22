@@ -459,7 +459,6 @@ void laws_push_head(laws_local_t *rb, int proc, void *e, int size) {
   old_head    = laws_head(rb);
   rb->nlocal += 1;
   rb->head = (old_head + 1) % rb->max_size;
-  printf("Head: %d\n", rb->head);
 
   memcpy(laws_elem_addr(rb, proc, (old_head+1)%rb->max_size), e, size);
 
