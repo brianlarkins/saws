@@ -245,12 +245,14 @@ int laws_size(void *b) {
 
 
 void laws_lock(laws_global_t *rb, int proc) {
+  printf("procid: %d\n", rb->procid);
   printf("g_meta: %p\n", &rb->lock);
   synch_mutex_lock(&rb->lock, proc);
 }
 
 
 int laws_trylock(laws_global_t *rb, int proc) {
+  printf("procid: %d\n", rb->procid);
   printf("g_meta: %p\n", &rb->lock);
   return synch_mutex_trylock(&rb->lock, proc);
 }
