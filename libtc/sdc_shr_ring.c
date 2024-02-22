@@ -405,7 +405,7 @@ void *sdc_shrb_alloc_head(sdc_shrb_t *rb) {
 int sdc_shrb_pop_head(void *b, int proc, void *buf) {
   GTC_ENTRY();
   sdc_shrb_t *rb = (sdc_shrb_t *)b;
-  int   old_head;
+  int   old_head = 0;
   int   buf_valid = 0;
 
   assert(proc == rb->procid);
@@ -426,7 +426,7 @@ int sdc_shrb_pop_head(void *b, int proc, void *buf) {
   // Assertion: !buf_valid => sdc_shrb_isempty(rb)
   assert(buf_valid || (!buf_valid && sdc_shrb_isempty(rb)));
 
-  // printf("(%d) popped head\n", rb->procid);
+  printf("(%d) popped head: head num: %d\n", rb->procid, old_head);
 
   GTC_EXIT(buf_valid);
 }
