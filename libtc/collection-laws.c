@@ -186,6 +186,11 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
   gtc_vs_state_t vs_state = {0, 0, 0};
   laws_local_t rb_buf;
 
+  laws_local_t *local = (laws_local_t *)tc->shared_rb;
+  printf("Shared buffer of proc %d\n", local->procid);
+  printf("Tail: %d\n", local->g_meta->tail);
+  printf("Split: %d\n", local->g_meta->split);
+  printf("Head: %d\n", local->head);
   tc->ct.getcalls++;
   TC_START_TIMER(tc, getbuf);
 
