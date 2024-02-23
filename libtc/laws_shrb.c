@@ -70,6 +70,7 @@ laws_local_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   int procid, nproc;
 
   setbuf(stdout, NULL);
+  printf("hello world!\n");
 
   procid = shmem_my_pe();
   nproc = shmem_n_pes();
@@ -246,16 +247,11 @@ int laws_size(void *b) {
 
 
 void laws_lock(laws_global_t *rb, int proc) {
-  printf("procid: %d\n", rb->procid);
-  printf("g_meta: %p\n", rb);
-  printf("*g_meta: %p\n", &rb);
   synch_mutex_lock(&rb->lock, proc);
 }
 
 
 int laws_trylock(laws_global_t *rb, int proc) {
-  printf("procid: %d\n", rb->procid);
-  printf("g_meta: %p\n", rb);
   return synch_mutex_trylock(&rb->lock, proc);
 }
 
@@ -326,6 +322,7 @@ void laws_ensure_space(laws_local_t *rb, int n) {
        *
        * TODO: Let's worry about this later.
        */
+      printf("dingus2\n");
       if (rb->max_size - laws_size(rb) < n) {
         // Error: amount of reclaimable space is less than what we need.
         // Try increasing the size of the queue.
@@ -358,6 +355,9 @@ void laws_release(laws_local_t *rb) {
   if (laws_local_size(rb) > 0 && laws_shared_size(rb->g_meta) == 0) {
     int amount  = laws_local_size(rb)/2 + laws_local_size(rb) % 2;
     int split = rb->head - rb->nlocal;
+    if (split < 0) {
+        split = rb->max_size + split;
+    }
     rb->nlocal -= amount;
     split   = (split + amount) % rb->max_size;
     laws_global_t *g_meta = rb->g_meta;
@@ -390,8 +390,6 @@ int laws_reacquire(laws_local_t *rb) {
   TC_START_TIMER(rb->tc, reacquire);
   // Favor placing work in the local portion -- if there is only one task
   // available this scheme will put it in the local portion.
-  printf("Attempting lock\n");
-  printf("rb->root: %d; rb->g_meta: %p\n", rb->root, rb->g_meta);
   laws_lock(rb->g_meta, rb->root);
   
   // Update our view of the global metadata before reacquiring
@@ -525,7 +523,7 @@ int laws_pop_head(void *b, int proc, void *buf) {
   // Assertion: !buf_valid => laws_isempty(rb)
   assert(buf_valid || (!buf_valid && laws_isempty(rb)));
 
-  printf("(%d) popped head; head num: %d\n", rb->procid, old_head);
+  // printf("(%d) popped head; head num: %d\n", rb->procid, old_head);
 
   GTC_EXIT(buf_valid);
 }

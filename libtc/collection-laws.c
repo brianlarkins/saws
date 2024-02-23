@@ -184,13 +184,9 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
   int     searching = 0;
   tc->laws = 1; // Make sure we are aware that we are using LAWS
   gtc_vs_state_t vs_state = {0, 0, 0};
-  laws_local_t rb_buf;
+  // laws_local_t rb_buf;
 
-  laws_local_t *local = (laws_local_t *)tc->shared_rb;
-  printf("Shared buffer of proc %d\n", local->procid);
-  printf("Tail: %d\n", local->g_meta->tail);
-  printf("Split: %d\n", local->g_meta->split);
-  printf("Head: %d\n", local->head);
+  // laws_local_t *local = (laws_local_t *)tc->shared_rb;
   tc->ct.getcalls++;
   TC_START_TIMER(tc, getbuf);
 
@@ -222,7 +218,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
     // Keep searching until we find work or detect termination
     while (!got_task && !tc->terminated) {
       int      max_steal_attempts, steal_attempts, steal_done;
-      void *target_rb = &rb_buf;
+      void *target_rb = tc->shared_rb;
 
       tc->state = STATE_SEARCHING;
 
