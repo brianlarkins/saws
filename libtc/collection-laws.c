@@ -228,6 +228,9 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
           int i; // just in case
           int amnt = 0;
           for (i = 0; i < local->ncores; i++) {
+              if (i == local->rank_in_node) {
+                  continue;
+              }
               gcurr = &garray[i];
               amnt = laws_shared_size(gcurr);
 
