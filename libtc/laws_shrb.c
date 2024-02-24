@@ -96,7 +96,7 @@ laws_local_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   rb->max_size  = max_size;
   rb->root = procid - rank_in_node;
   rb->our_root = rb->root;
-  rb->alt_root = rb->our_root;
+  rb->alt_root = 0;
   rb->ncores = cores_per_node;
   rb->g_meta = &global[rank_in_node];
   printf("hello world\n");
@@ -235,7 +235,6 @@ int laws_size(void *b) {
   laws_global_t *g_meta = rb->g_meta;
   // update metadata using communication
   // (this function is called rarely, so we shouldn't encounter too much of a performance hit)
-  shmem_getmem(rb->g_meta, rb->g_meta, sizeof(laws_global_t), rb->root);
   int tail = g_meta->tail;
   return rb->head - tail;
   //return laws_local_size(rb) + laws_shared_size(
@@ -553,19 +552,31 @@ int laws_pop_tail(laws_local_t *rb, int proc, void *buf) {
 static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void *e, int steal_vol, int trylock) {
   TC_START_TIMER(myrb->tc, poptail);
   __gtc_marker[1] = 3;
+  laws_global_t *trb;
+  laws_global_t copy;
+  int root;
+  int rank;
+  if (myrb->alt_root) {
+      root = proc - (proc % myrb->ncores);
+      rank = proc % myrb->ncores;
+  }else {
+      root = myrb->root;
+      rank = proc;
+  }
   // Attempt to get the lock
   if (trylock) {
-    if (!laws_trylock(&myrb->global[proc], myrb->root)) {
+    if (!laws_trylock(&myrb->global[rank], root)) {
       return -1;
     }
   } else {
-    laws_lock(&myrb->global[proc], myrb->root);
+    laws_lock(&myrb->global[rank], root);
   }
 
   // Copy the remote RB's metadata
   // Don't need; we already have the metadata
   // Actually: we do need (possibly changed before we acquired lock)
   // Note: in internode steals, myrb->root is redefined to refer to that proc's node's root process
+  /*
   laws_global_t *trb;
   laws_global_t copy;
   if (myrb->root == myrb->our_root) {
@@ -575,7 +586,19 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
       shmem_getmem(&copy, &myrb->global[proc], sizeof(laws_global_t), myrb->root);
       trb = &copy;
   }
+  */
 
+  if (myrb->alt_root) {
+      shmem_getmem(&copy, &myrb->global[rank], sizeof(laws_global_t), root);
+      trb = &copy;
+  }else {
+      shmem_getmem(&myrb->global[rank],  &myrb->global[rank], sizeof(laws_global_t), rank);
+      trb = &myrb->global[proc];
+  }
+
+  // memory address of global metadata (NOTE: copy memory address != actual mem address)
+  // keep myself from screwing up mem pointers later on 
+  laws_global_t *g_mem = &myrb->global[rank];
 
 
   switch (steal_vol) {
@@ -604,13 +627,13 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
     new_tail    = ((trb)->tail + n) % (trb)->max_size;
 
     loc_addr    = &new_tail;
-    rem_addr    = &trb->tail;
+    rem_addr    = &g_mem->tail;
     xfer_size   = 1*sizeof(int);
 
     // Put new tail back to proc 0's global array
-    shmem_putmem(rem_addr, loc_addr, xfer_size, myrb->root);
+    shmem_putmem(rem_addr, loc_addr, xfer_size, root);
 
-    laws_unlock(&myrb->global[proc], myrb->root); // Deferred copy unlocks early
+    laws_unlock(&myrb->global[rank], root); // Deferred copy unlocks early
 
     // Transfer work into the local buffer
     if ((trb)->tail + (n-1) < (trb)->max_size) {    // No need to wrap around
@@ -644,7 +667,7 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
         itail_inc = n;
       else
         itail_inc = n - (trb)->max_size;
-      shmem_atomic_fetch_add(&trb->vtail, itail_inc, myrb->root);
+      shmem_atomic_fetch_add(&g_mem->vtail, itail_inc, root);
 
       shmem_quiet();
     }
@@ -654,7 +677,7 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
 #endif
 
   } else /* (n <= 0) */ {
-    laws_unlock(trb, myrb->root);
+    laws_unlock(g_mem, root);
   }
   TC_STOP_TIMER(myrb->tc, poptail);
   __gtc_marker[1] = 0;
