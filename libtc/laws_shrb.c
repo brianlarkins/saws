@@ -99,8 +99,6 @@ laws_local_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   rb->alt_root = 0;
   rb->ncores = cores_per_node;
   rb->g_meta = &global[rank_in_node];
-  printf("hello world\n");
-  printf("procid: %d; g_meta: %p\n", rb->procid, rb->g_meta);
 
   // Set local pointer in our global metadata to memory address of our local metadata
   // Needed to access the queue
@@ -295,7 +293,7 @@ int laws_reclaim_space(laws_local_t *rb) {
   // Update our global metadata
   // only do so if we don't reclaim (since we are already communicating in ensure space)
   if (reclaimed == 0) {
-      shmem_getmem(g_meta, g_meta, sizeof(*g_meta), rb->root);
+    shmem_getmem(g_meta, g_meta, sizeof(*g_meta), rb->root);
   }
 
   rb->nreccalls++;

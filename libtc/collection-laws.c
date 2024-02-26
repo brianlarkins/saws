@@ -262,6 +262,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
                  shmem_getmem(gcurr, &garray[relative_proc], sizeof(laws_global_t), steal_root);
                  amnt = laws_shared_size(gcurr);
                   // Apply linear backoff to avoid flooding remote nodes
+                  // only do this for internode steals
                   if (steal_attempts > 0) {
                       int j;
                       for (j = 0; j < steal_attempts*1000; j++) {
@@ -322,7 +323,6 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
             if (gtc_tasks_avail(gtc) == 0 && !tc->external_work_avail) {
               //QUEUE_LOCK(tc->shared_rb, _c->rank);
               //shrb_lock(tc->inbox, _c->rank); /* no task pushing */
-
               if (gtc_tasks_avail(gtc) == 0 && !tc->external_work_avail) {
                 td_set_counters(tc->td, tc->ct.tasks_spawned, tc->ct.tasks_completed);
                 tc->terminated = td_attempt_vote(tc->td);
@@ -484,6 +484,7 @@ int gtc_get_buf_laws_remote(gtc_t gtc, int priority, task_t *buf) {
         // Still no work? Lock to be sure and check for termination.
         // Locking is only needed here if we allow pushing.
         // TODO: New TD should not require locking.  Remove locks and test.
+        printf("tc->external_work_avail: %d\n from %d\n", tc->external_work_avail, local_md->procid);
         if (gtc_tasks_avail(gtc) == 0 && !tc->external_work_avail) {
           //QUEUE_LOCK(tc->shared_rb, _c->rank);
           //shrb_lock(tc->inbox, _c->rank); /* no task pushing */

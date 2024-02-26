@@ -291,7 +291,6 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
         if (gtc_tasks_avail(gtc) == 0 && !tc->external_work_avail) {
           //QUEUE_LOCK(tc->shared_rb, _c->rank);
           //shrb_lock(tc->inbox, _c->rank); /* no task pushing */
-
           if (gtc_tasks_avail(gtc) == 0 && !tc->external_work_avail) {
             td_set_counters(tc->td, tc->ct.tasks_spawned, tc->ct.tasks_completed);
             tc->terminated = td_attempt_vote(tc->td);
