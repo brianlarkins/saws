@@ -57,6 +57,7 @@ struct laws_local_s {
   int             root;      // the root from which we are currently stealing
   int             rank_in_node;
   int             max_size;  // Max size in number of elements
+  int             release;   // release flag; will be used to indicate whether a release from this proc is necessary; may be helpful?
   int             elem_size; // Size of an element in bytes
   int             alt_root; // alternative root from which to steal (for internode stealing)
   int             our_root; // the root of *this* proc

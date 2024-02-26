@@ -98,6 +98,7 @@ laws_local_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   rb->alt_root = 0;
   rb->ncores = cores_per_node;
   rb->g_meta = &global[rank_in_node];
+  // rb->release = 1;
 
   // Set local pointer in our global metadata to memory address of our local metadata
   // Needed to access the queue
@@ -201,7 +202,11 @@ int laws_local_size(laws_local_t *rb) {
 }
 
 int laws_reserved_size(laws_local_t *rb) {
-    return rb->head - rb->vtail;
+    if (rb->head >= rb->vtail) {
+        return rb->head - rb->vtail;
+    }else {
+        return (rb->max_size - rb->vtail) + rb->head;
+    }
 }
 
 int laws_shared_size(laws_global_t *rb) {
@@ -291,9 +296,6 @@ int laws_reclaim_space(laws_local_t *rb) {
 
   // Update our global metadata
   // only do so if we don't reclaim (since we are already communicating in ensure space)
-  if (reclaimed == 0) {
-    shmem_getmem(g_meta, g_meta, sizeof(*g_meta), rb->root);
-  }
 
   rb->nreccalls++;
   TC_STOP_TIMER(rb->tc, reclaim);
@@ -318,7 +320,7 @@ void laws_ensure_space(laws_local_t *rb, int n) {
        *
        * TODO: Let's worry about this later.
        */
-      printf("dingus2\n");
+      shmem_getmem(rb->g_meta, rb->g_meta, sizeof(laws_global_t), rb->root);
       if (rb->max_size - laws_size(rb) < n) {
         // Error: amount of reclaimable space is less than what we need.
         // Try increasing the size of the queue.
@@ -327,7 +329,9 @@ void laws_ensure_space(laws_local_t *rb, int n) {
         assert(0);
       }
       rb->waiting = 1;
-      while ((reclaimed = laws_reclaim_space(rb)) == 0) /* Busy Wait */ ;
+      while ((reclaimed = laws_reclaim_space(rb)) == 0) {
+          shmem_getmem(rb->g_meta, rb->g_meta, sizeof(laws_global_t), rb->root);
+      } /* Busy Wait */ ;
       rb->waiting = 0;
       rb->nwaited++;
     }
@@ -349,6 +353,7 @@ void laws_release(laws_local_t *rb) {
   //
   // Update: we should have something more up-to-date now (gtc_progress)
   if (laws_local_size(rb) > 0 && laws_shared_size(rb->g_meta) == 0) {
+  //if (rb->release) {
     int amount  = laws_local_size(rb)/2 + laws_local_size(rb) % 2;
     int split = rb->head - rb->nlocal;
     if (split < 0) {
@@ -360,6 +365,7 @@ void laws_release(laws_local_t *rb) {
     shmem_putmem(&g_meta->split, &split, sizeof(split), rb->root);
     rb->nrelease++;
     gtc_lprintf(DBGSHRB, "release: local size: %d shared size: %d\n", laws_local_size(rb), laws_shared_size(rb->global));
+    rb->release = 0;
   }
   TC_STOP_TIMER(rb->tc, release);
   GTC_EXIT();
@@ -668,6 +674,7 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
 
       shmem_quiet();
     }
+
 #else
     shmem_quiet();
     laws_unlock(myrb, proc);

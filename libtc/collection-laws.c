@@ -135,11 +135,13 @@ void gtc_progress_laws(gtc_t gtc) {
 
   // Update our view of global metadata
   shmem_getmem(global, global, sizeof(laws_global_t) * local_md->ncores, local_md->root);
+  //shmem_getmem(local_md->g_meta, local_md->g_meta, sizeof(laws_global_t), local_md->root);
 
   // Update the split
-  laws_release(tc->shared_rb);
+  laws_release((laws_local_t *)tc->shared_rb);
 
   // Attempt to reclaim space
+  // don't know if we can afford to do this here...
   laws_reclaim_space(tc->shared_rb);
   ((laws_local_t *)tc->shared_rb)->nprogress++;
   TC_STOP_TIMER(tc,progress);
@@ -214,6 +216,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
               searching = 1;
           }
           int max_steal_attempts, steal_attempts, steal_done;
+          laws_global_t *memgrab = NULL;
           // we're already retrieving global metadata, so we shouldn't have
           // to retrieve again (at least at first)
           //
@@ -224,6 +227,8 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
           laws_global_t *garray = local->global;
           laws_global_t *gcurr = &target_rb;
 
+          // shmem_getmem(garray, garray, sizeof(laws_global_t) * local->ncores, local->root);
+
           // start the search for processes with work
           int i; // just in case
           int amnt = 0;
@@ -232,6 +237,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
                   continue;
               }
               gcurr = &garray[i];
+              memgrab = gcurr;
               amnt = laws_shared_size(gcurr);
 
               if (amnt > 0) {
@@ -242,6 +248,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
 
           // need to perform an off-node steal if no intranode work was found
           // Problem/TODO: this may hang forever; no way to terminate if no work from other procs is ever found
+          // I think we've fixed this lol
           int relative_proc = 0;
           if (i == local->ncores) {
              i = gtc_select_target(gtc, &vs_state);
@@ -251,6 +258,9 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
                                    // this will be useful when we pop the tail in 
                                    // laws_shrb!
              gcurr = &target_rb;
+             shmem_getmem(gcurr, &garray[relative_proc], sizeof(laws_global_t), steal_root);
+             memgrab = &garray[relative_proc];
+             amnt = laws_shared_size(gcurr);
           }
 
           int curr_proc = i;
@@ -259,8 +269,6 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
           for (steal_attempts = 0, steal_done = 0; !steal_done && !tc->terminated && 
                   steal_attempts < max_steal_attempts; steal_attempts++) {
               if (local->alt_root) {
-                 shmem_getmem(gcurr, &garray[relative_proc], sizeof(laws_global_t), steal_root);
-                 amnt = laws_shared_size(gcurr);
                   // Apply linear backoff to avoid flooding remote nodes
                   // only do this for internode steals
                   if (steal_attempts > 0) {
@@ -311,11 +319,9 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
               }
 
             // Invoke the progress engine
-            // this is our "later retrieve" of global metadata
+            // this doubles as a means to re-retrieve global metadata
+            // or maybe not...
             gtc_progress(gtc);
-
-            // recalculate amnt; if amnt is 0, no work is available from this particular process
-            amnt = laws_shared_size(gcurr);
 
             // Still no work? Lock to be sure and check for termination.
             // Locking is only needed here if we allow pushing.
@@ -330,6 +336,13 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
 
               //shrb_unlock(tc->inbox, _c->rank); /* no task pushing */
               //QUEUE_UNLOCK(tc->shared_rb, _c->rank);
+
+              // re-retrieve the metadata of the process from which we're attempting
+              // to steal
+              if (local->alt_root && !steal_done) {
+                  shmem_getmem(gcurr, memgrab, sizeof(laws_global_t), steal_root);
+              }
+              amnt = laws_shared_size(gcurr);
 
             // We have work, done stealing
             } else {
