@@ -70,7 +70,6 @@ laws_local_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   int procid, nproc;
 
   setbuf(stdout, NULL);
-  printf("hello world!\n");
 
   procid = shmem_my_pe();
   nproc = shmem_n_pes();
@@ -390,7 +389,7 @@ int laws_reacquire(laws_local_t *rb) {
   laws_lock(rb->g_meta, rb->root);
   
   // Update our view of the global metadata before reacquiring
-  shmem_getmem(rb->g_meta, rb->g_meta, sizeof(laws_local_t), rb->root);
+  shmem_getmem(rb->g_meta, rb->g_meta, sizeof(laws_global_t), rb->root);
   laws_global_t *g_meta = rb->g_meta;
   {
     if (laws_local_size(rb) == 0) {
@@ -590,7 +589,7 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
       shmem_getmem(&copy, &myrb->global[rank], sizeof(laws_global_t), root);
       trb = &copy;
   }else {
-      shmem_getmem(&myrb->global[rank],  &myrb->global[rank], sizeof(laws_global_t), rank);
+      shmem_getmem(&myrb->global[rank],  &myrb->global[rank], sizeof(laws_global_t), root);
       trb = &myrb->global[proc];
   }
 
