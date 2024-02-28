@@ -426,7 +426,7 @@ int sdc_shrb_pop_head(void *b, int proc, void *buf) {
   // Assertion: !buf_valid => sdc_shrb_isempty(rb)
   assert(buf_valid || (!buf_valid && sdc_shrb_isempty(rb)));
 
-  printf("(%d) popped head: head num: %d\n", rb->procid, old_head);
+  // printf("(%d) popped head: head num: %d\n", rb->procid, old_head);
 
   GTC_EXIT(buf_valid);
 }

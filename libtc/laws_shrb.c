@@ -253,9 +253,9 @@ int laws_size(void *b) {
 
 
 void laws_lock(laws_global_t *rb, int proc) {
-  printf("address of laws_global_t: %p\n", rb);
-  printf("address of lock: %p\n", &rb->lock);
-  printf("proc is %d\n", proc);
+  //printf("address of laws_global_t: %p\n", rb);
+  //printf("address of lock: %p\n", &rb->lock);
+  //printf("proc is %d\n", proc);
   synch_mutex_lock(&rb->lock, proc);
 }
 
@@ -562,7 +562,6 @@ int laws_pop_tail(laws_local_t *rb, int proc, void *buf) {
 
 static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void *e, int steal_vol, int trylock) {
   TC_START_TIMER(myrb->tc, poptail);
-  printf("Attempting to pop the tail of process %d\n", proc);
   __gtc_marker[1] = 3;
   laws_global_t *trb;
   laws_global_t copy;
@@ -577,16 +576,16 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
   }
   // Attempt to get the lock
   if (trylock) {
-    printf("rank is %d\n", rank);
-    printf("root is %d\n", root);
-    printf("address is %p\n", &myrb->global[rank]);
+    //printf("rank is %d\n", rank);
+    //printf("root is %d\n", root);
+    //printf("address is %p\n", &myrb->global[rank]);
     if (!laws_trylock(&myrb->global[rank], root)) {
       return -1;
     }
   } else {
-    printf("rank is %d\n", rank);
-    printf("root is %d\n", root);
-    printf("address is %p\n", &myrb->global[rank]);
+    //printf("rank is %d\n", rank);
+    //printf("root is %d\n", root);
+    //printf("address is %p\n", &myrb->global[rank]);
     laws_lock(&myrb->global[rank], root);
   }
 

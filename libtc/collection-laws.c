@@ -252,19 +252,19 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
           int relative_proc = 0;
           if (i == local->ncores) {
              i = gtc_select_target(gtc, &vs_state);
-             printf("Process %d: attempting steal from %d\n", local->procid, i);
+             //printf("Process %d: attempting steal from %d\n", local->procid, i);
              steal_root = i - (i % local->ncores);
-             printf("steal_root is %d\n", steal_root);
+             //printf("steal_root is %d\n", steal_root);
              relative_proc = i % local->ncores;
-             printf("relative_proc is %d\n", relative_proc);
+             //printf("relative_proc is %d\n", relative_proc);
              local->alt_root = 1;  // we're using an alternative root from local node!
                                    // this will be useful when we pop the tail in 
                                    // laws_shrb!
              gcurr = &target_rb;
-             printf("shmem_getmem attempt #1\n");
-             printf("Address to retrieve: %p\n", &garray[relative_proc]);
+             //printf("shmem_getmem attempt #1\n");
+             //printf("Address to retrieve: %p\n", &garray[relative_proc]);
              shmem_getmem(gcurr, &garray[relative_proc], sizeof(laws_global_t), steal_root);
-             printf("get was a success\n");
+             //printf("get was a success\n");
              memgrab = &garray[relative_proc];
              amnt = laws_shared_size(gcurr);
           }
@@ -346,7 +346,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
               // re-retrieve the metadata of the process from which we're attempting
               // to steal
               if (local->alt_root && !steal_done) {
-                  printf("shmem_getmem attempt #2\n");
+                  //printf("shmem_getmem attempt #2\n");
                   shmem_getmem(gcurr, memgrab, sizeof(laws_global_t), steal_root);
               }
               amnt = laws_shared_size(gcurr);
