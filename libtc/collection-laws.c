@@ -241,6 +241,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
               amnt = laws_shared_size(gcurr);
 
               if (amnt > 0) {
+                  // printf("hello! try to steal from proc %d\n", i);
                   steal_root = local->root;
                   break;
               }
@@ -252,7 +253,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
           int relative_proc = 0;
           if (i == local->ncores) {
              i = gtc_select_target(gtc, &vs_state);
-             //printf("Process %d: attempting steal from %d\n", local->procid, i);
+             // printf("Process %d: attempting steal from %d\n", local->procid, i);
              steal_root = i - (i % local->ncores);
              //printf("steal_root is %d\n", steal_root);
              relative_proc = i % local->ncores;
