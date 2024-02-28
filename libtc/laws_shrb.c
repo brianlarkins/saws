@@ -82,6 +82,7 @@ laws_local_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   // allocate memory for global array of shared metadata
   int cores_per_node = sysconf(_SC_NPROCESSORS_ONLN);
   rb->global = gtc_shmem_calloc(cores_per_node, sizeof(laws_global_t));
+  //printf("Process %d: cores per node is %d\n", procid, cores_per_node);
 
   laws_global_t *global = rb->global;
   
@@ -108,7 +109,11 @@ laws_local_t *laws_create(int elem_size, int max_size, tc_t *tc) {
 
   // Initialize the lock (global and local)
   synch_mutex_init(&rb->lock);
-  synch_mutex_init(&rb->g_meta->lock);
+  //synch_mutex_init(&rb->g_meta->lock);
+
+  for (int i = 0; i < cores_per_node; i++) {
+      synch_mutex_init(&rb->global[i].lock);
+  }
 
   laws_reset(rb);
 
@@ -248,6 +253,9 @@ int laws_size(void *b) {
 
 
 void laws_lock(laws_global_t *rb, int proc) {
+  printf("address of laws_global_t: %p\n", rb);
+  printf("address of lock: %p\n", &rb->lock);
+  printf("proc is %d\n", proc);
   synch_mutex_lock(&rb->lock, proc);
 }
 
@@ -554,6 +562,7 @@ int laws_pop_tail(laws_local_t *rb, int proc, void *buf) {
 
 static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void *e, int steal_vol, int trylock) {
   TC_START_TIMER(myrb->tc, poptail);
+  printf("Attempting to pop the tail of process %d\n", proc);
   __gtc_marker[1] = 3;
   laws_global_t *trb;
   laws_global_t copy;
@@ -568,10 +577,16 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
   }
   // Attempt to get the lock
   if (trylock) {
+    printf("rank is %d\n", rank);
+    printf("root is %d\n", root);
+    printf("address is %p\n", &myrb->global[rank]);
     if (!laws_trylock(&myrb->global[rank], root)) {
       return -1;
     }
   } else {
+    printf("rank is %d\n", rank);
+    printf("root is %d\n", root);
+    printf("address is %p\n", &myrb->global[rank]);
     laws_lock(&myrb->global[rank], root);
   }
 
