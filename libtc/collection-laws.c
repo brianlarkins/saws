@@ -278,6 +278,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
               if (local->alt_root) {
                   // Apply linear backoff to avoid flooding remote nodes
                   // only do this for internode steals
+                  // maybe this needs to be done intranode as well?
                   if (steal_attempts > 0) {
                       int j;
                       for (j = 0; j < steal_attempts*1000; j++) {

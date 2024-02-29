@@ -128,6 +128,9 @@ void laws_reset(laws_local_t *rb) {
   laws_global_t *g = rb->g_meta;
   // Reset state to empty
   rb->nlocal = 0;
+  rb->head = 0;
+  rb->alt_root = 0;
+  rb->vtail = 0;
   g->tail   = 0;
   rb->vtail  = 0;
   g->split  = 0;
