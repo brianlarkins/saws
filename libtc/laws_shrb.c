@@ -243,7 +243,11 @@ int laws_size(void *b) {
   // update metadata using communication
   // (this function is called rarely, so we shouldn't encounter too much of a performance hit)
   int tail = g_meta->tail;
-  return rb->head - tail;
+  int size = rb->head - tail;
+  if (size < 0) {
+      size = (rb->max_size - tail) + rb->head;
+  }
+  return size;
   //return laws_local_size(rb) + laws_shared_size(
    //       &rb->global[rb->rank_in_node]);
 }
@@ -618,6 +622,7 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
   laws_global_t *g_mem = &myrb->global[rank];
 
 
+  /*
   switch (steal_vol) {
     case STEAL_HALF:
       n = MIN(laws_shared_size(trb)/2 + laws_shared_size(trb) % 2, n);
@@ -633,6 +638,8 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
       printf("Error: Unknown steal volume heuristic.\n");
       assert(0);
   }
+  */
+  n = laws_shared_size(trb) / 2 + laws_shared_size(trb) % 2;
 
   // Reserve N elements by advancing the victim's tail
   if (n > 0) {
