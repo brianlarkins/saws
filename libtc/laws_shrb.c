@@ -300,7 +300,7 @@ int laws_reclaim_space(laws_local_t *rb) {
   int tail = g_meta->tail;
   TC_START_TIMER(rb->tc, reclaim);
   if (old_vtail != tail && g_vtail == tail) {
-    rb->vtail = g_vtail;
+    rb->vtail = g_vtail; // Update our vtail to match global
     if (tail > old_vtail)
       reclaimed = g_vtail - old_vtail;
     else
@@ -334,6 +334,7 @@ void laws_ensure_space(laws_local_t *rb, int n) {
        * update global metadata
        *
        * TODO: Let's worry about this later.
+       * Response to TODO: later has come. Also this *should* work now.
        */
       shmem_getmem(rb->g_meta, rb->g_meta, sizeof(laws_global_t), rb->root);
       if (rb->max_size - laws_size(rb) < n) {

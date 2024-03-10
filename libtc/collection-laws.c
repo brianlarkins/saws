@@ -243,6 +243,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
               if (amnt > 0) {
                   // printf("hello! try to steal from proc %d\n", i);
                   steal_root = local->root;
+                  printf("will steal next from %d\n", i);
                   break;
               }
           } 
@@ -250,14 +251,13 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
           // need to perform an off-node steal if no intranode work was found
           // Problem/TODO: this may hang forever; no way to terminate if no work from other procs is ever found
           // I think we've fixed this lol
+          // ...but now another problem lurks in the distance :(
           int relative_proc = 0;
           if (i == local->ncores) {
              i = gtc_select_target(gtc, &vs_state);
              // printf("Process %d: attempting steal from %d\n", local->procid, i);
              steal_root = i - (i % local->ncores);
-             //printf("steal_root is %d\n", steal_root);
              relative_proc = i % local->ncores;
-             //printf("relative_proc is %d\n", relative_proc);
              local->alt_root = 1;  // we're using an alternative root from local node!
                                    // this will be useful when we pop the tail in 
                                    // laws_shrb!
