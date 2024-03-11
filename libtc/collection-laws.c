@@ -142,7 +142,7 @@ void gtc_progress_laws(gtc_t gtc) {
 
   // Attempt to reclaim space
   // don't know if we can afford to do this here...
-  laws_reclaim_space(tc->shared_rb);
+  laws_reclaim_space((laws_local_t *)tc->shared_rb);
   ((laws_local_t *)tc->shared_rb)->nprogress++;
   TC_STOP_TIMER(tc,progress);
   GTC_EXIT();

@@ -11,6 +11,7 @@
 typedef struct {
   int parent_id;
   int task_num;
+  int stolen_from;
 } mytask_t;
 
 static task_class_t task_class;
@@ -38,7 +39,13 @@ void task_fcn(gtc_t gtc, task_t *task) {
   timeout = (gtimeout > 0) ? gtimeout : rand() % 1000000;
   usleep(timeout);
   sleep_time += timeout;
-  printf("  Task (%2d, %3d) processed by worker %d\n", t->parent_id, t->task_num, mythread);
+  //printf("  Task (%2d, %3d) processed by worker %d\n", t->parent_id, t->task_num, mythread);
+  printf("  Task (%2d, %3d) processed by worker %d", t->parent_id, t->task_num, mythread);
+  if (t->stolen_from == -1) {
+      printf("\n");
+  }else {
+      printf(", stolen from %d\n", t->stolen_from);
+  }
   __gtc_marker[4]++; // completed
 }
 
@@ -56,6 +63,7 @@ void create_task(gtc_t gtc, task_class_t tclass, int my_id, int task_num) {
 
   t->parent_id = my_id;
   t->task_num  = task_num;
+  t->stolen_from = -1;
 
   gtc_add(gtc, task, mythread);
   gtc_task_destroy(task);
@@ -106,6 +114,7 @@ int main(int argc, char **argv)
   /** POPULATE THE TASK LIST **/
   if (mythread == 0) {
     printf("Starting task collection test with %d threads\n", nthreads);
+    printf("sizeof(mytask_t) = %ld\n", sizeof(mytask_t));
     gtc_print_config(gtc);
     printf("Thread 0: Populating my TC with initial workload\n");
 
