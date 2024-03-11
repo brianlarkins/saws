@@ -210,13 +210,15 @@ int laws_local_size(laws_local_t *rb) {
 
 int laws_reserved_size(laws_local_t *rb) {
     int weird_head = (rb->head + 1) % rb->max_size;
-    if (weird_head == rb->vtail) {
-        return 0;
-    }else if (weird_head > rb->vtail) {
-        return weird_head - rb->vtail;
-    }else {
-        return (rb->max_size - rb->vtail) + weird_head;
+    int split = (weird_head - rb->nlocal);
+    if (split < 0) {
+        split = rb->max_size + split;
     }
+    int public_size = split - rb->vtail;
+    if (public_size < 0) {
+        public_size = rb->max_size + public_size;
+    }
+    return public_size + rb->nlocal;
 }
 
 int laws_shared_size(laws_global_t *rb) {
