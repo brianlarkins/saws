@@ -1,0 +1,1259 @@
+   0: gtc_tsc_calibrate: calibrated MHz: 2305.764 clock_gettime: 250.637 ms rtdsc: 250.000 ms
+   0:   Thread 0: laws_create()
+  registered task class 0 (0x405100)
+Starting task collection test with 32 threads
+sizeof(mytask_t) = 12
+Task collection 0 -- Queue: Split Deferred-Copy, Mutexes: PtlSwap Spinlocks, Target selection: Random, Steal method: Half, Locality-aware stealing, Aborting Steals
+Thread 0: Populating my TC with initial workload
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+(0) pushed head
+Thread 0: done.
+   0: release: local size: 512 shared size: 512
+  Task ( 0, 1023) processed by worker 0
+  Task ( 0, 1022) processed by worker 0
+  Task ( 0, 1021) processed by worker 0
+   0: release: local size: 254 shared size: 255
+  Task ( 0, 1020) processed by worker 0
+  Task ( 0, 1019) processed by worker 0
+  Task ( 0, 1018) processed by worker 0
+  Task ( 0, 1017) processed by worker 0
+   0: release: local size: 125 shared size: 125
+  Task ( 0, 1016) processed by worker 0
+  Task ( 0, 1015) processed by worker 0
+  Task ( 0, 1014) processed by worker 0
+  Task ( 0, 1013) processed by worker 0
+   0: release: local size: 60 shared size: 61
+  Task ( 0, 1012) processed by worker 0
+  Task ( 0, 1011) processed by worker 0
+  Task ( 0, 1010) processed by worker 0
+  Task ( 0, 1009) processed by worker 0
+   0: release: local size: 28 shared size: 28
+  Task ( 0, 1008) processed by worker 0
+  Task ( 0, 1007) processed by worker 0
+   0: release: local size: 13 shared size: 13
+  Task ( 0, 1006) processed by worker 0
+  Task ( 0, 1005) processed by worker 0
+   0: release: local size: 5 shared size: 6
+  Task ( 0, 1004) processed by worker 0
+  Task ( 0, 1003) processed by worker 0
+   0: release: local size: 1 shared size: 2
+  Task ( 0, 1002) processed by worker 0
+   0: reacquire: local size: 0 shared size: 0
+will steal next from 1
+ready to steal from proc 1; tail: 23; split: 26; max_size: 1024
+will steal 2
+new_tail is 25
+steal starting from mem addr: 0x80002798
+908, 909, 
+   0: release: local size: 1 shared size: 1
+  Task ( 0, 909) processed by worker 0
+   0: reacquire: local size: 0 shared size: 0
+will steal next from 3
+ready to steal from proc 3; tail: 6; split: 8; max_size: 1024
+will steal 1
+new_tail is 7
+steal starting from mem addr: 0x800025e8
+388, 
+   0: release: local size: 0 shared size: 1
+   0: reacquire: local size: 1 shared size: 0
+  Task ( 0, 388) processed by worker 0
+   0: reacquire: local size: 0 shared size: 0
+will steal next from 2
+will steal next from 4
+tail > old_vtail reclaim
+will steal next from 5
+will steal next from 3
+will steal next from 10
+ready to steal from proc 10; tail: 4; split: 8; max_size: 1024
+will steal 2
+new_tail is 6
+steal starting from mem addr: 0x800025d0
+834, 835, 
+   0: release: local size: 1 shared size: 1
+  Task ( 0, 835) processed by worker 0
+tail > old_vtail reclaim
+   0: reacquire: local size: 0 shared size: 0
+will steal next from 4
+ready to steal from proc 4; tail: 36; split: 37; max_size: 1024
+will steal 1
+new_tail is 37
+steal starting from mem addr: 0x800028b8
+419, 
+   0: release: local size: 0 shared size: 1
+   0: reacquire: local size: 0 shared size: 0
+will steal next from 13
+ready to steal from proc 13; tail: 5; split: 37; max_size: 1024
+will steal 16
+new_tail is 21
+steal starting from mem addr: 0x80002738
+654, 655, 656, 657, 658, 659, 660, 661, 662, 663, 664, 665, 666, 667, 668, 669, 
+   0: release: local size: 8 shared size: 8
+tail > old_vtail reclaim
+  Task ( 0, 669) processed by worker 0
+tail > old_vtail reclaim
+  Task ( 0, 668) processed by worker 0
+   0: release: local size: 3 shared size: 3
+tail > old_vtail reclaim
+  Task ( 0, 667) processed by worker 0
+  Task ( 0, 666) processed by worker 0
+   0: release: local size: 0 shared size: 1
+tail > old_vtail reclaim
+   0: reacquire: local size: 0 shared size: 0
+will steal next from 3
+ready to steal from proc 3; tail: 12; split: 13; max_size: 1024
+will steal 1
+new_tail is 13
+steal starting from mem addr: 0x80002678
+0, 
+   0: release: local size: 0 shared size: 1
+tail > old_vtail reclaim
+   0: reacquire: local size: 0 shared size: 0
+will steal next from 13
+ready to steal from proc 13; tail: 42; split: 47; max_size: 1024
+will steal 3
+new_tail is 45
+steal starting from mem addr: 0x80002978
+678, 679, 680, 
+   0: release: local size: 1 shared size: 2
+tail > old_vtail reclaim
+  Task ( 0, 680) processed by worker 0
+tail > old_vtail reclaim
+   0: reacquire: local size: 0 shared size: 0
+will steal next from 11
+tail > old_vtail reclaim
+will steal next from 13
+will steal next from 15
+ready to steal from proc 15; tail: 0; split: 64; max_size: 1024
+will steal 32
+new_tail is 32
+steal starting from mem addr: 0x80002840
+286, 287, 288, 289, 290, 291, 292, 293, 294, 295, 296, 297, 298, 299, 300, 301, 302, 303, 304, 305, 306, 307, 308, 309, 310, 311, 312, 313, 314, 315, 316, 317, 
+   0: release: local size: 16 shared size: 16
+  Task ( 0, 317) processed by worker 0
+else reclaim
+  Task ( 0, 316) processed by worker 0
+tail > old_vtail reclaim
+  Task ( 0, 315) processed by worker 0
+   0: release: local size: 6 shared size: 7
+tail > old_vtail reclaim
+  Task ( 0, 314) processed by worker 0
+  Task ( 0, 313) processed by worker 0
+   0: release: local size: 2 shared size: 2
+  Task ( 0, 312) processed by worker 0
+   0: release: local size: 0 shared size: 1
+tail > old_vtail reclaim
+   0: reacquire: local size: 1 shared size: 0
+  Task ( 0, 311) processed by worker 0
+   0: reacquire: local size: 0 shared size: 0
+will steal next from 15
+will steal next from 10
+ready to steal from proc 10; tail: 11; split: 12; max_size: 1024
+will steal 1
+new_tail is 12
+steal starting from mem addr: 0x80002660
+346, 
+   0: release: local size: 0 shared size: 1
+   0: reacquire: local size: 0 shared size: 0
+will steal next from 14
+ready to steal from proc 14; tail: 0; split: 8; max_size: 1024
+will steal 4
+new_tail is 4
+steal starting from mem addr: 0x800025a0
+768, 769, 770, 771, 
+   0: release: local size: 2 shared size: 2
+tail > old_vtail reclaim
+  Task ( 0, 771) processed by worker 0
+tail > old_vtail reclaim
+  Task ( 0, 770) processed by worker 0
+tail > old_vtail reclaim
+   0: reacquire: local size: 0 shared size: 0
+will steal next from 14
+will steal next from 5
+ready to steal from proc 5; tail: 4; split: 5; max_size: 1024
+will steal 1
+new_tail is 5
+steal starting from mem addr: 0x800025b8
+798, 
+   0: release: local size: 0 shared size: 1
+   0: reacquire: local size: 0 shared size: 0
+will steal next from 16
+tail > old_vtail reclaim
+will steal next from 18
+will steal next from 19
+ready to steal from proc 19; tail: 60; split: 64; max_size: 1024
+will steal 2
+new_tail is 62
+steal starting from mem addr: 0x80002b10
+572, 573, 
+   0: release: local size: 1 shared size: 1
+  Task ( 0, 573) processed by worker 0
+tail > old_vtail reclaim
+   0: reacquire: local size: 0 shared size: 0
+will steal next from 15
+will steal next from 1
+ready to steal from proc 1; tail: 29; split: 30; max_size: 1024
+will steal 1
+new_tail is 30
+steal starting from mem addr: 0x80002810
+606, 
+   0: release: local size: 0 shared size: 1
+   0: reacquire: local size: 1 shared size: 0
+  Task ( 0, 606) processed by worker 0
+   0: reacquire: local size: 0 shared size: 0
+    0 - Tasks: completed  41, spawned 1024, stolen  67
+    0 -      : nsteals  13, steal fails --  46, aborted   0
+    0 -  Time: process  0.00786s = active  0.00786s + passive  0.00000s, passive count=0 (    -nanms avg), searching  0.00004s ( 0.53 %)
+    0 -      : dispersion  0.00000ms, disp. steal fails -- unlocked   0, locked   0
+    0 -      : avg acquire  0.00000ms, imbalance  0.00000ms
+    0 -      : timers:  0.00000ms  0.00000ms  0.00000ms  0.00000  0.00000ms
+    0 - LAWS-Q: nrelease     26, nreacquire     17, nreclaimed      0, nwaited  0, nprogress    101
+    0 -    failed w/lock:     11, failed w/o lock:     35, aborted steals:      0
+    0 -    ngets:      0  ( -nan usec/get) nxfer:      0
+    0 - TSC: get: 5M (121538 x 42)  add: 2M (2471 x 1024) inplace: 0M (0)
+    0 - TSC: addfinish: 0M (0) progress: 0M (4841 x 101) reclaim: 0M (928 x 101)
+    0 - TSC: ensure: 0M (0 x 0) release: 0M (5616 x 26) reacquire: 1M (62873 x 17)
+    0 - TSC: pushhead: 0M (0) poptail: 1M (0 x 0)
+process: 0.25344 : 0.00786 size: 32
+SCIOTWO : queue: Split Deferred-Copy 
+        : process time 0.00792 s, passive time 0.00000 s (0.00%), search time 0.13885 ms
+        : tasks completed 1024, 129291.78 tasks/sec (4040.37 tasks/sec/PE)
+        : dispersion   0.00ms/  0.00ms/  0.00ms attempts   0.00 ( 32.00/  0.00/-762649325679814950084078809336074884357714604021013793696504673599228784829467197440.00)
+        : imbalance    0.00ms/  0.00ms/  0.00ms  termination attempts: 3
+        : shared heap memory allocated: 41368    local heap memory allocated: 17320
+        : gets              0 (  0.00/  0/  0) time   2.93ms/  0.61ms/  4.08ms per   0.00ms/  0.00ms/  0.00ms
+        :   get_buf      1056 ( 33.00/ 18/ 55
+        :   get_meta        0 (  0.00/  0/  0) time   0.00ms/  0.00ms/  0.00ms per   0.00ms/  0.00ms/  0.00ms
+        :   localget      724 ( 22.62/  7/ 45)
+        :   steals          0 (  0.00/  0/  0)
+        :   fails lock    470 ( 14.69/  1/ 25)
+        :   fails un     1656 ( 51.75/ 15/ 64)
+        :   fails ab        0 (  0.00/  0/  0)
+        : progress   108.97/ 61/150 time 741.24us/212.06us/893.96us per   6.90us/  2.10us/  8.94us
+        : reclaim    108.97/ 61/150 time  11.45us/  1.91us/ 40.66us per   0.11us/  0.01us/  0.40us
+        : ensure       0.00/  0/  0 time   0.59us/  0.03us/ 12.24us per   0.00us/  0.00us/  0.00us
+        : reacquire   21.19/  2/ 41 time   0.30ms/  0.08ms/  2.04ms per   0.02ms/  0.01ms/  0.09ms
+        : release     11.22/  3/ 26 time  39.65us/ 20.10us/ 68.25us per   3.83us/  2.20us/  7.52us
+&&&    2.93   0.30 c  32      0.00792 0.00000 0.13885   0.00   0.00 4040.37 129291.78 3 0.00
+Total sleep time = 0.001024 sec, Ideal = 0.000032 sec (compare with process time above)

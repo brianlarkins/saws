@@ -1,0 +1,87 @@
+hello! try to steal from proc 12
+hello! try to steal from proc 4
+  Task ( 0,  12) processed by worker 93
+hello! try to steal from proc 4
+  Task ( 0,  15) processed by worker 93
+hello! try to steal from proc 2
+  Task ( 0, 2562) processed by worker 93
+hello! try to steal from proc 7
+  Task ( 0, 2576) processed by worker 93
+hello! try to steal from proc 4
+  Task ( 0, 2560) processed by worker 93
+  Task ( 0, 1821) processed by worker 93
+  Task ( 0, 1820) processed by worker 93
+  Task ( 0, 1819) processed by worker 93
+  Task ( 0, 1818) processed by worker 93
+  Task ( 0, 1817) processed by worker 93
+  Task ( 0, 1816) processed by worker 93
+  Task ( 0, 1815) processed by worker 93
+hello! try to steal from proc 13
+  Task ( 0, 3971) processed by worker 93
+hello! try to steal from proc 24
+  Task ( 0, 2820) processed by worker 93
+  Task ( 0, 2819) processed by worker 93
+  Task ( 0, 3852) processed by worker 93
+hello! try to steal from proc 39
+  Task ( 0, 3999) processed by worker 93
+hello! try to steal from proc 43
+  Task ( 0, 2822) processed by worker 93
+  Task ( 0, 1645) processed by worker 93
+  Task ( 0, 1644) processed by worker 93
+  Task ( 0, 1643) processed by worker 93
+  Task ( 0, 3618) processed by worker 93
+hello! try to steal from proc 13
+hello! try to steal from proc 40
+  Task ( 0, 1057) processed by worker 93
+  Task ( 0, 1056) processed by worker 93
+hello! try to steal from proc 17
+  Task ( 0, 2958) processed by worker 93
+hello! try to steal from proc 17
+  Task ( 0, 2961) processed by worker 93
+hello! try to steal from proc 13
+  Task ( 0,   0) processed by worker 93
+hello! try to steal from proc 7
+hello! try to steal from proc 46
+  Task ( 0, 2245) processed by worker 93
+hello! try to steal from proc 24
+  Task ( 0, 534) processed by worker 93
+  Task ( 0, 946) processed by worker 93
+hello! try to steal from proc 7
+  Task ( 0, 155) processed by worker 93
+hello! try to steal from proc 7
+  Task ( 0, 158) processed by worker 93
+hello! try to steal from proc 14
+  Task ( 0, 3172) processed by worker 93
+hello! try to steal from proc 23
+  Task ( 0, 2687) processed by worker 93
+  Task ( 0, 2367) processed by worker 93
+  Task ( 0, 2366) processed by worker 93
+hello! try to steal from proc 34
+  Task ( 0, 3169) processed by worker 93
+hello! try to steal from proc 32
+  Task ( 0, 1246) processed by worker 93
+hello! try to steal from proc 7
+hello! try to steal from proc 17
+hello! try to steal from proc 8
+  Task ( 0, 1274) processed by worker 93
+hello! try to steal from proc 1
+hello! try to steal from proc 17
+  Task ( 0, 1351) processed by worker 93
+  Task ( 0, 1434) processed by worker 93
+  Task ( 0, 1433) processed by worker 93
+hello! try to steal from proc 22
+hello! try to steal from proc 44
+hello! try to steal from proc 30
+   93 - Tasks: completed  42, spawned   0, stolen 100
+   93 -      : nsteals  30, steal fails -- 1256, aborted   0
+   93 -  Time: process  0.48749s = active  0.48749s + passive  0.00000s, passive count=0 (    -nanms avg), searching  0.00959s ( 1.97 %)
+   93 -      : dispersion  0.00000ms, disp. steal fails -- unlocked   2, locked   1
+   93 -      : avg acquire  0.00000ms, imbalance  0.00000ms
+   93 -      : timers:  0.00000ms  0.00000ms  0.00000ms  0.00000  0.00000ms
+   93 - LAWS-Q: nrelease     38, nreacquire     52, nreclaimed      0, nwaited  0, nprogress   1329
+   93 -    failed w/lock:     10, failed w/o lock:   1246, aborted steals:      0
+   93 -    ngets:      0  ( -nan usec/get) nxfer:      0
+   93 - TSC: get: 152M (3557052 x 43)  add: 0M (0 x 0) inplace: 0M (0)
+   93 - TSC: addfinish: 0M (0) progress: 36M (27292 x 1329) reclaim: 0M (44 x 1329)
+   93 - TSC: ensure: 0M (0 x 0) release: 0M (2464 x 38) reacquire: 0M (17904 x 52)
+   93 - TSC: pushhead: 0M (0) poptail: 7M (0 x 0)

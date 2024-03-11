@@ -1,0 +1,112 @@
+  16:   Thread 16: laws_create()
+  16: reacquire: local size: 0 shared size: 0
+will steal next from 0
+will steal next from 8
+will steal next from 0
+ready to steal from proc 0; tail: 767; split: 892; max_size: 1024
+will steal 63
+new_tail is 830
+steal starting from mem addr: 0x80006d28
+766, 767, 768, 769, 770, 771, 772, 773, 774, 775, 776, 777, 778, 779, 780, 781, 782, 783, 784, 785, 786, 787, 788, 789, 790, 791, 792, 793, 794, 795, 796, 797, 798, 799, 800, 801, 802, 803, 804, 805, 806, 807, 808, 809, 810, 811, 812, 813, 814, 815, 816, 817, 818, 819, 820, 821, 822, 823, 824, 825, 826, 827, 828, 
+  16: release: local size: 31 shared size: 0
+  Task ( 0, 828) processed by worker 16
+  Task ( 0, 827) processed by worker 16
+  Task ( 0, 826) processed by worker 16
+  Task ( 0, 825) processed by worker 16
+  Task ( 0, 824) processed by worker 16
+  Task ( 0, 823) processed by worker 16
+  Task ( 0, 822) processed by worker 16
+  Task ( 0, 821) processed by worker 16
+  Task ( 0, 820) processed by worker 16
+  Task ( 0, 819) processed by worker 16
+  Task ( 0, 818) processed by worker 16
+  Task ( 0, 817) processed by worker 16
+  Task ( 0, 816) processed by worker 16
+  Task ( 0, 815) processed by worker 16
+  Task ( 0, 814) processed by worker 16
+  Task ( 0, 813) processed by worker 16
+  Task ( 0, 812) processed by worker 16
+  Task ( 0, 811) processed by worker 16
+  16: release: local size: 6 shared size: 1
+tail > old_vtail reclaim
+  Task ( 0, 810) processed by worker 16
+  Task ( 0, 809) processed by worker 16
+  Task ( 0, 808) processed by worker 16
+  16: release: local size: 1 shared size: 0
+tail > old_vtail reclaim
+  Task ( 0, 807) processed by worker 16
+tail > old_vtail reclaim
+  16: reacquire: local size: 0 shared size: 0
+will steal next from 9
+will steal next from 7
+ready to steal from proc 7; tail: 40; split: 42; max_size: 1024
+will steal 1
+new_tail is 41
+steal starting from mem addr: 0x80002900
+559, 
+  16: release: local size: 0 shared size: 0
+  16: reacquire: local size: 1 shared size: 0
+  Task ( 0, 559) processed by worker 16
+  16: reacquire: local size: 0 shared size: 0
+will steal next from 4
+ready to steal from proc 4; tail: 39; split: 41; max_size: 1024
+will steal 1
+new_tail is 40
+steal starting from mem addr: 0x800028e8
+0, 
+  16: release: local size: 0 shared size: 0
+  16: reacquire: local size: 1 shared size: 0
+  Task ( 0,   0) processed by worker 16, stolen from 0
+  16: reacquire: local size: 0 shared size: 0
+will steal next from 8
+will steal next from 20
+ready to steal from proc 20; tail: 0; split: 1; max_size: 1024
+will steal 1
+new_tail is 1
+steal starting from mem addr: 0x80002540
+0, 
+  16: release: local size: 0 shared size: 0
+  16: reacquire: local size: 1 shared size: 0
+  Task ( 0,   0) processed by worker 16, stolen from 0
+  16: reacquire: local size: 0 shared size: 0
+will steal next from 23
+ready to steal from proc 23; tail: 4; split: 8; max_size: 1024
+will steal 2
+new_tail is 6
+steal starting from mem addr: 0x800025a0
+545, 546, 
+  16: release: local size: 1 shared size: 0
+  Task ( 0, 546) processed by worker 16
+tail > old_vtail reclaim
+  16: reacquire: local size: 0 shared size: 0
+will steal next from 27
+will steal next from 6
+will steal next from 19
+ready to steal from proc 19; tail: 81; split: 86; max_size: 1024
+will steal 3
+new_tail is 84
+steal starting from mem addr: 0x80002cd8
+591, 592, 593, 
+  16: release: local size: 1 shared size: 0
+  Task ( 0, 593) processed by worker 16
+tail > old_vtail reclaim
+  16: reacquire: local size: 0 shared size: 0
+will steal next from 5
+will steal next from 3
+will steal next from 25
+will steal next from 27
+will steal next from 1
+will steal next from 12
+   16 - Tasks: completed  27, spawned   0, stolen  71
+   16 -      : nsteals   6, steal fails --  27, aborted   0
+   16 -  Time: process  0.00795s = active  0.00795s + passive  0.00000s, passive count=0 (    -nanms avg), searching  0.00140s (17.56 %)
+   16 -      : dispersion  0.00000ms, disp. steal fails -- unlocked   0, locked   2
+   16 -      : avg acquire  0.00000ms, imbalance  0.00000ms
+   16 -      : timers:  0.00000ms  0.00000ms  0.00000ms  0.00000  0.00000ms
+   16 - LAWS-Q: nrelease      8, nreacquire     10, nreclaimed      0, nwaited  0, nprogress     61
+   16 -    failed w/lock:     12, failed w/o lock:     15, aborted steals:      0
+   16 -    ngets:      0  ( -nan usec/get) nxfer:      0
+   16 - TSC: get: 13M (479255 x 28)  add: 0M (0 x 0) inplace: 0M (0)
+   16 - TSC: addfinish: 0M (0) progress: 1M (20620 x 61) reclaim: 0M (705 x 61)
+   16 - TSC: ensure: 0M (0 x 0) release: 0M (8691 x 8) reacquire: 0M (24430 x 10)
+   16 - TSC: pushhead: 0M (0) poptail: 7M (0 x 0)

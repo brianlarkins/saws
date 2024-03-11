@@ -1,0 +1,72 @@
+hello! try to steal from proc 0
+hello! try to steal from proc 26
+hello! try to steal from proc 14
+  Task ( 0, 1990) processed by worker 38
+hello! try to steal from proc 0
+  Task ( 0, 3070) processed by worker 38
+hello! try to steal from proc 0
+  Task ( 0, 3550) processed by worker 38
+  Task ( 0, 3549) processed by worker 38
+  Task ( 0, 3548) processed by worker 38
+  Task ( 0, 3547) processed by worker 38
+  Task ( 0, 3546) processed by worker 38
+  Task ( 0, 3545) processed by worker 38
+  Task ( 0, 3544) processed by worker 38
+  Task ( 0, 3543) processed by worker 38
+  Task ( 0, 3542) processed by worker 38
+  Task ( 0, 3541) processed by worker 38
+  Task ( 0, 3540) processed by worker 38
+  Task ( 0, 3539) processed by worker 38
+  Task ( 0, 3538) processed by worker 38
+  Task ( 0, 3537) processed by worker 38
+  Task ( 0, 3536) processed by worker 38
+  Task ( 0, 3535) processed by worker 38
+  Task ( 0, 3534) processed by worker 38
+  Task ( 0, 3533) processed by worker 38
+  Task ( 0, 3532) processed by worker 38
+  Task ( 0, 3531) processed by worker 38
+hello! try to steal from proc 4
+  Task ( 0, 979) processed by worker 38
+  Task ( 0, 978) processed by worker 38
+  Task ( 0, 977) processed by worker 38
+  Task ( 0, 976) processed by worker 38
+  Task ( 0, 975) processed by worker 38
+  Task ( 0, 974) processed by worker 38
+  Task ( 0, 973) processed by worker 38
+hello! try to steal from proc 4
+  Task ( 0, 996) processed by worker 38
+hello! try to steal from proc 11
+  Task ( 0, 2710) processed by worker 38
+  Task ( 0, 2709) processed by worker 38
+  Task ( 0, 2708) processed by worker 38
+  Task ( 0, 2707) processed by worker 38
+  Task ( 0, 2706) processed by worker 38
+  Task ( 0, 2705) processed by worker 38
+  Task ( 0, 2704) processed by worker 38
+  Task ( 0, 2703) processed by worker 38
+  Task ( 0, 2702) processed by worker 38
+hello! try to steal from proc 7
+hello! try to steal from proc 8
+  Task ( 0, 1297) processed by worker 38
+  Task ( 0, 1296) processed by worker 38
+hello! try to steal from proc 40
+  Task ( 0, 1439) processed by worker 38
+hello! try to steal from proc 23
+  Task ( 0, 1280) processed by worker 38
+hello! try to steal from proc 45
+hello! try to steal from proc 40
+  Task ( 0, 1485) processed by worker 38
+hello! try to steal from proc 29
+   38 - Tasks: completed  44, spawned   0, stolen  78
+   38 -      : nsteals  10, steal fails -- 934, aborted   0
+   38 -  Time: process  0.48877s = active  0.48877s + passive  0.00000s, passive count=0 (    -nanms avg), searching  0.00148s ( 0.30 %)
+   38 -      : dispersion  0.00000ms, disp. steal fails -- unlocked   0, locked   2
+   38 -      : avg acquire  0.00000ms, imbalance  0.00000ms
+   38 -      : timers:  0.00000ms  0.00000ms  0.00000ms  0.00000  0.00000ms
+   38 - LAWS-Q: nrelease     13, nreacquire     23, nreclaimed      0, nwaited  0, nprogress    989
+   38 -    failed w/lock:      5, failed w/o lock:    929, aborted steals:      0
+   38 -    ngets:      0  ( -nan usec/get) nxfer:      0
+   38 - TSC: get: 107M (2380912 x 45)  add: 0M (0 x 0) inplace: 0M (0)
+   38 - TSC: addfinish: 0M (0) progress: 24M (24477 x 989) reclaim: 0M (64 x 989)
+   38 - TSC: ensure: 0M (0 x 0) release: 0M (6424 x 13) reacquire: 0M (20641 x 23)
+   38 - TSC: pushhead: 0M (0) poptail: 1M (0 x 0)

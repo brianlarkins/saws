@@ -1,0 +1,155 @@
+  10:   Thread 10: laws_create()
+  10: reacquire: local size: 0 shared size: 0
+will steal next from 0
+ready to steal from proc 0; tail: 504; split: 512; max_size: 1024
+will steal 4
+new_tail is 508
+steal starting from mem addr: 0x80005480
+503, 504, 505, 506, 
+  10: release: local size: 2 shared size: 2
+  Task ( 0, 506) processed by worker 10
+  Task ( 0, 505) processed by worker 10
+  10: reacquire: local size: 1 shared size: 1
+  Task ( 0, 504) processed by worker 10
+  10: reacquire: local size: 1 shared size: 0
+  Task ( 0, 503) processed by worker 10
+  10: reacquire: local size: 0 shared size: 0
+will steal next from 9
+will steal next from 1
+ready to steal from proc 1; tail: 6; split: 7; max_size: 1024
+will steal 1
+new_tail is 7
+steal starting from mem addr: 0x800025d0
+462, 
+  10: release: local size: 0 shared size: 0
+  10: reacquire: local size: 1 shared size: 0
+  Task ( 0, 462) processed by worker 10
+  10: reacquire: local size: 0 shared size: 0
+will steal next from 25
+ready to steal from proc 25; tail: 1; split: 2; max_size: 1024
+will steal 1
+new_tail is 2
+steal starting from mem addr: 0x80002558
+0, 
+  10: release: local size: 0 shared size: 0
+  10: reacquire: local size: 1 shared size: 0
+  Task ( 0,   0) processed by worker 10, stolen from 0
+  10: reacquire: local size: 0 shared size: 0
+will steal next from 8
+ready to steal from proc 8; tail: 189; split: 190; max_size: 1024
+will steal 1
+new_tail is 190
+steal starting from mem addr: 0x800036f8
+187, 
+  10: release: local size: 0 shared size: 0
+  10: reacquire: local size: 1 shared size: 0
+  Task ( 0, 187) processed by worker 10
+  10: reacquire: local size: 0 shared size: 0
+will steal next from 0
+ready to steal from proc 0; tail: 830; split: 892; max_size: 1024
+will steal 31
+new_tail is 861
+steal starting from mem addr: 0x80007310
+829, 830, 831, 832, 833, 834, 835, 836, 837, 838, 839, 840, 841, 842, 843, 844, 845, 846, 847, 848, 849, 850, 851, 852, 853, 854, 855, 856, 857, 858, 859, 
+  10: release: local size: 15 shared size: 1
+  Task ( 0, 859) processed by worker 10
+  Task ( 0, 858) processed by worker 10
+  Task ( 0, 857) processed by worker 10
+  Task ( 0, 856) processed by worker 10
+  Task ( 0, 855) processed by worker 10
+  Task ( 0, 854) processed by worker 10
+  Task ( 0, 853) processed by worker 10
+  Task ( 0, 852) processed by worker 10
+  Task ( 0, 851) processed by worker 10
+  Task ( 0, 850) processed by worker 10
+  Task ( 0, 849) processed by worker 10
+  Task ( 0, 848) processed by worker 10
+  Task ( 0, 847) processed by worker 10
+  Task ( 0, 846) processed by worker 10
+  Task ( 0, 845) processed by worker 10
+  10: reacquire: local size: 8 shared size: 8
+  Task ( 0, 844) processed by worker 10
+  Task ( 0, 843) processed by worker 10
+  Task ( 0, 842) processed by worker 10
+  10: release: local size: 2 shared size: 0
+  Task ( 0, 841) processed by worker 10
+  Task ( 0, 840) processed by worker 10
+  10: reacquire: local size: 0 shared size: 0
+will steal next from 13
+ready to steal from proc 13; tail: 35; split: 37; max_size: 1024
+will steal 1
+new_tail is 36
+steal starting from mem addr: 0x80002888
+668, 
+  10: release: local size: 0 shared size: 1
+  10: reacquire: local size: 1 shared size: 0
+  Task ( 0, 668) processed by worker 10
+  10: reacquire: local size: 0 shared size: 0
+will steal next from 0
+ready to steal from proc 0; tail: 10; split: 12; max_size: 1024
+will steal 1
+new_tail is 11
+steal starting from mem addr: 0x80002630
+299, 
+  10: release: local size: 0 shared size: 0
+  10: reacquire: local size: 1 shared size: 0
+  Task ( 0, 299) processed by worker 10
+  10: reacquire: local size: 0 shared size: 0
+will steal next from 0
+will steal next from 15
+ready to steal from proc 15; tail: 92; split: 93; max_size: 1024
+will steal 1
+new_tail is 93
+steal starting from mem addr: 0x80002de0
+346, 
+  10: release: local size: 0 shared size: 0
+  10: reacquire: local size: 0 shared size: 0
+will steal next from 16
+ready to steal from proc 16; tail: 28; split: 32; max_size: 1024
+will steal 2
+new_tail is 30
+steal starting from mem addr: 0x800027e0
+793, 794, 
+  10: release: local size: 1 shared size: 0
+  Task ( 0, 794) processed by worker 10
+  10: reacquire: local size: 1 shared size: 0
+  Task ( 0, 793) processed by worker 10
+  10: reacquire: local size: 0 shared size: 0
+will steal next from 14
+will steal next from 7
+will steal next from 0
+will steal next from 19
+ready to steal from proc 19; tail: 56; split: 64; max_size: 1024
+will steal 4
+new_tail is 60
+steal starting from mem addr: 0x80002a80
+566, 567, 568, 569, 
+  10: release: local size: 2 shared size: 1
+  Task ( 0, 569) processed by worker 10
+  Task ( 0, 568) processed by worker 10
+  10: reacquire: local size: 1 shared size: 1
+  Task ( 0, 567) processed by worker 10
+  10: reacquire: local size: 1 shared size: 0
+  Task ( 0, 566) processed by worker 10
+  10: reacquire: local size: 0 shared size: 0
+will steal next from 16
+will steal next from 22
+will steal next from 23
+will steal next from 7
+will steal next from 27
+will steal next from 8
+will steal next from 16
+will steal next from 25
+   10 - Tasks: completed  35, spawned   0, stolen  47
+   10 -      : nsteals  10, steal fails --  61, aborted   0
+   10 -  Time: process  0.00791s = active  0.00791s + passive  0.00000s, passive count=0 (    -nanms avg), searching  0.00011s ( 1.33 %)
+   10 -      : dispersion  0.00000ms, disp. steal fails -- unlocked   0, locked   0
+   10 -      : avg acquire  0.00000ms, imbalance  0.00000ms
+   10 -      : timers:  0.00000ms  0.00000ms  0.00000ms  0.00000  0.00000ms
+   10 - LAWS-Q: nrelease     11, nreacquire     22, nreclaimed      0, nwaited  0, nprogress    107
+   10 -    failed w/lock:     13, failed w/o lock:     48, aborted steals:      0
+   10 -    ngets:      0  ( -nan usec/get) nxfer:      0
+   10 - TSC: get: 13M (366819 x 36)  add: 0M (0 x 0) inplace: 0M (0)
+   10 - TSC: addfinish: 0M (0) progress: 2M (18893 x 107) reclaim: 0M (65 x 107)
+   10 - TSC: ensure: 0M (0 x 0) release: 0M (11065 x 11) reacquire: 0M (26330 x 22)
+   10 - TSC: pushhead: 0M (0) poptail: 6M (0 x 0)

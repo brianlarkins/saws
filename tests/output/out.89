@@ -1,0 +1,94 @@
+hello! try to steal from proc 12
+hello! try to steal from proc 44
+  Task ( 0,   0) processed by worker 89
+hello! try to steal from proc 39
+  Task ( 0,   0) processed by worker 89
+hello! try to steal from proc 15
+  Task ( 0,   0) processed by worker 89
+hello! try to steal from proc 14
+  Task ( 0,   0) processed by worker 89
+hello! try to steal from proc 15
+hello! try to steal from proc 16
+  Task ( 0, 2591) processed by worker 89
+hello! try to steal from proc 35
+  Task ( 0, 478) processed by worker 89
+  Task ( 0, 1994) processed by worker 89
+hello! try to steal from proc 9
+  Task ( 0,   0) processed by worker 89
+hello! try to steal from proc 46
+  Task ( 0, 3851) processed by worker 89
+  Task ( 0, 3850) processed by worker 89
+  Task ( 0, 3849) processed by worker 89
+  Task ( 0, 3848) processed by worker 89
+hello! try to steal from proc 15
+  Task ( 0,   0) processed by worker 89
+hello! try to steal from proc 36
+  Task ( 0, 1598) processed by worker 89
+hello! try to steal from proc 15
+hello! try to steal from proc 24
+hello! try to steal from proc 28
+  Task ( 0, 3567) processed by worker 89
+hello! try to steal from proc 45
+  Task ( 0, 2816) processed by worker 89
+hello! try to steal from proc 40
+  Task ( 0, 2635) processed by worker 89
+hello! try to steal from proc 12
+  Task ( 0, 3074) processed by worker 89
+hello! try to steal from proc 12
+hello! try to steal from proc 28
+  Task ( 0, 3114) processed by worker 89
+hello! try to steal from proc 28
+  Task ( 0, 3123) processed by worker 89
+hello! try to steal from proc 12
+  Task ( 0, 3081) processed by worker 89
+hello! try to steal from proc 16
+  Task ( 0, 2219) processed by worker 89
+hello! try to steal from proc 11
+  Task ( 0, 1082) processed by worker 89
+hello! try to steal from proc 0
+  Task ( 0, 1110) processed by worker 89
+hello! try to steal from proc 11
+  Task ( 0, 1124) processed by worker 89
+  Task ( 0, 1123) processed by worker 89
+hello! try to steal from proc 39
+  Task ( 0, 121) processed by worker 89
+hello! try to steal from proc 36
+  Task ( 0, 3908) processed by worker 89
+hello! try to steal from proc 43
+  Task ( 0, 130) processed by worker 89
+  Task ( 0, 129) processed by worker 89
+hello! try to steal from proc 37
+  Task ( 0, 3155) processed by worker 89
+hello! try to steal from proc 33
+  Task ( 0, 1712) processed by worker 89
+hello! try to steal from proc 39
+hello! try to steal from proc 44
+  Task ( 0, 3142) processed by worker 89
+hello! try to steal from proc 0
+  Task ( 0, 1223) processed by worker 89
+hello! try to steal from proc 0
+hello! try to steal from proc 18
+  Task ( 0, 1232) processed by worker 89
+  Task ( 0, 1231) processed by worker 89
+hello! try to steal from proc 28
+  Task ( 0, 1264) processed by worker 89
+  Task ( 0, 2378) processed by worker 89
+hello! try to steal from proc 12
+  Task ( 0, 2436) processed by worker 89
+  Task ( 0, 191) processed by worker 89
+  Task ( 0, 190) processed by worker 89
+  Task ( 0, 1443) processed by worker 89
+  Task ( 0, 1442) processed by worker 89
+   89 - Tasks: completed  43, spawned   0, stolen  75
+   89 -      : nsteals  35, steal fails -- 1050, aborted   0
+   89 -  Time: process  0.48815s = active  0.48815s + passive  0.00000s, passive count=0 (    -nanms avg), searching  0.00113s ( 0.23 %)
+   89 -      : dispersion  0.00000ms, disp. steal fails -- unlocked  10, locked   2
+   89 -      : avg acquire  0.00000ms, imbalance  0.00000ms
+   89 -      : timers:  0.00000ms  0.00000ms  0.00000ms  0.00000  0.00000ms
+   89 - LAWS-Q: nrelease     41, nreacquire     66, nreclaimed      0, nwaited  0, nprogress   1129
+   89 -    failed w/lock:      9, failed w/o lock:   1041, aborted steals:      0
+   89 -    ngets:      0  ( -nan usec/get) nxfer:      0
+   89 - TSC: get: 130M (2971097 x 44)  add: 0M (0 x 0) inplace: 0M (0)
+   89 - TSC: addfinish: 0M (0) progress: 32M (28947 x 1129) reclaim: 0M (59 x 1129)
+   89 - TSC: ensure: 0M (0 x 0) release: 0M (2354 x 41) reacquire: 0M (14755 x 66)
+   89 - TSC: pushhead: 0M (0) poptail: 2M (0 x 0)

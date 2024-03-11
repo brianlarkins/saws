@@ -1,0 +1,111 @@
+hello! try to steal from proc 12
+hello! try to steal from proc 44
+hello! try to steal from proc 22
+hello! try to steal from proc 11
+hello! try to steal from proc 32
+  Task ( 0,  71) processed by worker 87
+  Task ( 0,  70) processed by worker 87
+hello! try to steal from proc 1
+hello! try to steal from proc 27
+hello! try to steal from proc 19
+  Task ( 0, 750) processed by worker 87
+  Task ( 0,   0) processed by worker 87
+hello! try to steal from proc 2
+hello! try to steal from proc 7
+  Task ( 0, 2578) processed by worker 87
+hello! try to steal from proc 7
+hello! try to steal from proc 17
+hello! try to steal from proc 24
+hello! try to steal from proc 46
+  Task ( 0, 3348) processed by worker 87
+hello! try to steal from proc 5
+  Task ( 0, 1548) processed by worker 87
+  Task ( 0, 1547) processed by worker 87
+  Task ( 0, 1546) processed by worker 87
+  Task ( 0, 1545) processed by worker 87
+hello! try to steal from proc 26
+  Task ( 0, 3839) processed by worker 87
+hello! try to steal from proc 40
+hello! try to steal from proc 23
+  Task ( 0, 1955) processed by worker 87
+hello! try to steal from proc 47
+  Task ( 0, 3965) processed by worker 87
+hello! try to steal from proc 7
+  Task ( 0,   0) processed by worker 87
+hello! try to steal from proc 29
+  Task ( 0, 110) processed by worker 87
+hello! try to steal from proc 29
+hello! try to steal from proc 17
+  Task ( 0, 3659) processed by worker 87
+  Task ( 0, 3587) processed by worker 87
+  Task ( 0, 3586) processed by worker 87
+hello! try to steal from proc 41
+hello! try to steal from proc 42
+  Task ( 0, 3102) processed by worker 87
+hello! try to steal from proc 2
+  Task ( 0, 1606) processed by worker 87
+hello! try to steal from proc 40
+hello! try to steal from proc 45
+  Task ( 0, 122) processed by worker 87
+hello! try to steal from proc 7
+hello! try to steal from proc 13
+hello! try to steal from proc 32
+hello! try to steal from proc 20
+  Task ( 0, 4000) processed by worker 87
+hello! try to steal from proc 8
+  Task ( 0, 1630) processed by worker 87
+hello! try to steal from proc 40
+  Task ( 0, 1063) processed by worker 87
+  Task ( 0, 288) processed by worker 87
+hello! try to steal from proc 4
+  Task ( 0, 938) processed by worker 87
+hello! try to steal from proc 20
+  Task ( 0, 2855) processed by worker 87
+hello! try to steal from proc 4
+hello! try to steal from proc 20
+hello! try to steal from proc 24
+  Task ( 0, 529) processed by worker 87
+  Task ( 0, 2285) processed by worker 87
+  Task ( 0, 2284) processed by worker 87
+  Task ( 0, 2283) processed by worker 87
+hello! try to steal from proc 17
+  Task ( 0, 169) processed by worker 87
+  Task ( 0, 168) processed by worker 87
+hello! try to steal from proc 4
+  Task ( 0, 3182) processed by worker 87
+hello! try to steal from proc 6
+  Task ( 0, 3185) processed by worker 87
+hello! try to steal from proc 6
+  Task ( 0, 1868) processed by worker 87
+hello! try to steal from proc 6
+hello! try to steal from proc 8
+  Task ( 0, 1850) processed by worker 87
+hello! try to steal from proc 42
+  Task ( 0, 3191) processed by worker 87
+hello! try to steal from proc 42
+hello! try to steal from proc 36
+  Task ( 0, 181) processed by worker 87
+hello! try to steal from proc 13
+  Task ( 0, 3240) processed by worker 87
+hello! try to steal from proc 36
+hello! try to steal from proc 11
+hello! try to steal from proc 28
+  Task ( 0, 176) processed by worker 87
+hello! try to steal from proc 34
+hello! try to steal from proc 24
+hello! try to steal from proc 44
+hello! try to steal from proc 30
+  Task ( 0, 1408) processed by worker 87
+   87 - Tasks: completed  42, spawned   0, stolen  84
+   87 -      : nsteals  33, steal fails -- 1414, aborted   0
+   87 -  Time: process  0.48841s = active  0.48841s + passive  0.00000s, passive count=0 (    -nanms avg), searching  0.01033s ( 2.12 %)
+   87 -      : dispersion  0.00000ms, disp. steal fails -- unlocked  20, locked   5
+   87 -      : avg acquire  0.00000ms, imbalance  0.00000ms
+   87 -      : timers:  0.00000ms  0.00000ms  0.00000ms  0.00000  0.00000ms
+   87 - LAWS-Q: nrelease     40, nreacquire     59, nreclaimed      0, nwaited  0, nprogress   1490
+   87 -    failed w/lock:     35, failed w/o lock:   1379, aborted steals:      0
+   87 -    ngets:      0  ( -nan usec/get) nxfer:      0
+   87 - TSC: get: 153M (3569075 x 43)  add: 0M (0 x 0) inplace: 0M (0)
+   87 - TSC: addfinish: 0M (0) progress: 35M (23731 x 1490) reclaim: 0M (62 x 1490)
+   87 - TSC: ensure: 0M (0 x 0) release: 0M (3565 x 40) reacquire: 1M (18256 x 59)
+   87 - TSC: pushhead: 0M (0) poptail: 4M (0 x 0)

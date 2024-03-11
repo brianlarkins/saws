@@ -1,0 +1,90 @@
+hello! try to steal from proc 12
+hello! try to steal from proc 3
+  Task ( 0,   0) processed by worker 66
+hello! try to steal from proc 16
+  Task ( 0,   0) processed by worker 66
+hello! try to steal from proc 7
+  Task ( 0, 2573) processed by worker 66
+hello! try to steal from proc 3
+  Task ( 0,  21) processed by worker 66
+hello! try to steal from proc 16
+  Task ( 0, 2592) processed by worker 66
+hello! try to steal from proc 16
+  Task ( 0, 1791) processed by worker 66
+hello! try to steal from proc 5
+  Task ( 0, 1564) processed by worker 66
+hello! try to steal from proc 16
+  Task ( 0, 1794) processed by worker 66
+hello! try to steal from proc 2
+  Task ( 0, 2104) processed by worker 66
+  Task ( 0, 2103) processed by worker 66
+hello! try to steal from proc 2
+  Task ( 0, 2152) processed by worker 66
+  Task ( 0, 2151) processed by worker 66
+hello! try to steal from proc 20
+  Task ( 0, 2146) processed by worker 66
+hello! try to steal from proc 14
+  Task ( 0, 655) processed by worker 66
+hello! try to steal from proc 16
+  Task ( 0, 2163) processed by worker 66
+  Task ( 0, 3732) processed by worker 66
+  Task ( 0, 3731) processed by worker 66
+hello! try to steal from proc 28
+  Task ( 0, 3112) processed by worker 66
+  Task ( 0, 3111) processed by worker 66
+hello! try to steal from proc 6
+  Task ( 0, 2833) processed by worker 66
+hello! try to steal from proc 16
+  Task ( 0, 2216) processed by worker 66
+  Task ( 0, 2215) processed by worker 66
+hello! try to steal from proc 11
+  Task ( 0, 1100) processed by worker 66
+  Task ( 0, 1099) processed by worker 66
+  Task ( 0, 1098) processed by worker 66
+hello! try to steal from proc 11
+  Task ( 0, 1140) processed by worker 66
+hello! try to steal from proc 11
+  Task ( 0, 1142) processed by worker 66
+hello! try to steal from proc 47
+  Task ( 0, 285) processed by worker 66
+hello! try to steal from proc 11
+  Task ( 0, 313) processed by worker 66
+hello! try to steal from proc 11
+  Task ( 0, 3136) processed by worker 66
+hello! try to steal from proc 42
+  Task ( 0, 2849) processed by worker 66
+hello! try to steal from proc 28
+  Task ( 0, 3150) processed by worker 66
+  Task ( 0, 1245) processed by worker 66
+  Task ( 0, 1244) processed by worker 66
+  Task ( 0, 1243) processed by worker 66
+  Task ( 0, 1242) processed by worker 66
+  Task ( 0, 795) processed by worker 66
+hello! try to steal from proc 11
+  Task ( 0, 3138) processed by worker 66
+  Task ( 0, 3239) processed by worker 66
+  Task ( 0, 3238) processed by worker 66
+hello! try to steal from proc 28
+  Task ( 0, 1435) processed by worker 66
+hello! try to steal from proc 34
+hello! try to steal from proc 24
+hello! try to steal from proc 42
+hello! try to steal from proc 0
+hello! try to steal from proc 44
+hello! try to steal from proc 11
+hello! try to steal from proc 41
+hello! try to steal from proc 30
+  Task ( 0, 1407) processed by worker 66
+   66 - Tasks: completed  42, spawned   0, stolen 105
+   66 -      : nsteals  31, steal fails -- 1320, aborted   0
+   66 -  Time: process  0.48895s = active  0.48895s + passive  0.00000s, passive count=0 (    -nanms avg), searching  0.00697s ( 1.43 %)
+   66 -      : dispersion  0.00000ms, disp. steal fails -- unlocked   2, locked   1
+   66 -      : avg acquire  0.00000ms, imbalance  0.00000ms
+   66 -      : timers:  0.00000ms  0.00000ms  0.00000ms  0.00000  0.00000ms
+   66 - LAWS-Q: nrelease     42, nreacquire     55, nreclaimed      0, nwaited  0, nprogress   1394
+   66 -    failed w/lock:      8, failed w/o lock:   1312, aborted steals:      0
+   66 -    ngets:      0  ( -nan usec/get) nxfer:      0
+   66 - TSC: get: 146M (3403681 x 43)  add: 0M (0 x 0) inplace: 0M (0)
+   66 - TSC: addfinish: 0M (0) progress: 34M (24790 x 1394) reclaim: 0M (43 x 1394)
+   66 - TSC: ensure: 0M (0 x 0) release: 0M (2699 x 42) reacquire: 0M (17524 x 55)
+   66 - TSC: pushhead: 0M (0) poptail: 6M (0 x 0)

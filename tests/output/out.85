@@ -1,0 +1,103 @@
+hello! try to steal from proc 12
+hello! try to steal from proc 32
+  Task ( 0,  75) processed by worker 85
+hello! try to steal from proc 23
+  Task ( 0,  35) processed by worker 85
+  Task ( 0,  34) processed by worker 85
+hello! try to steal from proc 2
+  Task ( 0, 2565) processed by worker 85
+hello! try to steal from proc 11
+hello! try to steal from proc 13
+  Task ( 0, 392) processed by worker 85
+hello! try to steal from proc 46
+  Task ( 0, 3347) processed by worker 85
+hello! try to steal from proc 23
+  Task ( 0, 1952) processed by worker 85
+hello! try to steal from proc 5
+  Task ( 0, 1578) processed by worker 85
+hello! try to steal from proc 5
+  Task ( 0, 1586) processed by worker 85
+  Task ( 0, 1585) processed by worker 85
+hello! try to steal from proc 26
+  Task ( 0, 2060) processed by worker 85
+hello! try to steal from proc 23
+hello! try to steal from proc 34
+hello! try to steal from proc 42
+  Task ( 0,   0) processed by worker 85
+hello! try to steal from proc 13
+  Task ( 0, 3716) processed by worker 85
+hello! try to steal from proc 2
+  Task ( 0, 2166) processed by worker 85
+hello! try to steal from proc 2
+  Task ( 0, 3997) processed by worker 85
+  Task ( 0, 3996) processed by worker 85
+hello! try to steal from proc 24
+hello! try to steal from proc 39
+  Task ( 0, 3064) processed by worker 85
+hello! try to steal from proc 39
+  Task ( 0, 3584) processed by worker 85
+hello! try to steal from proc 27
+hello! try to steal from proc 24
+  Task ( 0, 2841) processed by worker 85
+hello! try to steal from proc 45
+  Task ( 0, 1639) processed by worker 85
+hello! try to steal from proc 14
+  Task ( 0, 1637) processed by worker 85
+hello! try to steal from proc 13
+hello! try to steal from proc 32
+  Task ( 0, 314) processed by worker 85
+hello! try to steal from proc 42
+  Task ( 0, 2209) processed by worker 85
+hello! try to steal from proc 38
+  Task ( 0, 1024) processed by worker 85
+hello! try to steal from proc 45
+hello! try to steal from proc 4
+hello! try to steal from proc 20
+  Task ( 0, 1060) processed by worker 85
+hello! try to steal from proc 4
+  Task ( 0, 1662) processed by worker 85
+hello! try to steal from proc 6
+  Task ( 0, 3358) processed by worker 85
+hello! try to steal from proc 24
+  Task ( 0, 530) processed by worker 85
+  Task ( 0, 3165) processed by worker 85
+  Task ( 0, 3164) processed by worker 85
+  Task ( 0, 3163) processed by worker 85
+  Task ( 0, 3162) processed by worker 85
+hello! try to steal from proc 20
+  Task ( 0, 3592) processed by worker 85
+hello! try to steal from proc 6
+  Task ( 0, 3183) processed by worker 85
+hello! try to steal from proc 6
+  Task ( 0, 2873) processed by worker 85
+  Task ( 0, 2872) processed by worker 85
+hello! try to steal from proc 6
+  Task ( 0, 558) processed by worker 85
+hello! try to steal from proc 13
+hello! try to steal from proc 19
+  Task ( 0, 2874) processed by worker 85
+hello! try to steal from proc 20
+  Task ( 0, 1339) processed by worker 85
+hello! try to steal from proc 19
+  Task ( 0, 2442) processed by worker 85
+hello! try to steal from proc 45
+  Task ( 0, 1430) processed by worker 85
+hello! try to steal from proc 8
+hello! try to steal from proc 34
+hello! try to steal from proc 24
+  Task ( 0, 1347) processed by worker 85
+hello! try to steal from proc 44
+hello! try to steal from proc 30
+   85 - Tasks: completed  42, spawned   0, stolen  83
+   85 -      : nsteals  35, steal fails -- 1293, aborted   0
+   85 -  Time: process  0.48878s = active  0.48878s + passive  0.00000s, passive count=0 (    -nanms avg), searching  0.00917s ( 1.88 %)
+   85 -      : dispersion  0.00000ms, disp. steal fails -- unlocked   2, locked   1
+   85 -      : avg acquire  0.00000ms, imbalance  0.00000ms
+   85 -      : timers:  0.00000ms  0.00000ms  0.00000ms  0.00000  0.00000ms
+   85 - LAWS-Q: nrelease     41, nreacquire     66, nreclaimed      0, nwaited  0, nprogress   1371
+   85 -    failed w/lock:     17, failed w/o lock:   1276, aborted steals:      0
+   85 -    ngets:      0  ( -nan usec/get) nxfer:      0
+   85 - TSC: get: 152M (3555404 x 43)  add: 0M (0 x 0) inplace: 0M (0)
+   85 - TSC: addfinish: 0M (0) progress: 34M (25296 x 1371) reclaim: 0M (63 x 1371)
+   85 - TSC: ensure: 0M (0 x 0) release: 0M (2983 x 41) reacquire: 1M (18417 x 66)
+   85 - TSC: pushhead: 0M (0) poptail: 8M (0 x 0)

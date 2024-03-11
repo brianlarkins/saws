@@ -1,0 +1,149 @@
+   1:   Thread 1: laws_create()
+   1: reacquire: local size: 0 shared size: 0
+will steal next from 0
+ready to steal from proc 0; tail: 496; split: 512; max_size: 1024
+will steal 8
+new_tail is 504
+steal starting from mem addr: 0x800053c0
+495, 496, 497, 498, 499, 500, 501, 502, 
+   1: release: local size: 4 shared size: 4
+  Task ( 0, 502) processed by worker 1
+  Task ( 0, 501) processed by worker 1
+  Task ( 0, 500) processed by worker 1
+   1: release: local size: 0 shared size: 0
+   1: reacquire: local size: 0 shared size: 0
+will steal next from 7
+ready to steal from proc 7; tail: 16; split: 21; max_size: 1024
+will steal 3
+new_tail is 19
+steal starting from mem addr: 0x800026c0
+462, 463, 464, 
+   1: release: local size: 1 shared size: 0
+tail > old_vtail reclaim
+  Task ( 0, 464) processed by worker 1
+tail > old_vtail reclaim
+   1: reacquire: local size: 0 shared size: 0
+will steal next from 7
+will steal next from 20
+will steal next from 13
+will steal next from 8
+ready to steal from proc 8; tail: 183; split: 190; max_size: 1024
+will steal 4
+new_tail is 187
+steal starting from mem addr: 0x80003668
+181, 182, 183, 184, 
+   1: release: local size: 2 shared size: 15
+  Task ( 0, 184) processed by worker 1
+  Task ( 0, 183) processed by worker 1
+   1: reacquire: local size: 1 shared size: 1
+  Task ( 0, 182) processed by worker 1
+   1: reacquire: local size: 1 shared size: 0
+  Task ( 0, 181) processed by worker 1
+   1: reacquire: local size: 0 shared size: 0
+will steal next from 0
+ready to steal from proc 0; tail: 892; split: 953; max_size: 1024
+will steal 31
+new_tail is 923
+steal starting from mem addr: 0x800078e0
+891, 892, 893, 894, 895, 896, 897, 898, 899, 900, 901, 902, 903, 904, 905, 906, 907, 908, 909, 910, 911, 912, 913, 914, 915, 916, 917, 918, 919, 920, 921, 
+   1: release: local size: 15 shared size: 7
+  Task ( 0, 921) processed by worker 1
+  Task ( 0, 920) processed by worker 1
+  Task ( 0, 919) processed by worker 1
+tail > old_vtail reclaim
+  Task ( 0, 918) processed by worker 1
+  Task ( 0, 917) processed by worker 1
+tail > old_vtail reclaim
+  Task ( 0, 916) processed by worker 1
+  Task ( 0, 915) processed by worker 1
+tail > old_vtail reclaim
+  Task ( 0, 914) processed by worker 1
+tail > old_vtail reclaim
+  Task ( 0, 913) processed by worker 1
+   1: release: local size: 3 shared size: 0
+tail > old_vtail reclaim
+  Task ( 0, 912) processed by worker 1
+   1: release: local size: 1 shared size: 1
+  Task ( 0, 911) processed by worker 1
+   1: reacquire: local size: 0 shared size: 0
+will steal next from 3
+will steal next from 3
+will steal next from 0
+will steal next from 4
+will steal next from 0
+will steal next from 5
+will steal next from 8
+will steal next from 3
+will steal next from 15
+will steal next from 10
+will steal next from 14
+ready to steal from proc 14; tail: 7; split: 8; max_size: 1024
+will steal 1
+new_tail is 8
+steal starting from mem addr: 0x800025e8
+771, 
+   1: release: local size: 0 shared size: 1
+   1: reacquire: local size: 1 shared size: 0
+  Task ( 0, 771) processed by worker 1
+   1: reacquire: local size: 0 shared size: 0
+will steal next from 14
+will steal next from 3
+will steal next from 14
+will steal next from 16
+will steal next from 18
+will steal next from 19
+will steal next from 8
+ready to steal from proc 8; tail: 242; split: 246; max_size: 1024
+will steal 2
+new_tail is 244
+steal starting from mem addr: 0x80003bf0
+521, 522, 
+   1: release: local size: 1 shared size: 0
+  Task ( 0, 522) processed by worker 1
+   1: reacquire: local size: 0 shared size: 0
+will steal next from 8
+will steal next from 27
+will steal next from 31
+ready to steal from proc 31; tail: 0; split: 4; max_size: 1024
+will steal 2
+new_tail is 2
+steal starting from mem addr: 0x80002540
+0, 0, 
+   1: release: local size: 1 shared size: 0
+  Task ( 0,   0) processed by worker 1, stolen from 0
+   1: reacquire: local size: 0 shared size: 0
+will steal next from 14
+will steal next from 16
+will steal next from 5
+will steal next from 19
+ready to steal from proc 19; tail: 96; split: 100; max_size: 1024
+will steal 2
+new_tail is 98
+steal starting from mem addr: 0x80002e40
+606, 607, 
+   1: release: local size: 1 shared size: 0
+  Task ( 0, 607) processed by worker 1
+   1: reacquire: local size: 0 shared size: 0
+will steal next from 27
+ready to steal from proc 27; tail: 18; split: 19; max_size: 1024
+will steal 1
+new_tail is 19
+steal starting from mem addr: 0x800026f0
+15, 
+   1: release: local size: 0 shared size: 0
+   1: reacquire: local size: 1 shared size: 0
+  Task ( 0,  15) processed by worker 1
+   1: reacquire: local size: 0 shared size: 0
+    1 - Tasks: completed  24, spawned   0, stolen  54
+    1 -      : nsteals   9, steal fails --  78, aborted   0
+    1 -  Time: process  0.00787s = active  0.00787s + passive  0.00000s, passive count=0 (    -nanms avg), searching  0.00019s ( 2.35 %)
+    1 -      : dispersion  0.00000ms, disp. steal fails -- unlocked   0, locked   0
+    1 -      : avg acquire  0.00000ms, imbalance  0.00000ms
+    1 -      : timers:  0.00000ms  0.00000ms  0.00000ms  0.00000  0.00000ms
+    1 - LAWS-Q: nrelease     12, nreacquire     14, nreclaimed      0, nwaited  0, nprogress    112
+    1 -    failed w/lock:     24, failed w/o lock:     54, aborted steals:      0
+    1 -    ngets:      0  ( -nan usec/get) nxfer:      0
+    1 - TSC: get: 14M (577627 x 25)  add: 0M (0 x 0) inplace: 0M (0)
+    1 - TSC: addfinish: 0M (0) progress: 1M (16628 x 112) reclaim: 0M (692 x 112)
+    1 - TSC: ensure: 0M (0 x 0) release: 0M (9644 x 12) reacquire: 0M (46249 x 14)
+    1 - TSC: pushhead: 0M (0) poptail: 7M (0 x 0)

@@ -1,0 +1,94 @@
+  26:   Thread 26: laws_create()
+  26: reacquire: local size: 0 shared size: 0
+will steal next from 0
+will steal next from 1
+will steal next from 20
+will steal next from 25
+will steal next from 7
+ready to steal from proc 7; tail: 23; split: 39; max_size: 1024
+will steal 8
+new_tail is 31
+steal starting from mem addr: 0x80002768
+469, 62, 63, 64, 65, 66, 67, 68, 
+  26: release: local size: 4 shared size: 0
+  Task ( 0,  68) processed by worker 26
+  Task ( 0,  67) processed by worker 26
+  Task ( 0,  66) processed by worker 26
+  Task ( 0,  65) processed by worker 26
+  26: reacquire: local size: 2 shared size: 2
+  Task ( 0,  64) processed by worker 26
+  Task ( 0,  63) processed by worker 26
+  26: reacquire: local size: 1 shared size: 1
+  Task ( 0,  62) processed by worker 26
+  26: reacquire: local size: 1 shared size: 0
+  Task ( 0, 469) processed by worker 26
+  26: reacquire: local size: 0 shared size: 0
+will steal next from 0
+ready to steal from proc 0; tail: 923; split: 953; max_size: 1024
+will steal 15
+new_tail is 938
+steal starting from mem addr: 0x80007bc8
+922, 923, 924, 925, 926, 927, 928, 929, 930, 931, 932, 933, 934, 935, 936, 
+  26: release: local size: 7 shared size: 7
+  Task ( 0, 936) processed by worker 26
+  Task ( 0, 935) processed by worker 26
+  Task ( 0, 934) processed by worker 26
+  Task ( 0, 933) processed by worker 26
+  Task ( 0, 932) processed by worker 26
+  Task ( 0, 931) processed by worker 26
+  Task ( 0, 930) processed by worker 26
+  26: reacquire: local size: 4 shared size: 4
+  Task ( 0, 929) processed by worker 26
+  Task ( 0, 928) processed by worker 26
+  Task ( 0, 927) processed by worker 26
+  Task ( 0, 926) processed by worker 26
+  26: reacquire: local size: 2 shared size: 2
+  Task ( 0, 925) processed by worker 26
+  Task ( 0, 924) processed by worker 26
+  26: reacquire: local size: 1 shared size: 1
+  Task ( 0, 923) processed by worker 26
+  26: reacquire: local size: 1 shared size: 0
+  Task ( 0, 922) processed by worker 26
+  26: reacquire: local size: 0 shared size: 0
+will steal next from 0
+will steal next from 12
+ready to steal from proc 12; tail: 0; split: 1; max_size: 1024
+will steal 1
+new_tail is 1
+steal starting from mem addr: 0x80002540
+0, 
+  26: release: local size: 0 shared size: 0
+  26: reacquire: local size: 1 shared size: 0
+  Task ( 0,   0) processed by worker 26, stolen from 0
+  26: reacquire: local size: 0 shared size: 0
+will steal next from 0
+will steal next from 0
+will steal next from 23
+will steal next from 4
+will steal next from 6
+will steal next from 31
+ready to steal from proc 31; tail: 5; split: 7; max_size: 1024
+will steal 1
+new_tail is 6
+steal starting from mem addr: 0x800025b8
+1, 
+  26: release: local size: 0 shared size: 0
+  26: reacquire: local size: 1 shared size: 0
+  Task ( 0,   1) processed by worker 26
+  26: reacquire: local size: 0 shared size: 0
+will steal next from 2
+will steal next from 20
+will steal next from 19
+   26 - Tasks: completed  25, spawned   0, stolen  25
+   26 -      : nsteals   4, steal fails --  65, aborted   0
+   26 -  Time: process  0.00795s = active  0.00795s + passive  0.00000s, passive count=0 (    -nanms avg), searching  0.00006s ( 0.76 %)
+   26 -      : dispersion  0.00000ms, disp. steal fails -- unlocked   0, locked   4
+   26 -      : avg acquire  0.00000ms, imbalance  0.00000ms
+   26 -      : timers:  0.00000ms  0.00000ms  0.00000ms  0.00000  0.00000ms
+   26 - LAWS-Q: nrelease      4, nreacquire     14, nreclaimed      0, nwaited  0, nprogress     95
+   26 -    failed w/lock:     13, failed w/o lock:     52, aborted steals:      0
+   26 -    ngets:      0  ( -nan usec/get) nxfer:      0
+   26 - TSC: get: 14M (564420 x 26)  add: 0M (0 x 0) inplace: 0M (0)
+   26 - TSC: addfinish: 0M (0) progress: 1M (16856 x 95) reclaim: 0M (83 x 95)
+   26 - TSC: ensure: 0M (0 x 0) release: 0M (11580 x 4) reacquire: 0M (25549 x 14)
+   26 - TSC: pushhead: 0M (0) poptail: 8M (0 x 0)

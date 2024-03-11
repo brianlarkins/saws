@@ -1,0 +1,95 @@
+hello! try to steal from proc 12
+hello! try to steal from proc 23
+  Task ( 0,  27) processed by worker 90
+hello! try to steal from proc 23
+  Task ( 0,  43) processed by worker 90
+hello! try to steal from proc 8
+  Task ( 0,   0) processed by worker 90
+hello! try to steal from proc 11
+  Task ( 0, 2603) processed by worker 90
+hello! try to steal from proc 19
+  Task ( 0, 3333) processed by worker 90
+hello! try to steal from proc 6
+  Task ( 0, 1797) processed by worker 90
+hello! try to steal from proc 16
+  Task ( 0, 1793) processed by worker 90
+hello! try to steal from proc 27
+  Task ( 0, 1573) processed by worker 90
+hello! try to steal from proc 3
+  Task ( 0, 2079) processed by worker 90
+  Task ( 0, 2078) processed by worker 90
+  Task ( 0, 2077) processed by worker 90
+hello! try to steal from proc 6
+  Task ( 0, 2120) processed by worker 90
+hello! try to steal from proc 6
+  Task ( 0, 1608) processed by worker 90
+  Task ( 0, 1607) processed by worker 90
+hello! try to steal from proc 6
+  Task ( 0, 1623) processed by worker 90
+hello! try to steal from proc 8
+  Task ( 0, 117) processed by worker 90
+hello! try to steal from proc 6
+  Task ( 0, 3588) processed by worker 90
+hello! try to steal from proc 28
+  Task ( 0, 3108) processed by worker 90
+  Task ( 0, 3107) processed by worker 90
+hello! try to steal from proc 6
+  Task ( 0, 1633) processed by worker 90
+hello! try to steal from proc 16
+  Task ( 0, 2212) processed by worker 90
+  Task ( 0, 2211) processed by worker 90
+hello! try to steal from proc 16
+  Task ( 0, 2230) processed by worker 90
+hello! try to steal from proc 43
+  Task ( 0, 1073) processed by worker 90
+hello! try to steal from proc 28
+  Task ( 0, 2228) processed by worker 90
+hello! try to steal from proc 20
+  Task ( 0, 2850) processed by worker 90
+hello! try to steal from proc 24
+  Task ( 0, 522) processed by worker 90
+hello! try to steal from proc 34
+  Task ( 0, 512) processed by worker 90
+hello! try to steal from proc 16
+  Task ( 0, 528) processed by worker 90
+hello! try to steal from proc 28
+  Task ( 0, 520) processed by worker 90
+hello! try to steal from proc 37
+  Task ( 0, 3158) processed by worker 90
+hello! try to steal from proc 4
+  Task ( 0, 546) processed by worker 90
+hello! try to steal from proc 34
+  Task ( 0, 151) processed by worker 90
+hello! try to steal from proc 28
+  Task ( 0, 544) processed by worker 90
+hello! try to steal from proc 37
+  Task ( 0, 2870) processed by worker 90
+hello! try to steal from proc 39
+hello! try to steal from proc 28
+  Task ( 0, 1262) processed by worker 90
+hello! try to steal from proc 28
+  Task ( 0, 1265) processed by worker 90
+  Task ( 0, 2446) processed by worker 90
+hello! try to steal from proc 45
+  Task ( 0, 2736) processed by worker 90
+hello! try to steal from proc 13
+  Task ( 0, 569) processed by worker 90
+hello! try to steal from proc 36
+  Task ( 0, 183) processed by worker 90
+hello! try to steal from proc 34
+  Task ( 0, 3250) processed by worker 90
+hello! try to steal from proc 13
+  Task ( 0, 3241) processed by worker 90
+   90 - Tasks: completed  43, spawned   0, stolen  62
+   90 -      : nsteals  38, steal fails -- 1133, aborted   0
+   90 -  Time: process  0.48859s = active  0.48859s + passive  0.00000s, passive count=0 (    -nanms avg), searching  0.00824s ( 1.69 %)
+   90 -      : dispersion  0.00000ms, disp. steal fails -- unlocked   0, locked   1
+   90 -      : avg acquire  0.00000ms, imbalance  0.00000ms
+   90 -      : timers:  0.00000ms  0.00000ms  0.00000ms  0.00000  0.00000ms
+   90 - LAWS-Q: nrelease     41, nreacquire     71, nreclaimed      0, nwaited  0, nprogress   1215
+   90 -    failed w/lock:      3, failed w/o lock:   1130, aborted steals:      0
+   90 -    ngets:      0  ( -nan usec/get) nxfer:      0
+   90 - TSC: get: 129M (2953739 x 44)  add: 0M (0 x 0) inplace: 0M (0)
+   90 - TSC: addfinish: 0M (0) progress: 24M (20285 x 1215) reclaim: 0M (68 x 1215)
+   90 - TSC: ensure: 0M (0 x 0) release: 0M (3253 x 41) reacquire: 1M (18738 x 71)
+   90 - TSC: pushhead: 0M (0) poptail: 7M (0 x 0)
