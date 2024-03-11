@@ -187,6 +187,15 @@ int laws_head(laws_local_t *rb) {
   return rb->head;
 }
 
+int laws_split(laws_local_t *rb) {
+    int weird_head = (rb->head + 1) % rb->max_size;
+    int split = weird_head - rb->nlocal;
+    if (split < 0) {
+        split = rb->max_size + split;
+    }
+    return split;
+}
+
 
 int laws_local_isempty(laws_local_t *rb) {
   return rb->nlocal == 0;
@@ -209,11 +218,7 @@ int laws_local_size(laws_local_t *rb) {
 }
 
 int laws_reserved_size(laws_local_t *rb) {
-    int weird_head = (rb->head + 1) % rb->max_size;
-    int split = (weird_head - rb->nlocal);
-    if (split < 0) {
-        split = rb->max_size + split;
-    }
+    int split = laws_split(rb);
     int public_size = split - rb->vtail;
     if (public_size < 0) {
         public_size = rb->max_size + public_size;
@@ -249,6 +254,7 @@ int laws_size(void *b) {
   laws_global_t *g_meta = rb->g_meta;
   // update metadata using communication
   // (this function is called rarely, so we shouldn't encounter too much of a performance hit)
+  // usually only called after an update getting metadata (gtc_progress), so we should (!) be fine
   return laws_local_size(rb) + laws_shared_size(g_meta);
   //return laws_local_size(rb) + laws_shared_size(
    //       &rb->global[rb->rank_in_node]);
@@ -374,10 +380,7 @@ void laws_release(laws_local_t *rb) {
   if ((laws_local_size(rb)) > 0 && (laws_shared_size(rb->g_meta) == 0)) {
   //if (rb->release) {
     int amount  = laws_local_size(rb)/2 + laws_local_size(rb) % 2;
-    int split = rb->head - rb->nlocal;
-    if (split < 0) {
-        split = rb->max_size + split;
-    }
+    int split = laws_split(rb);
     rb->nlocal -= amount;
     split   = (split + amount) % rb->max_size;
     laws_global_t *g_meta = rb->g_meta;
@@ -386,7 +389,6 @@ void laws_release(laws_local_t *rb) {
     rb->nrelease++;
     gtc_lprintf(DBGSHRB, "release: local size: %d shared size: %d\n", laws_local_size(rb), laws_shared_size(rb->g_meta));
     //printf("release: local size: %d shared size: %d\n", laws_local_size(rb), laws_shared_size(rb->global));
-    rb->release = 0;
   }
   TC_STOP_TIMER(rb->tc, release);
   GTC_EXIT();
@@ -459,8 +461,6 @@ static inline void laws_push_n_head_impl(laws_local_t *rb, int proc, void *e, in
   rb->nlocal += n;
   old_head = rb->head;
   rb->head = (rb->head + n) % rb->max_size;
-  printf("old_head: %d\n", old_head);
-  printf("new head: %d\n", rb->head);
   head        = rb->head;
 
   if (head > old_head || old_head == rb->max_size - 1) {
@@ -496,8 +496,6 @@ void laws_push_head(laws_local_t *rb, int proc, void *e, int size) {
   memcpy(laws_elem_addr(rb, proc, (old_head+1)%rb->max_size), e, size);
 
   //printf("(%d) pushed head\n", rb->procid);
-  printf("old_head: %d\n", old_head);
-  printf("new head: %d\n", rb->head);
   GTC_EXIT();
 }
 
