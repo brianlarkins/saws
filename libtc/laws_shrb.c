@@ -309,6 +309,7 @@ int laws_reclaim_space(laws_local_t *rb) {
   int g_vtail = g_meta->vtail;
   int tail = g_meta->tail;
   TC_START_TIMER(rb->tc, reclaim);
+  //assert(g_vtail <= tail);
   if ((old_vtail != tail) && (g_vtail == tail)) {
     rb->vtail = g_vtail; // Update our vtail to match global
     if (tail > old_vtail) {
@@ -359,6 +360,7 @@ void laws_ensure_space(laws_local_t *rb, int n) {
       }
       rb->waiting = 1;
       while ((reclaimed = laws_reclaim_space(rb)) == 0) {
+          printf("dingus alert!");
           laws_print(rb);
           shmem_getmem(rb->g_meta, rb->g_meta, sizeof(laws_global_t), rb->root);
       } /* Busy Wait */ ;
@@ -426,7 +428,9 @@ int laws_reacquire(laws_local_t *rb) {
   shmem_getmem(rb->g_meta, rb->g_meta, sizeof(laws_global_t), rb->root);
   laws_global_t *g_meta = rb->g_meta;
   {
-    if (laws_local_size(rb) == 0) {
+    if (laws_shared_size(rb->g_meta) > laws_local_size(rb)) {
+      printf("laws_shared_size: %d\n", laws_shared_size(rb->g_meta));
+      printf("laws_local_size: %d\n", laws_local_size(rb));
       int diff    = laws_shared_size(rb->g_meta) - laws_local_size(rb);
       amount      = diff/2 + diff % 2;
       rb->nlocal += amount;
@@ -677,6 +681,7 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
       shmem_quiet();
 
     } else {    // Need to wrap around
+      printf("split steal is go\n");
       int part_size  = (trb)->max_size - (trb)->tail;
 
       shmem_getmem_nbi(laws_buff_elem_addr(trb, e, 0), laws_elem_addr(trb->local, proc, (trb)->tail), part_size * (trb)->elem_size, trb->procid);
