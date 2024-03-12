@@ -184,9 +184,11 @@ void laws_print(laws_local_t *rb) {
 
 
 int laws_head(laws_local_t *rb) {
-  return rb->head;
+    int split = rb->g_meta->split;
+    return (split + rb->nlocal - 1) % rb->max_size;
 }
 
+/*
 int laws_split(laws_local_t *rb) {
     int weird_head = (rb->head + 1) % rb->max_size;
     int split = weird_head - rb->nlocal;
@@ -195,6 +197,7 @@ int laws_split(laws_local_t *rb) {
     }
     return split;
 }
+*/
 
 
 int laws_local_isempty(laws_local_t *rb) {
@@ -217,6 +220,7 @@ int laws_local_size(laws_local_t *rb) {
   return rb->nlocal;
 }
 
+/*
 int laws_reserved_size(laws_local_t *rb) {
     int split = laws_split(rb);
     int public_size = split - rb->vtail;
@@ -225,6 +229,7 @@ int laws_reserved_size(laws_local_t *rb) {
     }
     return public_size + rb->nlocal;
 }
+*/
 
 int laws_shared_size(laws_global_t *rb) {
   if (laws_shared_isempty(rb)) // Shared is empty
@@ -333,7 +338,7 @@ void laws_ensure_space(laws_local_t *rb, int n) {
   // wait until others finish their deferred copies so we can reclaim space.
   int reclaimed;
   TC_START_TIMER(rb->tc, ensure);
-  if ((rb->max_size - laws_reserved_size(rb)) < n) {
+  if ((rb->max_size - (laws_local_size(rb) + laws_public_size(rb->g_meta))) < n) {
     // should we lock here?
     laws_lock(rb->g_meta, rb->root);
     {
@@ -380,7 +385,7 @@ void laws_release(laws_local_t *rb) {
   if ((laws_local_size(rb)) > 0 && (laws_shared_size(rb->g_meta) == 0)) {
   //if (rb->release) {
     int amount  = laws_local_size(rb)/2 + laws_local_size(rb) % 2;
-    int split = laws_split(rb);
+    int split = rb->g_meta->split;
     rb->nlocal -= amount;
     split   = (split + amount) % rb->max_size;
     laws_global_t *g_meta = rb->g_meta;
@@ -458,10 +463,9 @@ static inline void laws_push_n_head_impl(laws_local_t *rb, int proc, void *e, in
   laws_ensure_space(rb, n);
 
   // Proceed with the push
+  old_head = laws_head(rb);
   rb->nlocal += n;
-  old_head = rb->head;
-  rb->head = (rb->head + n) % rb->max_size;
-  head        = rb->head;
+  head        = laws_head(rb);
 
   if (head > old_head || old_head == rb->max_size - 1) {
     memcpy(laws_elem_addr(rb, proc, (old_head+1)%rb->max_size), e, n*size);
@@ -491,7 +495,6 @@ void laws_push_head(laws_local_t *rb, int proc, void *e, int size) {
   // Proceed with the push
   old_head    = laws_head(rb);
   rb->nlocal += 1;
-  rb->head = (old_head + 1) % rb->max_size;
 
   memcpy(laws_elem_addr(rb, proc, (old_head+1)%rb->max_size), e, size);
 
@@ -513,8 +516,6 @@ void *laws_alloc_head(laws_local_t *rb) {
   laws_ensure_space(rb, 1);
 
   rb->nlocal += 1;
-  rb->head += 1;
-  rb->head %= rb->max_size;
 
   GTC_EXIT(laws_elem_addr(rb, rb->procid, laws_head(rb)));
 }
@@ -540,8 +541,6 @@ int laws_pop_head(void *b, int proc, void *buf) {
     memcpy(buf, laws_elem_addr(rb, proc, old_head), rb->elem_size);
 
     rb->nlocal--;
-    rb->head--;
-    if (rb->head < 0) { rb->head = rb->max_size + rb->head; };
     buf_valid = 1;
   }
 
@@ -622,13 +621,8 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
   }
   */
 
-  if (myrb->alt_root) {
-      shmem_getmem(&copy, &myrb->global[rank], sizeof(laws_global_t), root);
-      trb = &copy;
-  }else {
-      shmem_getmem(&myrb->global[rank],  &myrb->global[rank], sizeof(laws_global_t), root);
-      trb = &myrb->global[rank];
-  }
+  shmem_getmem(&copy, &myrb->global[rank], sizeof(laws_global_t), root);
+  trb = &copy;
 
   // memory address of global metadata (NOTE: copy memory address != actual mem address)
   // keep myself from screwing up mem pointers later on 
