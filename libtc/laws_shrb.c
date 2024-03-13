@@ -291,7 +291,7 @@ void laws_lock(laws_local_t *rb, int proc) {
   synch_mutex_lock(&rb->lock, proc);
 }
 
-int laws_trylock(laws_global_t *rb, int proc) {
+int laws_trylock(laws_local_t *rb, int proc) {
   return synch_mutex_trylock(&rb->lock, proc);
 }
 
@@ -632,7 +632,7 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
     //printf("rank is %d\n", rank);
     //printf("root is %d\n", root);
     //printf("address is %p\n", &myrb->global[rank]);
-    if (!laws_trylock(&myrb->global[rank], root)) {
+    if (!laws_trylock(myrb, act_proc)) {
       return -1;
     }
   } else {
@@ -754,7 +754,7 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
 
 #else
     shmem_quiet();
-    laws_unlock(myrb, proc);
+    laws_unlock(myrb, act_proc);
 #endif
 
   } else /* (n <= 0) */ {
