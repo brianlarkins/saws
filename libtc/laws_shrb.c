@@ -111,9 +111,12 @@ laws_local_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   synch_mutex_init(&rb->lock);
   //synch_mutex_init(&rb->g_meta->lock);
 
+  synch_mutex_init(&rb->g_meta->lock);
+  /*
   for (int i = 0; i < cores_per_node; i++) {
       synch_mutex_init(&rb->global[i].lock);
   }
+  */
 
   laws_reset(rb);
 
@@ -232,12 +235,15 @@ int laws_reserved_size(laws_local_t *rb) {
 */
 
 int laws_shared_size(laws_global_t *rb) {
-  if (laws_shared_isempty(rb)) // Shared is empty
+  if (laws_shared_isempty(rb)) {// Shared is empty
     return 0;
-  else if (rb->tail < rb->split)   // No wrap-around
+  }else if (rb->tail < rb->split) {   // No wrap-around
+    //printf("dingus1\n");
     return rb->split - rb->tail;
-  else                             // Wrap-around
+  }else  {                            // Wrap-around
+    //printf("dingus2\n");
     return rb->split + rb->max_size - rb->tail;
+  }
 }
 
 
@@ -360,8 +366,8 @@ void laws_ensure_space(laws_local_t *rb, int n) {
       }
       rb->waiting = 1;
       while ((reclaimed = laws_reclaim_space(rb)) == 0) {
-          printf("dingus alert!");
-          laws_print(rb);
+          //printf("dingus alert!");
+          //laws_print(rb);
           shmem_getmem(rb->g_meta, rb->g_meta, sizeof(laws_global_t), rb->root);
       } /* Busy Wait */ ;
       rb->waiting = 0;
@@ -392,7 +398,7 @@ void laws_release(laws_local_t *rb) {
     split   = (split + amount) % rb->max_size;
     laws_global_t *g_meta = rb->g_meta;
     g_meta->split = split;
-    shmem_putmem(&g_meta->split, &split, sizeof(split), rb->root);
+    shmem_putmem(&g_meta->split, &split, sizeof(int), rb->root);
     rb->nrelease++;
     gtc_lprintf(DBGSHRB, "release: local size: %d shared size: %d\n", laws_local_size(rb), laws_shared_size(rb->g_meta));
     //printf("release: local size: %d shared size: %d\n", laws_local_size(rb), laws_shared_size(rb->global));
@@ -409,6 +415,7 @@ void laws_release_all(laws_local_t *rb) {
   rb->nlocal -= amount;
   
   g_meta->split   = (g_meta->split + amount) % rb->max_size;
+  //printf("release all is releasing all\n");
   shmem_putmem(&g_meta->split, &g_meta->split, sizeof(int), rb->root);
   rb->nrelease++;
   GTC_EXIT();
@@ -429,14 +436,20 @@ int laws_reacquire(laws_local_t *rb) {
   laws_global_t *g_meta = rb->g_meta;
   {
     if (laws_shared_size(rb->g_meta) > laws_local_size(rb)) {
-      printf("laws_shared_size: %d\n", laws_shared_size(rb->g_meta));
-      printf("laws_local_size: %d\n", laws_local_size(rb));
+      //printf("laws_shared_size: %d\n", laws_shared_size(rb->g_meta));
+      //printf("laws_local_size: %d\n", laws_local_size(rb));
+      //printf("before split movement:\n");
+      //laws_print(rb);
       int diff    = laws_shared_size(rb->g_meta) - laws_local_size(rb);
       amount      = diff/2 + diff % 2;
       rb->nlocal += amount;
       g_meta->split   = (g_meta->split - amount);
-      if (g_meta->split < 0)
+      //printf("after split movement:\n");
+      //laws_print(rb);
+      if (g_meta->split < 0) {
+        //printf("donkus\n");
         g_meta->split += rb->max_size;
+      }
       shmem_putmem(&g_meta->split, &g_meta->split, sizeof(int), rb->root);
       rb->nreacquire++;
       gtc_lprintf(DBGSHRB, "reacquire: local size: %d shared size: %d\n", laws_local_size(rb), laws_shared_size(g_meta));
@@ -540,15 +553,19 @@ int laws_pop_head(void *b, int proc, void *buf) {
     laws_reacquire(rb);
 
   if (laws_local_size(rb) > 0) {
+    //printf("split: %d\n", rb->g_meta->split);
+    //printf("nlocal: %d\n", rb->nlocal);
     old_head = laws_head(rb);
 
     memcpy(buf, laws_elem_addr(rb, proc, old_head), rb->elem_size);
 
     rb->nlocal--;
+    //printf("split(after): %d\n", rb->g_meta->split);
+    //printf("nlocal(after): %d\n", rb->nlocal);
     buf_valid = 1;
   }
 
-  printf("popped head %d\n", old_head);
+  //printf("popped head %d\n", old_head);
 
   // Assertion: !buf_valid => laws_isempty(rb)
   assert(buf_valid || (!buf_valid && laws_isempty(rb)));
@@ -657,11 +674,11 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
     // int  metadata;
     int  xfer_size;
     int *loc_addr, *rem_addr;
-    printf("ready to steal from proc %d; tail: %d; split: %d; max_size: %d\n", rank, trb->tail, trb->split, trb->max_size);
-    printf("will steal %d\n", n);
+    //printf("ready to steal from proc %d; tail: %d; split: %d; max_size: %d\n", rank, trb->tail, trb->split, trb->max_size);
+    //printf("will steal %d\n", n);
 
     new_tail    = ((trb)->tail + n) % (trb)->max_size;
-    printf("new_tail is %d\n", new_tail);
+    //printf("new_tail is %d\n", new_tail);
 
     loc_addr    = &new_tail;
     rem_addr    = &g_mem->tail;
@@ -675,13 +692,13 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
     // Transfer work into the local buffer
     if (((trb)->tail + (n-1)) < (trb)->max_size) {    // No need to wrap around
 
-      printf("steal starting from mem addr: %p\n", laws_elem_addr(trb->local, proc, (trb)->tail));
+      //printf("steal starting from mem addr: %p\n", laws_elem_addr(trb->local, proc, (trb)->tail));
       // TODO: proc needs to be the actual rank, not the rank in node
       shmem_getmem_nbi(e, laws_elem_addr(trb->local, proc, (trb)->tail), n * (trb)->elem_size, trb->procid);    // Store n elems, starting at remote tail, in e
       shmem_quiet();
 
     } else {    // Need to wrap around
-      printf("split steal is go\n");
+      //printf("split steal is go\n");
       int part_size  = (trb)->max_size - (trb)->tail;
 
       shmem_getmem_nbi(laws_buff_elem_addr(trb, e, 0), laws_elem_addr(trb->local, proc, (trb)->tail), part_size * (trb)->elem_size, trb->procid);
@@ -691,12 +708,14 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
       shmem_quiet();
 
     }
+    /*
     int *steal_from;
     for (int i = 1; i < n + 1; i++) {
         steal_from = (int *)((e + (i * trb->elem_size)) + 8);
         printf("%d, ", *(steal_from - 4));
     }
     printf("\n");
+    */
 
 #ifndef LAWS_NODC
     // Accumulate itail_inc onto the victim's intermediate tail
