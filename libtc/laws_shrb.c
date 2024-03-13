@@ -111,7 +111,7 @@ laws_local_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   synch_mutex_init(&rb->lock);
   //synch_mutex_init(&rb->g_meta->lock);
 
-  synch_mutex_init(&rb->g_meta->lock);
+  //synch_mutex_init(&rb->g_meta->lock);
   /*
   for (int i = 0; i < cores_per_node; i++) {
       synch_mutex_init(&rb->global[i].lock);
@@ -275,23 +275,36 @@ int laws_size(void *b) {
 /*==================== SYNCHRONIZATION ====================*/
 
 
+/*
 void laws_lock(laws_global_t *rb, int proc) {
   //printf("address of laws_global_t: %p\n", rb);
   //printf("address of lock: %p\n", &rb->lock);
   //printf("proc is %d\n", proc);
   synch_mutex_lock(&rb->lock, proc);
 }
+*/
 
+void laws_lock(laws_local_t *rb, int proc) {
+  //printf("address of laws_global_t: %p\n", rb);
+  //printf("address of lock: %p\n", &rb->lock);
+  //printf("proc is %d\n", proc);
+  synch_mutex_lock(&rb->lock, proc);
+}
 
 int laws_trylock(laws_global_t *rb, int proc) {
   return synch_mutex_trylock(&rb->lock, proc);
 }
 
 
+/*
 void laws_unlock(laws_global_t *rb, int proc) {
   synch_mutex_unlock(&rb->lock, proc);
 }
+*/
 
+void laws_unlock(laws_local_t *rb, int proc) {
+  synch_mutex_unlock(&rb->lock, proc);
+}
 
 /*==================== SPLIT MOVEMENT ====================*/
 
@@ -347,7 +360,7 @@ void laws_ensure_space(laws_local_t *rb, int n) {
   TC_START_TIMER(rb->tc, ensure);
   if ((rb->max_size - (laws_local_size(rb) + laws_public_size(rb->g_meta))) < n) {
     // should we lock here?
-    laws_lock(rb->g_meta, rb->root);
+    laws_lock(rb, rb->procid);
     {
       /* 
        * Up-to-date version of this would require communication to 
@@ -373,7 +386,7 @@ void laws_ensure_space(laws_local_t *rb, int n) {
       rb->waiting = 0;
       rb->nwaited++;
     }
-    laws_unlock(rb->g_meta, rb->root);
+    laws_unlock(rb, rb->procid);
   }
   TC_STOP_TIMER(rb->tc, ensure);
   GTC_EXIT();
@@ -429,7 +442,7 @@ int laws_reacquire(laws_local_t *rb) {
   TC_START_TIMER(rb->tc, reacquire);
   // Favor placing work in the local portion -- if there is only one task
   // available this scheme will put it in the local portion.
-  laws_lock(rb->g_meta, rb->root);
+  laws_lock(rb, rb->procid);
   
   // Update our view of the global metadata before reacquiring
   shmem_getmem(rb->g_meta, rb->g_meta, sizeof(laws_global_t), rb->root);
@@ -458,7 +471,7 @@ int laws_reacquire(laws_local_t *rb) {
     // Assertion: laws_local_isempty(rb) => laws_isempty(rb)
     assert(!laws_local_isempty(rb) || (laws_isempty(rb) && laws_local_isempty(rb)));
   }
-  laws_unlock(rb->g_meta, rb->root);
+  laws_unlock(rb, rb->procid);
   TC_STOP_TIMER(rb->tc, reacquire);
 
   GTC_EXIT(amount);
@@ -604,12 +617,15 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
   laws_global_t copy;
   int root;
   int rank;
+  int act_proc;
   if (myrb->alt_root) {
       root = proc - (proc % myrb->ncores);
       rank = proc % myrb->ncores;
+      act_proc = proc;
   }else {
       root = myrb->root;
       rank = proc;
+      act_proc = myrb->global[rank].procid;
   }
   // Attempt to get the lock
   if (trylock) {
@@ -623,7 +639,7 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
     //printf("rank is %d\n", rank);
     //printf("root is %d\n", root);
     //printf("address is %p\n", &myrb->global[rank]);
-    laws_lock(&myrb->global[rank], root);
+    laws_lock(myrb, act_proc);
   }
 
   // Copy the remote RB's metadata
@@ -687,7 +703,7 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
     // Put new tail back to proc 0's global array
     shmem_putmem(rem_addr, loc_addr, xfer_size, root);
 
-    laws_unlock(&myrb->global[rank], root); // Deferred copy unlocks early
+    laws_unlock(myrb, act_proc); // Deferred copy unlocks early
 
     // Transfer work into the local buffer
     if (((trb)->tail + (n-1)) < (trb)->max_size) {    // No need to wrap around
@@ -742,7 +758,7 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
 #endif
 
   } else /* (n <= 0) */ {
-    laws_unlock(g_mem, root);
+    laws_unlock(myrb, act_proc);
   }
   TC_STOP_TIMER(myrb->tc, poptail);
   __gtc_marker[1] = 0;
