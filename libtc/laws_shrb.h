@@ -62,6 +62,8 @@ struct laws_local_s {
   int             alt_root; // alternative root from which to steal (for internode stealing)
   int             our_root; // the root of *this* proc
   struct laws_global_s   *global;
+  struct laws_global_s   *gaddrs;
+  struct laws_global_s   *gaddr;
   struct laws_global_s   *g_meta;
 
   tc_t           *tc;        // task collection associated with queue (for stats)
@@ -91,7 +93,6 @@ struct laws_global_s {
     int                 split;     // index of split between local-only and local-shared elements
     int                 tail;      // Index of tail element (between 0 and rb_size-1)
     int                 procid;    // proc id associated with global metadata
-    struct laws_local_s *local;    // pointer to local metadata and queue (just in case)
     synch_mutex_t       lock;
     tc_t                *tc;
 };

@@ -114,7 +114,6 @@ void gtc_progress_laws(gtc_t gtc) {
   tc_t *tc = gtc_lookup(gtc);
   TC_START_TIMER(tc,progress);
   laws_local_t *local_md = (laws_local_t *)tc->shared_rb;
-  laws_global_t *global = local_md->global;
 
 #if 0 /* no task pushing */
   // Check the inbox for new work
@@ -134,7 +133,7 @@ void gtc_progress_laws(gtc_t gtc) {
 #endif /* no task pushing */
 
   // Update our view of global metadata
-  shmem_getmem(global, global, sizeof(laws_global_t) * local_md->ncores, local_md->root);
+  shmem_getmem(local_md->global, local_md->gaddrs, sizeof(laws_global_t) * local_md->ncores, local_md->root);
   //shmem_getmem(local_md->g_meta, local_md->g_meta, sizeof(laws_global_t), local_md->root);
 
   // Update the split
@@ -243,7 +242,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
               if (amnt > 0) {
                   // printf("hello! try to steal from proc %d\n", i);
                   steal_root = local->root;
-                  printf("will steal next from %d\n", i);
+                  //printf("will steal next from %d\n", i);
                   break;
               }
           } 
@@ -264,9 +263,9 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
              gcurr = &target_rb;
              //printf("shmem_getmem attempt #1\n");
              //printf("Address to retrieve: %p\n", &garray[relative_proc]);
-             shmem_getmem(gcurr, &garray[relative_proc], sizeof(laws_global_t), steal_root);
+             shmem_getmem(gcurr, &local->gaddrs[relative_proc], sizeof(laws_global_t), steal_root);
              //printf("get was a success\n");
-             memgrab = &garray[relative_proc];
+             memgrab = &local->gaddrs[relative_proc];
              amnt = laws_shared_size(gcurr);
           }
 

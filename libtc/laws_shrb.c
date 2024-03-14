@@ -81,11 +81,12 @@ laws_local_t *laws_create(int elem_size, int max_size, tc_t *tc) {
 
   // allocate memory for global array of shared metadata
   int cores_per_node = sysconf(_SC_NPROCESSORS_ONLN);
-  rb->global = gtc_shmem_calloc(cores_per_node, sizeof(laws_global_t));
+  rb->gaddrs = gtc_shmem_calloc(cores_per_node, sizeof(laws_global_t));
   //printf("Process %d: cores per node is %d\n", procid, cores_per_node);
 
-  laws_global_t *global = rb->global;
-  
+  // local copy of the global array located in the root process
+  // not using a separate array results in undefined behavior
+  rb->global = calloc(cores_per_node, sizeof(laws_global_t));
 
   rb->rank_in_node = procid % cores_per_node;
   int rank_in_node = rb->rank_in_node;
@@ -98,12 +99,12 @@ laws_local_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   rb->our_root = rb->root;
   rb->alt_root = 0;
   rb->ncores = cores_per_node;
-  rb->g_meta = &global[rank_in_node];
+  rb->g_meta = &rb->global[rank_in_node];
+  rb->gaddr = &rb->gaddrs[rank_in_node];
   // rb->release = 1;
 
   // Set local pointer in our global metadata to memory address of our local metadata
   // Needed to access the queue
-  rb->g_meta->local = rb;
 
   rb->tc = tc;
 
@@ -144,7 +145,7 @@ void laws_reset(laws_local_t *rb) {
   rb->waiting= 0;
 
   // Save global metadata to root process
-  shmem_putmem(&rb->global[rb->rank_in_node], g, sizeof(laws_global_t), rb->root);
+  shmem_putmem(rb->gaddr, g, sizeof(laws_global_t), rb->root);
   
   // Reset queue statistics
   rb->nrelease   = 0;
@@ -334,10 +335,10 @@ int laws_reclaim_space(laws_local_t *rb) {
   if ((old_vtail != tail) && (g_vtail == tail)) {
     rb->vtail = g_vtail; // Update our vtail to match global
     if (tail > old_vtail) {
-      printf("tail > old_vtail reclaim\n");
+      //printf("tail > old_vtail reclaim\n");
       reclaimed = g_vtail - old_vtail;
     }else {
-      printf("else reclaim\n");
+      //printf("else reclaim\n");
       reclaimed = rb->max_size - old_vtail + tail;
     }
 
@@ -371,19 +372,19 @@ void laws_ensure_space(laws_local_t *rb, int n) {
        * TODO: Let's worry about this later.
        * Response to TODO: later has come. Also this *should* work now.
        */
-      shmem_getmem(rb->g_meta, rb->g_meta, sizeof(laws_global_t), rb->root);
+      shmem_getmem(rb->g_meta, rb->gaddr, sizeof(laws_global_t), rb->root);
       if ((rb->max_size - laws_size(rb)) < n) {
         // Error: amount of reclaimable space is less than what we need.
         // Try increasing the size of the queue.
         printf("LAWS_SHRB: Error, not enough space in the queue to push %d elements\n", n);
-        laws_print(rb);
+        //laws_print(rb);
         assert(0);
       }
       rb->waiting = 1;
       while ((reclaimed = laws_reclaim_space(rb)) == 0) {
-          printf("dingus alert!\n");
-          laws_print(rb);
-          shmem_getmem(rb->g_meta, rb->g_meta, sizeof(laws_global_t), rb->root);
+          //printf("dingus alert!\n");
+          //laws_print(rb);
+          shmem_getmem(rb->g_meta, rb->gaddr, sizeof(laws_global_t), rb->root);
       } /* Busy Wait */ ;
       rb->waiting = 0;
       rb->nwaited++;
@@ -406,8 +407,8 @@ void laws_release(laws_local_t *rb) {
   //
   // Update: we should have something more up-to-date now (gtc_progress)
   if ((laws_local_size(rb)) > 0 && (laws_shared_size(rb->g_meta) == 0)) {
-    printf("before release: \n");
-    laws_print(rb);
+    //printf("before release: \n");
+    //laws_print(rb);
   //if (rb->release) {
     int amount  = laws_local_size(rb)/2 + laws_local_size(rb) % 2;
     int split = rb->g_meta->split;
@@ -415,10 +416,10 @@ void laws_release(laws_local_t *rb) {
     split   = (split + amount) % rb->max_size;
     laws_global_t *g_meta = rb->g_meta;
     g_meta->split = split;
-    shmem_putmem(&g_meta->split, &split, sizeof(int), rb->root);
+    shmem_putmem(&rb->gaddr->split, &split, sizeof(int), rb->root);
     rb->nrelease++;
-    printf("after release: \n");
-    laws_print(rb);
+    //printf("after release: \n");
+    //laws_print(rb);
     gtc_lprintf(DBGSHRB, "release: local size: %d shared size: %d\n", laws_local_size(rb), laws_shared_size(rb->g_meta));
     //printf("release: local size: %d shared size: %d\n", laws_local_size(rb), laws_shared_size(rb->global));
   }
@@ -433,9 +434,11 @@ void laws_release_all(laws_local_t *rb) {
   laws_global_t *g_meta = rb->g_meta;
   rb->nlocal -= amount;
   
-  g_meta->split   = (g_meta->split + amount) % rb->max_size;
+  int split = g_meta->split;
+  split   = (split + amount) % rb->max_size;
   //printf("release all is releasing all\n");
-  shmem_putmem(&g_meta->split, &g_meta->split, sizeof(int), rb->root);
+  shmem_putmem(&rb->gaddr->split, &split, sizeof(int), rb->root);
+  g_meta->split = split;
   rb->nrelease++;
   GTC_EXIT();
 }
@@ -450,26 +453,28 @@ int laws_reacquire(laws_local_t *rb) {
   // available this scheme will put it in the local portion.
   laws_lock(rb, rb->procid);
   
-  // Update our view of the global metadata before reacquiring
-  shmem_getmem(rb->g_meta, rb->g_meta, sizeof(laws_global_t), rb->root);
+  // Update our view of our global metadata before reacquiring
+  shmem_getmem(rb->g_meta, rb->gaddr, sizeof(laws_global_t), rb->root);
   laws_global_t *g_meta = rb->g_meta;
   {
     if (laws_shared_size(rb->g_meta) > laws_local_size(rb)) {
       //printf("laws_shared_size: %d\n", laws_shared_size(rb->g_meta));
       //printf("laws_local_size: %d\n", laws_local_size(rb));
-      printf("before split movement:\n");
-      laws_print(rb);
+      int split = g_meta->split;
+      //printf("before split movement:\n");
+      //laws_print(rb);
       int diff    = laws_shared_size(rb->g_meta) - laws_local_size(rb);
       amount      = diff/2 + diff % 2;
       rb->nlocal += amount;
-      g_meta->split   = (g_meta->split - amount);
-      printf("after split movement:\n");
-      laws_print(rb);
-      if (g_meta->split < 0) {
+      split = split - amount;
+      //printf("after split movement:\n");
+      //laws_print(rb);
+      if (split < 0) {
         //printf("donkus\n");
-        g_meta->split += rb->max_size;
+        split += rb->max_size;
       }
-      shmem_putmem(&g_meta->split, &g_meta->split, sizeof(int), rb->root);
+      shmem_putmem(&rb->gaddr->split, &split, sizeof(int), rb->root);
+      g_meta->split = split;
       rb->nreacquire++;
       gtc_lprintf(DBGSHRB, "reacquire: local size: %d shared size: %d\n", laws_local_size(rb), laws_shared_size(g_meta));
     }
@@ -632,6 +637,7 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
       root = myrb->root;
       rank = proc;
       act_proc = myrb->global[rank].procid;
+      //printf("act_proc: %d\n", act_proc);
   }
   // Attempt to get the lock
   if (trylock) {
@@ -664,12 +670,12 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
   }
   */
 
-  shmem_getmem(&copy, &myrb->global[rank], sizeof(laws_global_t), root);
+  shmem_getmem(&copy, &myrb->gaddrs[rank], sizeof(laws_global_t), root);
   trb = &copy;
 
   // memory address of global metadata (NOTE: copy memory address != actual mem address)
   // keep myself from screwing up mem pointers later on 
-  laws_global_t *g_mem = &myrb->global[rank];
+  laws_global_t *g_mem = &myrb->gaddrs[rank];
 
 
   switch (steal_vol) {
@@ -716,7 +722,7 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
 
       //printf("steal starting from mem addr: %p\n", laws_elem_addr(trb->local, proc, (trb)->tail));
       // TODO: proc needs to be the actual rank, not the rank in node
-      shmem_getmem_nbi(e, laws_elem_addr(myaddr, proc, (trb)->tail), n * (trb)->elem_size, trb->procid);    // Store n elems, starting at remote tail, in e
+      shmem_getmem_nbi(e, laws_elem_addr(myrb, proc, (trb)->tail), n * (trb)->elem_size, trb->procid);    // Store n elems, starting at remote tail, in e
       shmem_quiet();
 
     } else {    // Need to wrap around
@@ -730,12 +736,14 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
       shmem_quiet();
 
     }
+    /*
     int *steal_from;
     for (int i = 1; i < n + 1; i++) {
         steal_from = (int *)((e + (i * trb->elem_size)) + 8);
         printf("%d, ", *(steal_from - 4));
     }
     printf("\n");
+    */
 
 #ifndef LAWS_NODC
     // Accumulate itail_inc onto the victim's intermediate tail
