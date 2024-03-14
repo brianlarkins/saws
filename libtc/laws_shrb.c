@@ -177,7 +177,7 @@ void laws_print(laws_local_t *rb) {
   printf("   elem_size = %d\n", rb->elem_size);
   printf("   local_size = %d\n", laws_local_size(rb));
   printf("   shared_size= %d\n", laws_shared_size(g_meta));
-  printf("   public_size= %d\n", laws_public_size(g_meta));
+  printf("   public_size= %d\n", laws_public_size(rb));
   printf("   size       = %d\n", laws_size(rb));
   printf("}\n");
   GTC_EXIT();
@@ -248,15 +248,17 @@ int laws_shared_size(laws_global_t *rb) {
 
 
 // We don't use this (at least right now...)
-int laws_public_size(laws_global_t *rb) {
-  if (rb->vtail == rb->split) {    // Public is empty
-    assert (rb->tail == rb->vtail && rb->tail == rb->split);
+int laws_public_size(laws_local_t *rb) {
+  laws_global_t *g_meta = rb->g_meta;
+  int split = g_meta->split;
+  if (rb->vtail == split) {    // Public is empty
+    assert (g_meta->tail == rb->vtail && g_meta->tail == split);
     return 0;
   }
-  else if (rb->vtail < rb->split)  // No wrap-around
-    return rb->split - rb->vtail;
+  else if (rb->vtail < split)  // No wrap-around
+    return split - rb->vtail;
   else                             // Wrap-around
-    return rb->split + rb->max_size - rb->vtail;
+    return split + rb->max_size - rb->vtail;
 }
 
 
@@ -358,7 +360,7 @@ void laws_ensure_space(laws_local_t *rb, int n) {
   // wait until others finish their deferred copies so we can reclaim space.
   int reclaimed;
   TC_START_TIMER(rb->tc, ensure);
-  if ((rb->max_size - (laws_local_size(rb) + laws_public_size(rb->g_meta))) < n) {
+  if ((rb->max_size - (laws_local_size(rb) + laws_public_size(rb))) < n) {
     // should we lock here?
     laws_lock(rb, rb->procid);
     {
@@ -379,8 +381,8 @@ void laws_ensure_space(laws_local_t *rb, int n) {
       }
       rb->waiting = 1;
       while ((reclaimed = laws_reclaim_space(rb)) == 0) {
-          //printf("dingus alert!");
-          //laws_print(rb);
+          printf("dingus alert!\n");
+          laws_print(rb);
           shmem_getmem(rb->g_meta, rb->g_meta, sizeof(laws_global_t), rb->root);
       } /* Busy Wait */ ;
       rb->waiting = 0;
@@ -404,6 +406,8 @@ void laws_release(laws_local_t *rb) {
   //
   // Update: we should have something more up-to-date now (gtc_progress)
   if ((laws_local_size(rb)) > 0 && (laws_shared_size(rb->g_meta) == 0)) {
+    printf("before release: \n");
+    laws_print(rb);
   //if (rb->release) {
     int amount  = laws_local_size(rb)/2 + laws_local_size(rb) % 2;
     int split = rb->g_meta->split;
@@ -413,6 +417,8 @@ void laws_release(laws_local_t *rb) {
     g_meta->split = split;
     shmem_putmem(&g_meta->split, &split, sizeof(int), rb->root);
     rb->nrelease++;
+    printf("after release: \n");
+    laws_print(rb);
     gtc_lprintf(DBGSHRB, "release: local size: %d shared size: %d\n", laws_local_size(rb), laws_shared_size(rb->g_meta));
     //printf("release: local size: %d shared size: %d\n", laws_local_size(rb), laws_shared_size(rb->global));
   }
@@ -451,14 +457,14 @@ int laws_reacquire(laws_local_t *rb) {
     if (laws_shared_size(rb->g_meta) > laws_local_size(rb)) {
       //printf("laws_shared_size: %d\n", laws_shared_size(rb->g_meta));
       //printf("laws_local_size: %d\n", laws_local_size(rb));
-      //printf("before split movement:\n");
-      //laws_print(rb);
+      printf("before split movement:\n");
+      laws_print(rb);
       int diff    = laws_shared_size(rb->g_meta) - laws_local_size(rb);
       amount      = diff/2 + diff % 2;
       rb->nlocal += amount;
       g_meta->split   = (g_meta->split - amount);
-      //printf("after split movement:\n");
-      //laws_print(rb);
+      printf("after split movement:\n");
+      laws_print(rb);
       if (g_meta->split < 0) {
         //printf("donkus\n");
         g_meta->split += rb->max_size;
@@ -710,28 +716,26 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
 
       //printf("steal starting from mem addr: %p\n", laws_elem_addr(trb->local, proc, (trb)->tail));
       // TODO: proc needs to be the actual rank, not the rank in node
-      shmem_getmem_nbi(e, laws_elem_addr(trb->local, proc, (trb)->tail), n * (trb)->elem_size, trb->procid);    // Store n elems, starting at remote tail, in e
+      shmem_getmem_nbi(e, laws_elem_addr(myaddr, proc, (trb)->tail), n * (trb)->elem_size, trb->procid);    // Store n elems, starting at remote tail, in e
       shmem_quiet();
 
     } else {    // Need to wrap around
       //printf("split steal is go\n");
       int part_size  = (trb)->max_size - (trb)->tail;
 
-      shmem_getmem_nbi(laws_buff_elem_addr(trb, e, 0), laws_elem_addr(trb->local, proc, (trb)->tail), part_size * (trb)->elem_size, trb->procid);
+      shmem_getmem_nbi(laws_buff_elem_addr(trb, e, 0), laws_elem_addr(myrb, proc, (trb)->tail), part_size * (trb)->elem_size, trb->procid);
 
-      shmem_getmem_nbi(laws_buff_elem_addr(trb, e, part_size), laws_elem_addr(trb->local, proc, 0), (n - part_size) * (trb)->elem_size, trb->procid);
+      shmem_getmem_nbi(laws_buff_elem_addr(trb, e, part_size), laws_elem_addr(myrb, proc, 0), (n - part_size) * (trb)->elem_size, trb->procid);
 
       shmem_quiet();
 
     }
-    /*
     int *steal_from;
     for (int i = 1; i < n + 1; i++) {
         steal_from = (int *)((e + (i * trb->elem_size)) + 8);
         printf("%d, ", *(steal_from - 4));
     }
     printf("\n");
-    */
 
 #ifndef LAWS_NODC
     // Accumulate itail_inc onto the victim's intermediate tail

@@ -114,7 +114,7 @@ int         laws_shared_isempty(laws_global_t *rb);
 int         laws_local_size(laws_local_t *rb);
 int         laws_shared_size(laws_global_t *rb);
 int         laws_reserved_size(laws_local_t *rb);
-int         laws_public_size(laws_global_t *rb);
+int         laws_public_size(laws_local_t *rb);
 
 void        laws_release(laws_local_t *rb);
 void        laws_release_all(laws_local_t *rb);
