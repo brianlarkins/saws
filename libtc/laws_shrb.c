@@ -702,7 +702,7 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
     // int  metadata;
     int  xfer_size;
     int *loc_addr, *rem_addr;
-    //printf("ready to steal from proc %d; tail: %d; split: %d; max_size: %d\n", rank, trb->tail, trb->split, trb->max_size);
+    printf("ready to steal from proc %d; tail: %d; split: %d; max_size: %d\n", act_proc, trb->tail, trb->split, trb->max_size);
     //printf("will steal %d\n", n);
 
     new_tail    = ((trb)->tail + n) % (trb)->max_size;
@@ -736,14 +736,13 @@ static inline int laws_pop_n_tail_impl(laws_local_t *myrb, int proc, int n, void
       shmem_quiet();
 
     }
-    /*
+    
     int *steal_from;
     for (int i = 1; i < n + 1; i++) {
         steal_from = (int *)((e + (i * trb->elem_size)) + 8);
         printf("%d, ", *(steal_from - 4));
     }
     printf("\n");
-    */
 
 #ifndef LAWS_NODC
     // Accumulate itail_inc onto the victim's intermediate tail
