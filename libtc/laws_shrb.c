@@ -473,8 +473,8 @@ int laws_reacquire(laws_local_t *rb) {
         //printf("donkus\n");
         split += rb->max_size;
       }
-      shmem_putmem(&rb->gaddr->split, &split, sizeof(int), rb->root);
       g_meta->split = split;
+      shmem_putmem(&rb->gaddr->split, &split, sizeof(int), rb->root);
       rb->nreacquire++;
       gtc_lprintf(DBGSHRB, "reacquire: local size: %d shared size: %d\n", laws_local_size(rb), laws_shared_size(g_meta));
     }

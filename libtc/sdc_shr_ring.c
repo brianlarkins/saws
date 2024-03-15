@@ -423,7 +423,7 @@ int sdc_shrb_pop_head(void *b, int proc, void *buf) {
     buf_valid = 1;
   }
 
-  printf("popped head %d\n", old_head);
+  //printf("popped head %d\n", old_head);
   // Assertion: !buf_valid => sdc_shrb_isempty(rb)
   assert(buf_valid || (!buf_valid && sdc_shrb_isempty(rb)));
 
@@ -520,12 +520,14 @@ static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, vo
 
     }
 
+    /*
     int *steal_from;
     for (int i = 1; i < n + 1; i++) {
         steal_from = (int *)((e + (i * (&trb)->elem_size)) + 8);
         printf("%d, ", *(steal_from - 4));
     }
     printf("\n");
+    */
 
 #ifndef SDC_NODC
     // Accumulate itail_inc onto the victim's intermediate tail

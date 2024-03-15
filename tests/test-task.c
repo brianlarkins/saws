@@ -40,7 +40,8 @@ void task_fcn(gtc_t gtc, task_t *task) {
   usleep(timeout);
   sleep_time += timeout;
   //printf("  Task (%2d, %3d) processed by worker %dn", t->parent_id, t->task_num, mythread);
-  printf("  Task (%2d, %3d) processed by worker %d", t->parent_id, t->task_num, mythread);
+  //printf("  Task (%2d, %3d) processed by worker %d", t->parent_id, t->task_num, mythread);
+  printf("  Task (%2d, %3d) ", t->parent_id, t->task_num);
   if (t->stolen_from == -1) {
       printf("\n");
   }else {

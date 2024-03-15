@@ -236,7 +236,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
                   continue;
               }
               gcurr = &garray[i];
-              memgrab = gcurr;
+              memgrab = &local->gaddrs[i];
               amnt = laws_shared_size(gcurr);
 
               if (amnt > 0) {
