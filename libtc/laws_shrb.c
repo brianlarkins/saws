@@ -314,6 +314,7 @@ void laws_release_all(laws_t *rb) {
   int amount  = laws_local_size(rb);
   rb->nlocal -= amount;
   rb->split   = (rb->split + amount) % rb->max_size;
+  shmem_atomic_or(rb->gaddr, 1, rb->root);
   rb->nrelease++;
   GTC_EXIT();
 }
@@ -336,6 +337,9 @@ int laws_reacquire(laws_t *rb) {
       if (rb->split < 0)
         rb->split += rb->max_size;
       rb->nreacquire++;
+      if (laws_shared_isempty(rb)) {
+          shmem_atomic_and(rb->gaddr, 0, rb->root);
+      }
       gtc_lprintf(DBGSHRB, "reacquire: local size: %d shared size: %d\n", laws_local_size(rb), laws_shared_size(rb));
     }
 
@@ -520,6 +524,9 @@ static inline int laws_pop_n_tail_impl(laws_t *myrb, int proc, int n, void *e, i
     loc_addr    = &new_tail;
     rem_addr    = &myrb->tail;
     xfer_size   = 1*sizeof(int);
+    if (new_tail == (&trb)->split) {
+        shmem_atomic_and((&trb)->gaddr, 0, (&trb)->root);
+    }
     shmem_putmem(rem_addr, loc_addr, xfer_size, proc);
 
     laws_unlock(myrb, proc); // Deferred copy unlocks early
@@ -573,14 +580,6 @@ static inline int laws_pop_n_tail_impl(laws_t *myrb, int proc, int n, void *e, i
 #endif
 
   } else /* (n <= 0) */ {
-
-    // need to calculate root proc and relative location of proc on node
-    int relative = proc % myrb->ncores;
-    int root = proc - relative;
-
-    // indicate that this process is out of work
-    shmem_atomic_and(&myrb->gaddrs[relative], 0, root);
-
     laws_unlock(myrb, proc);
   }
   TC_STOP_TIMER(myrb->tc, poptail);

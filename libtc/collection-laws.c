@@ -229,9 +229,9 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
       // loop through the metadata array, seeing if any local cores have work
       // TODO: make this circular (i.e. when steal fails, move to next item in array, rather than starting from beginning again)
       v = -1;
-      for (int i = 0; i < local_md->ncores; i++) {
-          if (i == local_md->rank) {
-              continue;
+      for (int i = local_md->rank + 1; i < local_md->rank; i++) {
+          if (i == local_md->ncores) {
+              i = 0;
           }
           if (local_md->global[i]) {
               v = local_md->root + i;
