@@ -1,5 +1,5 @@
-#ifndef __LAWS_SHRB_H__
-#define __LAWS_SHRB_H__
+#ifndef __SDC_SHR_RING_H__
+#define __SDC_SHR_RING_H__
 
 #include <sys/types.h>
 #include <shmem.h>
@@ -21,7 +21,7 @@ typedef enum {
   LAWSPerReacquireTime,
   LAWSReleaseTime,
   LAWSPerReleaseTime
-} gtc_laws_gtimestats_e;
+} gtc_sdc_gtimestats_e;
 
 
 typedef enum {
@@ -38,33 +38,31 @@ typedef enum {
   LAWSEnsureCalls,
   LAWSReacquireCalls,
   LAWSReleaseCalls
-} gtc_laws_gcountstats_e;
+} gtc_sdc_gcountstats_e;
 
 
-struct laws_local_s {
-  int             vtail;     // out-of-date version of the virtual tail (functions similarly to itail in SDC; 
-                             // keeps track of which steals have completed)
+struct laws_s {
+  int             itail;     // Index of the intermediate tail (between vtail and tail)
+  int             tail;      // Index of tail element (between 0 and rb_size-1)
 
   int             nlocal;    // Number of elements in the local portion of the queue
-  int             head;      // used along with nlocal to determine split position   
+  int             vtail;     // Index of the virtual tail
+  int             split;     // index of split between local-only and local-shared elements
 
   synch_mutex_t   lock;      // lock for shared portion of this queue
   int             waiting;   // Am I currently waiting for transactions to complete?
   
   int             procid;
   int             nproc;
-  int             ncores;
-  int             root;      // the root from which we are currently stealing
-  int             rank_in_node;
   int             max_size;  // Max size in number of elements
-  int             release;   // release flag; will be used to indicate whether a release from this proc is necessary; may be helpful?
   int             elem_size; // Size of an element in bytes
-  int             alt_root; // alternative root from which to steal (for internode stealing)
-  int             our_root; // the root of *this* proc
-  struct laws_global_s   *global;
-  struct laws_global_s   *gaddrs;
-  struct laws_global_s   *gaddr;
-  struct laws_global_s   *g_meta;
+  int             root;
+  int             ncores; // number of cores on each node
+  int             rank;
+  int             *gaddrs;
+  int             *global;
+  int             *g_meta;
+  int             *gaddr;
 
   tc_t           *tc;        // task collection associated with queue (for stats)
 
@@ -86,56 +84,44 @@ struct laws_local_s {
                              // require "sizeof(struct rb_s) + elem_size*rb_size"
 };
 
-struct laws_global_s {
-    int                 max_size;
-    int                 elem_size;
-    int                 vtail;     // Index of the virtual tail
-    int                 split;     // index of split between local-only and local-shared elements
-    int                 tail;      // Index of tail element (between 0 and rb_size-1)
-    int                 procid;    // proc id associated with global metadata
-    synch_mutex_t       lock;
-    tc_t                *tc;
-};
+typedef struct laws_s laws_t;
 
-typedef struct laws_local_s laws_local_t;
+typedef int laws_global_t;
 
-typedef struct laws_global_s laws_global_t;
+laws_t *laws_create(int elem_size, int max_size, tc_t *tc);
+void        laws_destroy(laws_t *rb);
+void        laws_reset(laws_t *rb);
 
-laws_local_t *laws_create(int elem_size, int max_size, tc_t *tc);
-void        laws_destroy(laws_local_t *rb);
-void        laws_reset(laws_local_t *rb);
+void        laws_lock(laws_t *rb, int proc);
+void        laws_unlock(laws_t *rb, int proc);
 
-void        laws_lock(laws_local_t *rb, int proc);
-int         laws_trylock(laws_local_t *rb, int proc);
-void        laws_unlock(laws_local_t *rb, int proc);
+int         laws_head(laws_t *rb);
+int         laws_local_isempty(laws_t *rb);
+int         laws_shared_isempty(laws_t *rb);
+int         laws_local_size(laws_t *rb);
+int         laws_shared_size(laws_t *rb);
+int         laws_reserved_size(laws_t *rb);
+int         laws_public_size(laws_t *rb);
 
-int         laws_head(laws_local_t *rb);
-int         laws_local_isempty(laws_local_t *rb);
-int         laws_shared_isempty(laws_global_t *rb);
-int         laws_local_size(laws_local_t *rb);
-int         laws_shared_size(laws_global_t *rb);
-int         laws_reserved_size(laws_local_t *rb);
-int         laws_public_size(laws_local_t *rb);
+void        laws_release(laws_t *rb);
+void        laws_release_all(laws_t *rb);
+int         laws_reacquire(laws_t *rb);
+int         laws_reclaim_space(laws_t *rb);
 
-void        laws_release(laws_local_t *rb);
-void        laws_release_all(laws_local_t *rb);
-int         laws_reacquire(laws_local_t *rb);
-int         laws_reclaim_space(laws_local_t *rb);
-
-void        laws_push_head(laws_local_t *rb, int proc, void *e, int size);
+void        laws_push_head(laws_t *rb, int proc, void *e, int size);
 void        laws_push_n_head(void *b, int proc, void *e, int n);
-void       *laws_alloc_head(laws_local_t *rb);
+void       *laws_alloc_head(laws_t *rb);
 
 int         laws_pop_head(void *b, int proc, void *buf);
-int         laws_pop_tail(laws_local_t *rb, int proc, void *buf);
+int         laws_pop_tail(laws_t *rb, int proc, void *buf);
 int         laws_pop_n_tail(void *b, int proc, int n, void *buf, int steal_vol);
 int         laws_try_pop_n_tail(void *b, int proc, int n, void *buf, int steal_vol);
 
 int         laws_size(void *b);
-int         laws_full(laws_local_t *rb);
-int         laws_empty(laws_local_t *rb);
+int         laws_full(laws_t *rb);
+int         laws_empty(laws_t *rb);
 
-void        laws_print(laws_local_t *rb);
+void        laws_print(laws_t *rb);
 
 #define laws_elem_addr(MYRB, PROC, IDX) ((MYRB)->q + (IDX)*(MYRB)->elem_size)
 #define laws_buff_elem_addr(RB, E, IDX) ((u_int8_t*)(E) + (IDX)*(RB)->elem_size)
@@ -144,4 +130,4 @@ void        laws_print(laws_local_t *rb);
 #define laws_malloc gtc_shmem_calloc
 #define laws_free   shmem_free
 
-#endif /* __LAWS_SHR_RING_H__ */
+#endif /* __SDC_SHR_RING_H__ */
