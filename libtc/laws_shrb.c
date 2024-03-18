@@ -276,7 +276,9 @@ void laws_ensure_space(laws_t *rb, int n) {
         assert(0);
       }
       rb->waiting = 1;
-      while (laws_reclaim_space(rb) == 0) /* Busy Wait */ ;
+      while (laws_reclaim_space(rb) == 0) {
+          laws_print(rb);
+      } /* Busy Wait */ ;
       rb->waiting = 0;
       rb->nwaited++;
     }
@@ -300,7 +302,9 @@ void laws_release(laws_t *rb) {
     rb->nrelease++;
     
     // indicate to other intranode processes that there's work here
-    shmem_atomic_or(rb->gaddr, 1, rb->root);
+    //shmem_atomic_fetch_or(rb->gaddr, 1, rb->root);
+    uint8_t yep = 1;
+    shmem_putmem(rb->gaddr, &yep, sizeof(laws_global_t), rb->root);
 
     gtc_lprintf(DBGSHRB, "release: local size: %d shared size: %d\n", laws_local_size(rb), laws_shared_size(rb));
   }
@@ -314,7 +318,9 @@ void laws_release_all(laws_t *rb) {
   int amount  = laws_local_size(rb);
   rb->nlocal -= amount;
   rb->split   = (rb->split + amount) % rb->max_size;
-  shmem_atomic_or(rb->gaddr, 1, rb->root);
+  uint8_t yep = 1;
+  shmem_putmem(rb->gaddr, &yep, sizeof(laws_global_t), rb->root);
+  //shmem_atomic_fetch_or(rb->gaddr, 1, rb->root);
   rb->nrelease++;
   GTC_EXIT();
 }
@@ -338,7 +344,9 @@ int laws_reacquire(laws_t *rb) {
         rb->split += rb->max_size;
       rb->nreacquire++;
       if (laws_shared_isempty(rb)) {
-          shmem_atomic_and(rb->gaddr, 0, rb->root);
+          //shmem_atomic_fetch_and(rb->gaddr, 0, rb->root);
+          uint8_t nope = 0;
+          shmem_putmem(rb->gaddr, &nope, sizeof(laws_global_t), rb->root);
       }
       gtc_lprintf(DBGSHRB, "reacquire: local size: %d shared size: %d\n", laws_local_size(rb), laws_shared_size(rb));
     }
@@ -525,7 +533,9 @@ static inline int laws_pop_n_tail_impl(laws_t *myrb, int proc, int n, void *e, i
     rem_addr    = &myrb->tail;
     xfer_size   = 1*sizeof(int);
     if (new_tail == (&trb)->split) {
-        shmem_atomic_and((&trb)->gaddr, 0, (&trb)->root);
+        //shmem_atomic_fetch_and((&trb)->gaddr, 0, (&trb)->root);
+        uint8_t nope = 0;
+        shmem_putmem((&trb)->gaddr, &nope, sizeof(laws_global_t), (&trb)->root);
     }
     shmem_putmem(rem_addr, loc_addr, xfer_size, proc);
 

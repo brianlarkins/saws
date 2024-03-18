@@ -59,10 +59,10 @@ struct laws_s {
   int             root;
   int             ncores; // number of cores on each node
   int             rank;
-  int             *gaddrs;
-  int             *global;
-  int             *g_meta;
-  int             *gaddr;
+  uint8_t             *gaddrs;
+  uint8_t             *global;
+  uint8_t             *g_meta;
+  uint8_t             *gaddr;
 
   tc_t           *tc;        // task collection associated with queue (for stats)
 
@@ -86,7 +86,7 @@ struct laws_s {
 
 typedef struct laws_s laws_t;
 
-typedef int laws_global_t;
+typedef uint8_t laws_global_t;
 
 laws_t *laws_create(int elem_size, int max_size, tc_t *tc);
 void        laws_destroy(laws_t *rb);

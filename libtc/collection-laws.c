@@ -239,11 +239,13 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
 
       /* for debugging purposes */
 
+      /*
       printf("current locality array: ");
       for (int i = 0; i < local_md->ncores; i++) {
           printf("%d", local_md->global[i]);
       }
       printf("\n");
+      */
 
       /*
       for (int i = 0; i < local_md->ncores; i++) {
@@ -261,6 +263,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
       // if we still couldn't find anything, choose randomly
       if (v == -1) {
           v = gtc_select_target(gtc, &vs_state);
+          printf("stealing off-node from process %d\n", v);
       }
 
       max_steal_attempts = tc->ldbal_cfg.max_steal_attempts_remote;
