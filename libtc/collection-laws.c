@@ -229,6 +229,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
       // loop through the metadata array, seeing if any local cores have work
       // TODO: make this circular (i.e. when steal fails, move to next item in array, rather than starting from beginning again)
       v = -1;
+      /*
       for (int i = local_md->rank + 1; i != local_md->rank; i = (i + 1) % local_md->ncores) {
           if (local_md->global[i]) {
               v = local_md->root + i;
@@ -236,6 +237,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
               break;
           }
       }
+      */
 
       /* for debugging purposes */
 
@@ -247,18 +249,16 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
       printf("\n");
       */
 
-      /*
       for (int i = 0; i < local_md->ncores; i++) {
           if (i == local_md->rank) {
               continue;
           }
           if (local_md->global[i]) {
               v = local_md->root + i;
-              printf("stealing locally from process %d\n", v);
+              //printf("stealing locally from process %d\n", v);
               break;
           }
       }
-      */
 
       // if we still couldn't find anything, choose randomly
       if (v == -1) {

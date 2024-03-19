@@ -1,4 +1,4 @@
-# 
+#
 # makefile for task collection tests
 # 
 #
@@ -17,6 +17,8 @@ TARGETS=test-hello          \
 				test-saws-shrb		  \
 				threadtest          \
 				test-array          \
+				test-steal \
+				test-contention \
 				# line eater
 
 TEST_DIRS=clod microbenchmarks shrb synch
@@ -68,6 +70,13 @@ threadtest: tclibs threadtest.o
 
 test-array: tclibs test-array.o
 	$(CC) $(CFLAGS) -o $@ test-array.o $(TC_LIBS)
+
+test-steal: tclibs test-steal.o 
+	$(CC) $(CFLAGS) -o $@ test-steal.o wctimer.o $(TC_LIBS)
+	
+test-contention: tclibs test-contention.o 
+	$(CC) $(CFLAGS) -o $@ test-contention.o wctimer.o $(TC_LIBS)
+
 
 clean: tcclean
 	for dir in $(TEST_DIRS); do \
