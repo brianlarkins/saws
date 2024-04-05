@@ -4,8 +4,8 @@
 #include <unistd.h>
 #include <stdarg.h>
 #include "wctimer.h"
-#define SIZE 100
-#define REPS 100
+#define SIZE 1000000
+#define REPS 1000
 
 int dbg_printf_real(const char *format, ...) {
   va_list ap;
@@ -72,8 +72,8 @@ int main(void) {
     sum_times[1] /= 47;
     shmem_barrier_all();
     if (my_pe == 0) {
-        dbg_printf_real("Average intranode steal time: %g usec\n", sum_times[0]);
-        dbg_printf_real("Average internode steal time: %g usec\n", sum_times[1]);
+        dbg_printf_real("Average intranode steal time (size %d): %g usec\n", SIZE, sum_times[0]);
+        dbg_printf_real("Average internode steal time (size %d): %g usec\n", SIZE, sum_times[1]);
     }
 
     shmem_finalize();
