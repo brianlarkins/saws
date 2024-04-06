@@ -59,10 +59,10 @@ struct laws_s {
   int             root;
   int             ncores; // number of cores on each node
   int             rank;
-  uint8_t             *gaddrs;
-  uint8_t             *global;
-  uint8_t             *g_meta;
-  uint8_t             *gaddr;
+  uint8_t         *gaddrs; // the addresses of the global metadata stored on the root process
+  uint8_t         *global; // our copy of the global metadata
+  uint8_t         *g_meta; // pointer to our process's metadata specifically 
+  uint8_t         *gaddr;  // same as above, but with reference to the address from which that data is pulled
 
   tc_t           *tc;        // task collection associated with queue (for stats)
 

@@ -235,6 +235,7 @@ struct tc_timers_s {
   tc_timer_t search;
   tc_timer_t active;
   tc_timer_t steal;
+  tc_timer_t global_ret;
   tc_timer_t put;
   tc_timer_t get;
   tc_timer_t dispersion;
@@ -263,6 +264,7 @@ struct tc_counters_s {
   tc_counter_t         tasks_completed;           // Number of tasks processed by this thread
   tc_counter_t         tasks_stolen;              // Number of tasks stolen by this thread
   tc_counter_t         num_steals;                // Number of successful steals
+  tc_counter_t         num_local_steals;          // number of successful intranode steals
   tc_counter_t         failed_steals_locked;      // # steal attempts that failed after locking
   tc_counter_t         failed_steals_unlocked;    // # steal attempts that failed before locking
   tc_counter_t         aborted_steals;            // # steal attempts that were aborted due to contention
@@ -407,6 +409,7 @@ int     gtc_add(gtc_t gtc, task_t *task, int proc);
 int     gtc_tasks_avail(gtc_t gtc);
 void    gtc_enable_stealing(gtc_t gtc);
 void    gtc_disable_stealing(gtc_t gtc);
+int     gtc_is_local(gtc_t gtc, int v);
 int     gtc_get_local_buf(gtc_t gtc, int priority, task_t *buf);
 int     gtc_steal_tail(gtc_t gtc, int target);
 int     gtc_try_steal_tail(gtc_t gtc, int target);

@@ -157,6 +157,11 @@ int gtc_tasks_avail_laws(gtc_t gtc) {
   GTC_EXIT(laws_size(tc->shared_rb));
 }
 
+int is_local(int v, laws_t *rb) {
+    if (v >= rb->root && v < rb->root + rb->nproc)
+     return 1;
+    return 0;
+}
 
 /**
  * Find work to do, search everywhere. Use when you write your own
@@ -224,7 +229,10 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
 
 
       // retrieve metadata indicating status of intranode processes first
+      // TODO: set timer here; need to keep track of how long this takes
+      TC_START_TIMER(tc, global_ret);
       shmem_getmem(local_md->global, local_md->gaddrs, sizeof(laws_global_t) * local_md->ncores, local_md->root);
+      TC_STOP_TIMER(tc, global_ret);
 
       // loop through the metadata array, seeing if any local cores have work
       // TODO: make this circular (i.e. when steal fails, move to next item in array, rather than starting from beginning again)
@@ -304,6 +312,9 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
           if (steal_size > 0) {
             tc->ct.tasks_stolen += steal_size;
             tc->ct.num_steals += 1;
+            // increment this if the steal was local
+            if (is_local(v, local_md))
+                tc->ct.num_local_steals += 1; // numbr of successful local steals
             steal_done = 1;
             tc->last_target = v;
 

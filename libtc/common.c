@@ -71,6 +71,7 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
   TC_INIT_TIMER(tc,search);
   TC_INIT_TIMER(tc,active);
   TC_INIT_TIMER(tc,steal);
+  TC_INIT_TIMER(tc, global_ret);
   TC_INIT_TIMER(tc,put);
   TC_INIT_TIMER(tc,get);
   TC_INIT_TIMER(tc,dispersion);
