@@ -20,7 +20,9 @@ typedef enum {
   LAWSReacquireTime,
   LAWSPerReacquireTime,
   LAWSReleaseTime,
-  LAWSPerReleaseTime
+  LAWSPerReleaseTime,
+  LAWSGlobalRetTime,
+  LAWSPerGlobalRetTime
 } gtc_sdc_gtimestats_e;
 
 
@@ -30,6 +32,7 @@ typedef enum {
   LAWSNumMeta,
   LAWSGetLocalCalls,
   LAWSNumSteals,
+  LAWSNumLocalSteals,
   LAWSStealFailsLocked,
   LAWSStealFailsUnlocked,
   LAWSAbortedSteals,
@@ -37,7 +40,8 @@ typedef enum {
   LAWSReclaimCalls,
   LAWSEnsureCalls,
   LAWSReacquireCalls,
-  LAWSReleaseCalls
+  LAWSReleaseCalls,
+  LAWSGlobalRetCalls
 } gtc_sdc_gcountstats_e;
 
 
@@ -77,6 +81,7 @@ struct laws_s {
   tc_counter_t    nxfer;     // xferred bytes
   tc_counter_t    nsteals;   // number of successful steals
   tc_counter_t    nmeta;     // number of successful steals
+  tc_counter_t    ngret;     // number of times global array is retrieved
 
   struct laws_s **rbs;   // (private) array of base addrs for all rbs
   u_int8_t        q[0];      // (shared)  ring buffer data.  This will be allocated

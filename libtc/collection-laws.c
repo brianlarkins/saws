@@ -233,6 +233,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
       TC_START_TIMER(tc, global_ret);
       shmem_getmem(local_md->global, local_md->gaddrs, sizeof(laws_global_t) * local_md->ncores, local_md->root);
       TC_STOP_TIMER(tc, global_ret);
+      tc->ct.global_ret_count++;
 
       // loop through the metadata array, seeing if any local cores have work
       // TODO: make this circular (i.e. when steal fails, move to next item in array, rather than starting from beginning again)
@@ -516,13 +517,18 @@ void gtc_print_stats_laws(gtc_t gtc) {
 
     printf(" %4d - laws-Q: nrelease %6lu, nreacquire %6lu, nreclaimed %6lu, nwaited %2lu, nprogress %6lu\n"
            " %4d -    failed w/lock: %6lu, failed w/o lock: %6lu, aborted steals: %6lu\n"
-           " %4d -    ngets: %6lu  (%5.2f usec/get) nxfer: %6lu\n",
+           " %4d -    ngets: %6lu  (%5.2f usec/get) nxfer: %6lu\n"
+           " %4d -    nglobalrets: %6lu (%5.2f usec/get)\n"
+           " %4d -    num local steals: %6lu, perc. of local steals: %6g\n",
       _c->rank,
         rb->nrelease, rb->nreacquire, rb->nreclaimed, rb->nwaited, rb->nprogress,
       _c->rank,
         tc->ct.failed_steals_locked, tc->ct.failed_steals_unlocked, tc->ct.aborted_steals,
       _c->rank,
-        rb->ngets, TC_READ_TIMER_USEC(tc, t[0])/(double)rb->ngets, rb->nxfer);
+        rb->ngets, TC_READ_TIMER_USEC(tc, t[0])/(double)rb->ngets, rb->nxfer,
+      _c->rank, 
+        tc->ct.global_ret_count, TC_READ_TIMER_USEC(tc, global_ret)/(double)tc->ct.global_ret_count,
+      _c->rank, tc->ct.num_local_steals, ((double)tc->ct.num_local_steals/(double)tc->ct.num_steals) * 100);
     printf(" %4d - TSC: get: %"PRIu64"M (%"PRIu64" x %"PRIu64")  add: %"PRIu64"M (%"PRIu64" x %"PRIu64") inplace: %"PRIu64"M (%"PRIu64")\n",
         _c->rank,
         TC_READ_TIMER_M(tc,getbuf), perget, tc->ct.getcalls,
@@ -560,13 +566,13 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   double   *times, *mintimes, *maxtimes, *sumtimes;
   uint64_t *counts, *mincounts, *maxcounts, *sumcounts;
 
-  int ntimes = 14;
+  int ntimes = 16;
   times     = gtc_shmem_calloc(ntimes, sizeof(double));
   mintimes  = gtc_shmem_calloc(ntimes, sizeof(double));
   maxtimes  = gtc_shmem_calloc(ntimes, sizeof(double));
   sumtimes  = gtc_shmem_calloc(ntimes, sizeof(double));
 
-  int ncounts = 13;
+  int ncounts = 15;
   counts     = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
   mincounts  = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
   maxcounts  = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
@@ -580,6 +586,7 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   times[LAWSEnsureTime]         = TC_READ_TIMER_USEC(tc,ensure);
   times[LAWSReacquireTime]      = TC_READ_TIMER_MSEC(tc,reacquire);
   times[LAWSReleaseTime]        = TC_READ_TIMER_USEC(tc,release);
+  times[LAWSGlobalRetTime]      = TC_READ_TIMER_USEC(tc, global_ret);
   times[LAWSPerPopTailTime]     = rb->ngets         != 0 ? TC_READ_TIMER_MSEC(tc,poptail)   / rb->ngets         : 0.0;
   times[LAWSPerGetMetaTime]     = rb->nmeta         != 0 ? TC_READ_TIMER_MSEC(tc,getmeta)   / rb->nmeta         : 0.0;
   times[LAWSPerProgressTime]    = rb->nprogress     != 0 ? TC_READ_TIMER_USEC(tc,progress)  / rb->nprogress     : 0.0;
@@ -587,12 +594,14 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   times[LAWSPerEnsureTime]      = rb->nensure       != 0 ? TC_READ_TIMER_USEC(tc,ensure)    / rb->nensure       : 0.0;
   times[LAWSPerReacquireTime]   = rb->nreacquire    != 0 ? TC_READ_TIMER_MSEC(tc,reacquire) / rb->nreacquire    : 0.0;
   times[LAWSPerReleaseTime]     = rb->nrelease      != 0 ? TC_READ_TIMER_USEC(tc,release)   / rb->nrelease      : 0.0;
+  times[LAWSPerGlobalRetTime]     = tc->ct.global_ret_count  != 0 ? TC_READ_TIMER_USEC(tc,global_ret)   / tc->ct.global_ret_count      : 0.0;
 
   counts[LAWSNumGets]            = rb->ngets;
   counts[LAWSGetCalls]           = tc->ct.getcalls;
   counts[LAWSNumMeta]            = rb->nmeta;
   counts[LAWSGetLocalCalls]      = tc->ct.getlocal;
-  counts[LAWSNumSteals]          = rb->nsteals;
+  counts[LAWSNumSteals]          = tc->ct.num_steals;
+  counts[LAWSNumLocalSteals]     = tc->ct.num_local_steals;
   counts[LAWSStealFailsLocked]   = tc->ct.failed_steals_locked;
   counts[LAWSStealFailsUnlocked] = tc->ct.failed_steals_unlocked;
   counts[LAWSAbortedSteals]      = tc->ct.aborted_steals;
@@ -601,6 +610,8 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   counts[LAWSEnsureCalls]        = rb->nensure;
   counts[LAWSReacquireCalls]     = rb->nreacquire;
   counts[LAWSReleaseCalls]       = rb->nrelease;
+  counts[LAWSGlobalRetCalls]     = tc->ct.global_ret_count;
+
 
   shmem_min_reduce(SHMEM_TEAM_WORLD, mintimes, times, ntimes);
   shmem_max_reduce(SHMEM_TEAM_WORLD, maxtimes, times, ntimes);
@@ -609,6 +620,15 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   shmem_min_reduce(SHMEM_TEAM_WORLD, mincounts, counts, ncounts);
   shmem_max_reduce(SHMEM_TEAM_WORLD, maxcounts, counts, ncounts);
   shmem_sum_reduce(SHMEM_TEAM_WORLD, sumcounts, counts, ncounts);
+
+  /*
+  double percsteals[3];
+  percsteals[0] = (((double)sumcounts[LAWSNumLocalSteals]/_c->size) / ((double)sumcounts[LAWSNumSteals]/_c->size)) * 100;
+  percsteals[1] = (((double)sumcounts[LAWSNumLocalSteals]/_c->size) / ((double)sumcounts[LAWSNumSteals]/_c->size)) * 100;
+  */
+
+  double percsteals;
+  percsteals = ((double)sumcounts[LAWSNumLocalSteals]/(double)sumcounts[LAWSNumSteals]) * 100;
   shmem_barrier_all();
 
   eprintf("        : shared heap memory allocated: %d    local heap memory allocated: %d\n", _c->shmallocsize, _c->allocsize);
@@ -626,12 +646,20 @@ void gtc_print_gstats_laws(gtc_t gtc) {
       sumtimes[LAWSGetMetaTime]/_c->size, mintimes[LAWSGetMetaTime], maxtimes[LAWSGetMetaTime],
       sumtimes[LAWSPerGetMetaTime]/_c->size, mintimes[LAWSPerGetMetaTime], maxtimes[LAWSPerGetMetaTime]);
 
+  eprintf("        :   get_global   %6lu (%6.2f/%3lu/%3lu) time %6.2fms/%6.2fms/%6.2fms per %6.2fms/%6.2fms/%6.2fms\n",
+      sumcounts[LAWSGlobalRetCalls], sumcounts[LAWSGlobalRetCalls]/(double)_c->size, mincounts[LAWSGlobalRetCalls], maxcounts[LAWSGlobalRetCalls],
+      sumtimes[LAWSGlobalRetTime]/_c->size, mintimes[LAWSGlobalRetTime], maxtimes[LAWSGlobalRetTime],
+      sumtimes[LAWSPerGlobalRetTime]/_c->size, mintimes[LAWSPerGlobalRetTime], maxtimes[LAWSPerGlobalRetTime]);
+
   eprintf("        :   localget   %6lu (%6.2f/%3lu/%3lu)\n",
       sumcounts[LAWSGetLocalCalls], sumcounts[LAWSGetLocalCalls]/(double)_c->size,
       mincounts[LAWSGetLocalCalls], maxcounts[LAWSGetLocalCalls]);
   eprintf("        :   steals     %6lu (%6.2f/%3lu/%3lu)\n",
       sumcounts[LAWSNumSteals], sumcounts[LAWSNumSteals]/(double)_c->size,
       mincounts[LAWSNumSteals], maxcounts[LAWSNumSteals]);
+  eprintf("        :   local steals     %6lu (%6.2f/%3lu/%3lu) perc. of steals overall %6g\n",
+      sumcounts[LAWSNumLocalSteals], sumcounts[LAWSNumLocalSteals]/(double)_c->size,
+      mincounts[LAWSNumLocalSteals], maxcounts[LAWSNumLocalSteals], percsteals); 
   eprintf("        :   fails lock %6lu (%6.2f/%3lu/%3lu)\n",
       sumcounts[LAWSStealFailsLocked], sumcounts[LAWSStealFailsLocked]/(double)_c->size,
       mincounts[LAWSStealFailsLocked], maxcounts[LAWSStealFailsLocked]);
