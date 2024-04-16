@@ -1,6 +1,7 @@
 #ifndef __SDC_SHR_RING_H__
 #define __SDC_SHR_RING_H__
 
+#include <cstdint>
 #include <sys/types.h>
 #include <shmem.h>
 #include <mutex.h>
@@ -9,6 +10,8 @@
 typedef enum {
   LAWSPopTailTime,
   LAWSPerPopTailTime,
+  LAWSStealTime,
+  LAWSPerStealTime,
   LAWSGetMetaTime,
   LAWSPerGetMetaTime,
   LAWSProgressTime,
@@ -63,10 +66,13 @@ struct laws_s {
   int             root;
   int             ncores; // number of cores on each node
   int             rank;
-  uint8_t         *gaddrs; // the addresses of the global metadata stored on the root process
-  uint8_t         *global; // our copy of the global metadata
-  uint8_t         *g_meta; // pointer to our process's metadata specifically 
-  uint8_t         *gaddr;  // same as above, but with reference to the address from which that data is pulled
+  //uint8_t         *gaddrs; // the addresses of the global metadata stored on the root process
+  //uint8_t         *global; // our copy of the global metadata
+  uint64_t        *global_bits; // bitfield indicating work status of each process on a node
+  //uint8_t         *g_meta; // pointer to our process's metadata specifically 
+  //uint8_t         *gaddr;  // same as above, but with reference to the address from which that data is pulled
+  uint64_t        our_bits; // used when modifying global bitfield
+  uint64_t        our_invert; // our_bits but inverted
 
   tc_t           *tc;        // task collection associated with queue (for stats)
 

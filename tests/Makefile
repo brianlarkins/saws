@@ -19,6 +19,8 @@ TARGETS=test-hello          \
 				test-array          \
 				test-steal \
 				test-contention \
+				test-atomic \
+				test-atomic-contention \
 				# line eater
 
 TEST_DIRS=clod microbenchmarks shrb synch
@@ -77,6 +79,11 @@ test-steal: tclibs test-steal.o
 test-contention: tclibs test-contention.o 
 	$(CC) $(CFLAGS) -o $@ test-contention.o wctimer.o $(TC_LIBS)
 
+test-atomic: tclibs test-atomic.o
+	$(CC) $(CFLAGS) -o $@ test-atomic.o wctimer.o $(TC_LIBS)
+
+test-atomic-contention: tclibs test-atomic-contention.o
+	$(CC) $(CFLAGS) -o $@ test-atomic-contention.o wctimer.o $(TC_LIBS)
 
 clean: tcclean
 	for dir in $(TEST_DIRS); do \

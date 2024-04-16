@@ -157,6 +157,13 @@ int gtc_tasks_avail_sdc(gtc_t gtc) {
   GTC_EXIT(sdc_shrb_size(tc->shared_rb));
 }
 
+static inline int is_local(sdc_shrb_t *rb, int v) {
+    int cores = sysconf(_SC_NPROCESSORS_ONLN);
+    int root = rb->procid - (rb->procid % cores);
+    if (v >= root && v < root + cores)
+        return 1;
+    return 0;
+}
 
 /**
  * Find work to do, search everywhere. Use when you write your own
@@ -263,6 +270,8 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
             tc->ct.tasks_stolen += steal_size;
             tc->ct.num_steals += 1;
             steal_done = 1;
+            if (is_local((sdc_shrb_t *)tc->shared_rb, v))
+                tc->ct.num_local_steals += 1;
             tc->last_target = v;
 
           // Steal failed: Got the lock, no longer any work on remote node
@@ -507,13 +516,13 @@ void gtc_print_gstats_sdc(gtc_t gtc) {
   double   *times, *mintimes, *maxtimes, *sumtimes;
   uint64_t *counts, *mincounts, *maxcounts, *sumcounts;
 
-  int ntimes = 14;
+  int ntimes = 16;
   times     = gtc_shmem_calloc(ntimes, sizeof(double));
   mintimes  = gtc_shmem_calloc(ntimes, sizeof(double));
   maxtimes  = gtc_shmem_calloc(ntimes, sizeof(double));
   sumtimes  = gtc_shmem_calloc(ntimes, sizeof(double));
 
-  int ncounts = 13;
+  int ncounts = 14;
   counts     = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
   mincounts  = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
   maxcounts  = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
@@ -521,6 +530,7 @@ void gtc_print_gstats_sdc(gtc_t gtc) {
 
 
   times[SDCPopTailTime]        = TC_READ_TIMER_MSEC(tc,poptail);
+  times[SDCStealTime]          = TC_READ_TIMER_MSEC(tc,steal);
   times[SDCGetMetaTime]        = TC_READ_TIMER_MSEC(tc,getmeta);
   times[SDCProgressTime]       = TC_READ_TIMER_USEC(tc,progress);
   times[SDCReclaimTime]        = TC_READ_TIMER_USEC(tc,reclaim);
@@ -528,6 +538,7 @@ void gtc_print_gstats_sdc(gtc_t gtc) {
   times[SDCReacquireTime]      = TC_READ_TIMER_MSEC(tc,reacquire);
   times[SDCReleaseTime]        = TC_READ_TIMER_USEC(tc,release);
   times[SDCPerPopTailTime]     = rb->ngets         != 0 ? TC_READ_TIMER_MSEC(tc,poptail)   / rb->ngets         : 0.0;
+  times[SDCPerStealTime]     = tc->ct.num_steals         != 0 ? TC_READ_TIMER_USEC(tc,steal)   / tc->ct.num_steals         : 0.0;
   times[SDCPerGetMetaTime]     = rb->nmeta         != 0 ? TC_READ_TIMER_MSEC(tc,getmeta)   / rb->nmeta         : 0.0;
   times[SDCPerProgressTime]    = rb->nprogress     != 0 ? TC_READ_TIMER_USEC(tc,progress)  / rb->nprogress     : 0.0;
   times[SDCPerReclaimTime]     = rb->nreccalls     != 0 ? TC_READ_TIMER_USEC(tc,reclaim)   / rb->nreccalls     : 0.0;
@@ -539,7 +550,8 @@ void gtc_print_gstats_sdc(gtc_t gtc) {
   counts[SDCGetCalls]           = tc->ct.getcalls;
   counts[SDCNumMeta]            = rb->nmeta;
   counts[SDCGetLocalCalls]      = tc->ct.getlocal;
-  counts[SDCNumSteals]          = rb->nsteals;
+  counts[SDCNumSteals]          = tc->ct.num_steals;
+  counts[SDCNumLocalSteals]     = tc->ct.num_local_steals;
   counts[SDCStealFailsLocked]   = tc->ct.failed_steals_locked;
   counts[SDCStealFailsUnlocked] = tc->ct.failed_steals_unlocked;
   counts[SDCAbortedSteals]      = tc->ct.aborted_steals;
@@ -556,6 +568,9 @@ void gtc_print_gstats_sdc(gtc_t gtc) {
   shmem_min_reduce(SHMEM_TEAM_WORLD, mincounts, counts, ncounts);
   shmem_max_reduce(SHMEM_TEAM_WORLD, maxcounts, counts, ncounts);
   shmem_sum_reduce(SHMEM_TEAM_WORLD, sumcounts, counts, ncounts);
+
+  double percsteals;
+  percsteals = ((double)sumcounts[SDCNumLocalSteals]/(double)sumcounts[SDCNumSteals]) * 100;
   shmem_barrier_all();
 
   eprintf("        : shared heap memory allocated: %d    local heap memory allocated: %d\n", _c->shmallocsize, _c->allocsize);
@@ -579,6 +594,13 @@ void gtc_print_gstats_sdc(gtc_t gtc) {
   eprintf("        :   steals     %6lu (%6.2f/%3lu/%3lu)\n",
       sumcounts[SDCNumSteals], sumcounts[SDCNumSteals]/(double)_c->size,
       mincounts[SDCNumSteals], maxcounts[SDCNumSteals]);
+  eprintf("        :   local steals     %6lu (%6.2f/%3lu/%3lu) perc. of steals overall %6g\n",
+      sumcounts[SDCNumLocalSteals], sumcounts[SDCNumLocalSteals]/(double)_c->size,
+      mincounts[SDCNumLocalSteals], maxcounts[SDCNumLocalSteals], percsteals); 
+    eprintf("        :   get_tasks   time %6.2fms/%6.2fms/%6.2fms per %6.2fus/%6.2fus/%6.2fus\n",
+     
+      sumtimes[SDCStealTime]/_c->size, mintimes[SDCStealTime], maxtimes[SDCStealTime],
+      sumtimes[SDCPerStealTime]/_c->size, mintimes[SDCPerStealTime], maxtimes[SDCPerStealTime]);
   eprintf("        :   fails lock %6lu (%6.2f/%3lu/%3lu)\n",
       sumcounts[SDCStealFailsLocked], sumcounts[SDCStealFailsLocked]/(double)_c->size,
       mincounts[SDCStealFailsLocked], maxcounts[SDCStealFailsLocked]);

@@ -503,6 +503,7 @@ static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, vo
     sdc_shrb_unlock(myrb, proc); // Deferred copy unlocks early
 
     // Transfer work into the local buffer
+    TC_START_TIMER(myrb->tc,steal);
     if ((&trb)->tail + (n-1) < (&trb)->max_size) {    // No need to wrap around
 
       shmem_getmem_nbi(e, sdc_shrb_elem_addr(myrb, proc, (&trb)->tail), n * (&trb)->elem_size, proc);    // Store n elems, starting at remote tail, in e
@@ -519,6 +520,7 @@ static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, vo
       shmem_quiet();
 
     }
+    TC_STOP_TIMER(myrb->tc,steal);
 
     /*
     int *steal_from;

@@ -157,7 +157,7 @@ int gtc_tasks_avail_laws(gtc_t gtc) {
   GTC_EXIT(laws_size(tc->shared_rb));
 }
 
-int is_local(int v, laws_t *rb) {
+static inline int is_local(int v, laws_t *rb) {
     if (v >= rb->root && v < rb->root + rb->nproc)
      return 1;
     return 0;
@@ -176,6 +176,67 @@ int is_local(int v, laws_t *rb) {
  *                 has occurred.  Returned buffer should be deleted by the user.
  */
 double gtc_get_dummy_work_laws = 0.0;
+
+/** Internal target selector state machine: Select the next target to attempt a steal from.
+ *
+ * @param[in] gtc   Current task collection
+ * @param[in] state State of the target selector.  The state struct should be
+ *                  initially set to 0
+ * @return          Next target
+ */
+int gtc_select_target_laws(gtc_t gtc, gtc_vs_state_t *state) {
+  GTC_ENTRY();
+  int v = -1;
+  tc_t *tc = gtc_lookup(gtc);
+  laws_t *local_md = (laws_t *)tc->shared_rb;
+
+  /* SINGLE: Single processor run
+  */
+  if (_c->size == 1) {
+    v = 0;
+  }
+
+  /* RETRY: Attempt to steal from the same target again.  This is used
+   * with aborting steals which are non-blocking a require retrying.
+   */
+  if (state->target_retry) {
+    // Note: max_steal_retries < 0 means infinite number of retries
+    if (state->num_retries >= tc->ldbal_cfg.max_steal_retries && tc->ldbal_cfg.max_steal_retries > 0) {
+      state->num_retries = 0;
+      tc->ct.aborted_targets++;
+
+    } else {
+      state->target_retry = 0;
+      state->num_retries++;
+      v = state->last_target;
+    }
+  }
+
+  /* FREE: Free target selection.
+  */
+  if (v < 0) {
+    // Target Random: Randomly select the next target
+    if (tc->ldbal_cfg.target_selection == TARGET_RANDOM) {
+      do {
+        v = rand() % local_md->ncores;
+      } while (v == local_md->rank);
+    }
+
+    // Round Robin: Next target is selected round-robin
+    else if (tc->ldbal_cfg.target_selection == TARGET_ROUND_ROBIN) {
+      v = (state->last_target + 1) % local_md->ncores;
+    }
+
+    else {
+      printf("Unknown target selection method\n");
+      assert(0);
+    }
+  }
+
+  state->last_target = v;
+
+  GTC_EXIT(v);
+}
 
 int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
   GTC_ENTRY();
@@ -231,14 +292,22 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
       // retrieve metadata indicating status of intranode processes first
       // TODO: set timer here; need to keep track of how long this takes
       TC_START_TIMER(tc, global_ret);
-      shmem_getmem(local_md->global, local_md->gaddrs, sizeof(laws_global_t) * local_md->ncores, local_md->root);
+      //shmem_getmem(local_md->global, local_md->gaddrs, sizeof(laws_global_t) * local_md->ncores, local_md->root);
+      uint64_t gb_copy;
+      shmem_getmem(&gb_copy, local_md->our_bits, sizeof(uint64_t), local_md->root);
       TC_STOP_TIMER(tc, global_ret);
       tc->ct.global_ret_count++;
 
+      if (gb_copy != 0) {
+          v = gtc_select_target_laws(gtc, &vs_state);
+          v += local_md->root;
+      }else {
+          v = gtc_select_target(gtc, &vs_state);
+      }
       // loop through the metadata array, seeing if any local cores have work
       // TODO: make this circular (i.e. when steal fails, move to next item in array, rather than starting from beginning again)
-      v = -1;
       /*
+      v = -1;
       for (int i = local_md->rank + 1; i != local_md->rank; i = (i + 1) % local_md->ncores) {
           if (local_md->global[i]) {
               v = local_md->root + i;
@@ -258,6 +327,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
       printf("\n");
       */
 
+      /*
       for (int i = 0; i < local_md->ncores; i++) {
           if (i == local_md->rank) {
               continue;
@@ -268,12 +338,15 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
               break;
           }
       }
+      */
 
       // if we still couldn't find anything, choose randomly
+      /*
       if (v == -1) {
-          v = gtc_select_target(gtc, &vs_state);
+          v = gtc_select_target_laws(gtc, &vs_state);
           //printf("stealing off-node from process %d\n", v);
       }
+      */
 
       max_steal_attempts = tc->ldbal_cfg.max_steal_attempts_remote;
 
@@ -566,7 +639,7 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   double   *times, *mintimes, *maxtimes, *sumtimes;
   uint64_t *counts, *mincounts, *maxcounts, *sumcounts;
 
-  int ntimes = 16;
+  int ntimes = 18;
   times     = gtc_shmem_calloc(ntimes, sizeof(double));
   mintimes  = gtc_shmem_calloc(ntimes, sizeof(double));
   maxtimes  = gtc_shmem_calloc(ntimes, sizeof(double));
@@ -580,14 +653,16 @@ void gtc_print_gstats_laws(gtc_t gtc) {
 
 
   times[LAWSPopTailTime]        = TC_READ_TIMER_MSEC(tc,poptail);
+  times[LAWSStealTime]          = TC_READ_TIMER_MSEC(tc,steal);
   times[LAWSGetMetaTime]        = TC_READ_TIMER_MSEC(tc,getmeta);
   times[LAWSProgressTime]       = TC_READ_TIMER_USEC(tc,progress);
   times[LAWSReclaimTime]        = TC_READ_TIMER_USEC(tc,reclaim);
   times[LAWSEnsureTime]         = TC_READ_TIMER_USEC(tc,ensure);
   times[LAWSReacquireTime]      = TC_READ_TIMER_MSEC(tc,reacquire);
   times[LAWSReleaseTime]        = TC_READ_TIMER_USEC(tc,release);
-  times[LAWSGlobalRetTime]      = TC_READ_TIMER_USEC(tc, global_ret);
+  times[LAWSGlobalRetTime]      = TC_READ_TIMER_MSEC(tc, global_ret);
   times[LAWSPerPopTailTime]     = rb->ngets         != 0 ? TC_READ_TIMER_MSEC(tc,poptail)   / rb->ngets         : 0.0;
+  times[LAWSPerStealTime]     = tc->ct.num_steals         != 0 ? TC_READ_TIMER_USEC(tc,steal)   / tc->ct.num_steals         : 0.0;
   times[LAWSPerGetMetaTime]     = rb->nmeta         != 0 ? TC_READ_TIMER_MSEC(tc,getmeta)   / rb->nmeta         : 0.0;
   times[LAWSPerProgressTime]    = rb->nprogress     != 0 ? TC_READ_TIMER_USEC(tc,progress)  / rb->nprogress     : 0.0;
   times[LAWSPerReclaimTime]     = rb->nreccalls     != 0 ? TC_READ_TIMER_USEC(tc,reclaim)   / rb->nreccalls     : 0.0;
@@ -646,11 +721,10 @@ void gtc_print_gstats_laws(gtc_t gtc) {
       sumtimes[LAWSGetMetaTime]/_c->size, mintimes[LAWSGetMetaTime], maxtimes[LAWSGetMetaTime],
       sumtimes[LAWSPerGetMetaTime]/_c->size, mintimes[LAWSPerGetMetaTime], maxtimes[LAWSPerGetMetaTime]);
 
-  eprintf("        :   get_global   %6lu (%6.2f/%3lu/%3lu) time %6.2fms/%6.2fms/%6.2fms per %6.2fms/%6.2fms/%6.2fms\n",
+  eprintf("        :   get_global   %6lu (%6.2f/%3lu/%3lu) time %6.2fms/%6.2fms/%6.2fms per %6.2fus/%6.2fus/%6.2fus\n",
       sumcounts[LAWSGlobalRetCalls], sumcounts[LAWSGlobalRetCalls]/(double)_c->size, mincounts[LAWSGlobalRetCalls], maxcounts[LAWSGlobalRetCalls],
       sumtimes[LAWSGlobalRetTime]/_c->size, mintimes[LAWSGlobalRetTime], maxtimes[LAWSGlobalRetTime],
       sumtimes[LAWSPerGlobalRetTime]/_c->size, mintimes[LAWSPerGlobalRetTime], maxtimes[LAWSPerGlobalRetTime]);
-
   eprintf("        :   localget   %6lu (%6.2f/%3lu/%3lu)\n",
       sumcounts[LAWSGetLocalCalls], sumcounts[LAWSGetLocalCalls]/(double)_c->size,
       mincounts[LAWSGetLocalCalls], maxcounts[LAWSGetLocalCalls]);
@@ -660,6 +734,10 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   eprintf("        :   local steals     %6lu (%6.2f/%3lu/%3lu) perc. of steals overall %6g\n",
       sumcounts[LAWSNumLocalSteals], sumcounts[LAWSNumLocalSteals]/(double)_c->size,
       mincounts[LAWSNumLocalSteals], maxcounts[LAWSNumLocalSteals], percsteals); 
+  eprintf("        :   get_tasks   time %6.2fms/%6.2fms/%6.2fms per %6.2fus/%6.2fus/%6.2fus\n",
+     
+      sumtimes[LAWSStealTime]/_c->size, mintimes[LAWSStealTime], maxtimes[LAWSStealTime],
+      sumtimes[LAWSPerStealTime]/_c->size, mintimes[LAWSPerStealTime], maxtimes[LAWSPerStealTime]);
   eprintf("        :   fails lock %6lu (%6.2f/%3lu/%3lu)\n",
       sumcounts[LAWSStealFailsLocked], sumcounts[LAWSStealFailsLocked]/(double)_c->size,
       mincounts[LAWSStealFailsLocked], maxcounts[LAWSStealFailsLocked]);

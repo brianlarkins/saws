@@ -9,6 +9,8 @@
 typedef enum {
   SDCPopTailTime,
   SDCPerPopTailTime,
+  SDCStealTime,
+  SDCPerStealTime,
   SDCGetMetaTime,
   SDCPerGetMetaTime,
   SDCProgressTime,
@@ -30,6 +32,7 @@ typedef enum {
   SDCNumMeta,
   SDCGetLocalCalls,
   SDCNumSteals,
+  SDCNumLocalSteals,
   SDCStealFailsLocked,
   SDCStealFailsUnlocked,
   SDCAbortedSteals,

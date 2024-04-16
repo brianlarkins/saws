@@ -81,15 +81,18 @@ laws_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   // initialize global arrays
   // need another array to avoid undefined behavior
   int cores_per_node = sysconf(_SC_NPROCESSORS_ONLN);
-  rb->gaddrs = gtc_shmem_calloc(cores_per_node, sizeof(laws_global_t));
-  rb->global = calloc(cores_per_node, sizeof(laws_global_t));
+  //rb->gaddrs = gtc_shmem_calloc(cores_per_node, sizeof(laws_global_t));
+  //rb->global = calloc(cores_per_node, sizeof(laws_global_t));
+  rb->global_bits = gtc_shmem_calloc(sizeof(uint64_t), 1);
   
   // set pointers specifically for this process
   rb->ncores = cores_per_node;
   rb->rank = procid % rb->ncores;
+  rb->our_bits = 1 << rb->rank;
+  rb->our_invert = rb->our_bits ^ 0xffffffffffffffff;
   rb->root = procid - rb->rank;
-  rb->g_meta = &rb->global[rb->rank];
-  rb->gaddr = &rb->gaddrs[rb->rank];
+  //rb->g_meta = &rb->global[rb->rank];
+  //rb->gaddr = &rb->gaddrs[rb->rank];
 
   rb->procid  = procid;
   rb->nproc  = nproc;
@@ -118,8 +121,8 @@ void laws_reset(laws_t *rb) {
   rb->split  = 0;
 
   // set default values for global md; save to root
-  *(rb->g_meta) = 0;
-  shmem_putmem(rb->gaddr, rb->g_meta, sizeof(laws_global_t), rb->root);
+  //*(rb->g_meta) = 0;
+  //shmem_putmem(rb->gaddr, rb->g_meta, sizeof(laws_global_t), rb->root);
 
   rb->waiting= 0;
 
@@ -276,9 +279,7 @@ void laws_ensure_space(laws_t *rb, int n) {
         assert(0);
       }
       rb->waiting = 1;
-      while (laws_reclaim_space(rb) == 0) {
-          laws_print(rb);
-      } /* Busy Wait */ ;
+      while (laws_reclaim_space(rb) == 0);
       rb->waiting = 0;
       rb->nwaited++;
     }
@@ -303,8 +304,9 @@ void laws_release(laws_t *rb) {
     
     // indicate to other intranode processes that there's work here
     //shmem_atomic_fetch_or(rb->gaddr, 1, rb->root);
-    uint8_t yep = 1;
-    shmem_putmem(rb->gaddr, &yep, sizeof(laws_global_t), rb->root);
+    //uint8_t yep = 1;
+    //shmem_putmem(rb->gaddr, &yep, sizeof(laws_global_t), rb->root);
+    shmem_atomic_or(rb->global_bits, rb->our_bits, rb->root);
 
     gtc_lprintf(DBGSHRB, "release: local size: %d shared size: %d\n", laws_local_size(rb), laws_shared_size(rb));
   }
@@ -345,8 +347,9 @@ int laws_reacquire(laws_t *rb) {
       rb->nreacquire++;
       if (laws_shared_isempty(rb)) {
           //shmem_atomic_fetch_and(rb->gaddr, 0, rb->root);
-          uint8_t nope = 0;
-          shmem_putmem(rb->gaddr, &nope, sizeof(laws_global_t), rb->root);
+          //uint8_t nope = 0;
+          //shmem_putmem(rb->gaddr, &nope, sizeof(laws_global_t), rb->root);
+          shmem_atomic_and(rb->global_bits, rb->our_invert, rb->root);
       }
       gtc_lprintf(DBGSHRB, "reacquire: local size: %d shared size: %d\n", laws_local_size(rb), laws_shared_size(rb));
     }
@@ -534,14 +537,16 @@ static inline int laws_pop_n_tail_impl(laws_t *myrb, int proc, int n, void *e, i
     xfer_size   = 1*sizeof(int);
     if (new_tail == (&trb)->split) {
         //shmem_atomic_fetch_and((&trb)->gaddr, 0, (&trb)->root);
-        uint8_t nope = 0;
-        shmem_putmem((&trb)->gaddr, &nope, sizeof(laws_global_t), (&trb)->root);
+        //uint8_t nope = 0;
+        //shmem_putmem((&trb)->gaddr, &nope, sizeof(laws_global_t), (&trb)->root);
+        shmem_atomic_and((&trb)->global_bits, (&trb)->our_invert, (&trb)->root);
     }
     shmem_putmem(rem_addr, loc_addr, xfer_size, proc);
 
     laws_unlock(myrb, proc); // Deferred copy unlocks early
 
     // Transfer work into the local buffer
+    TC_START_TIMER(myrb->tc, steal);
     if ((&trb)->tail + (n-1) < (&trb)->max_size) {    // No need to wrap around
 
       shmem_getmem_nbi(e, laws_elem_addr(myrb, proc, (&trb)->tail), n * (&trb)->elem_size, proc);    // Store n elems, starting at remote tail, in e
@@ -558,6 +563,7 @@ static inline int laws_pop_n_tail_impl(laws_t *myrb, int proc, int n, void *e, i
       shmem_quiet();
 
     }
+    TC_STOP_TIMER(myrb->tc, steal);
 
     /*
     int *steal_from;
