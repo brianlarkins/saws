@@ -86,7 +86,13 @@ laws_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   rb->global_bits = gtc_shmem_calloc(sizeof(uint64_t), 1);
   
   // set pointers specifically for this process
-  rb->ncores = cores_per_node;
+  int multiple = procid / cores_per_node;
+  int upper = multiple + 1;
+  if ((cores_per_node * upper) <= nproc)
+      rb->ncores = cores_per_node;
+  else 
+      rb->ncores = nproc - (cores_per_node * multiple);
+
   rb->rank = procid % rb->ncores;
   rb->our_bits = 1 << rb->rank;
   rb->our_invert = rb->our_bits ^ 0xffffffffffffffff;
@@ -320,9 +326,10 @@ void laws_release_all(laws_t *rb) {
   int amount  = laws_local_size(rb);
   rb->nlocal -= amount;
   rb->split   = (rb->split + amount) % rb->max_size;
-  uint8_t yep = 1;
-  shmem_putmem(rb->gaddr, &yep, sizeof(laws_global_t), rb->root);
+  //uint8_t yep = 1;
+  //shmem_putmem(rb->gaddr, &yep, sizeof(laws_global_t), rb->root);
   //shmem_atomic_fetch_or(rb->gaddr, 1, rb->root);
+  shmem_atomic_or(rb->global_bits, rb->our_bits, rb->root);
   rb->nrelease++;
   GTC_EXIT();
 }

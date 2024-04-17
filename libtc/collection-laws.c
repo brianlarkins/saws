@@ -294,7 +294,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
       TC_START_TIMER(tc, global_ret);
       //shmem_getmem(local_md->global, local_md->gaddrs, sizeof(laws_global_t) * local_md->ncores, local_md->root);
       uint64_t gb_copy;
-      shmem_getmem(&gb_copy, local_md->our_bits, sizeof(uint64_t), local_md->root);
+      shmem_getmem(&gb_copy, local_md->global_bits, sizeof(uint64_t), local_md->root);
       TC_STOP_TIMER(tc, global_ret);
       tc->ct.global_ret_count++;
 

@@ -1,7 +1,6 @@
 #ifndef __SDC_SHR_RING_H__
 #define __SDC_SHR_RING_H__
 
-#include <cstdint>
 #include <sys/types.h>
 #include <shmem.h>
 #include <mutex.h>
