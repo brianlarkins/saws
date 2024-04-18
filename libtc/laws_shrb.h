@@ -65,6 +65,7 @@ struct laws_s {
   int             root;
   int             ncores; // number of cores on each node
   int             rank;
+  int             has_work;
   //uint8_t         *gaddrs; // the addresses of the global metadata stored on the root process
   //uint8_t         *global; // our copy of the global metadata
   uint64_t        *global_bits; // bitfield indicating work status of each process on a node

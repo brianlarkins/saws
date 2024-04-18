@@ -97,6 +97,7 @@ laws_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   rb->our_bits = 1 << rb->rank;
   rb->our_invert = rb->our_bits ^ 0xffffffffffffffff;
   rb->root = procid - rb->rank;
+  rb->has_work = 0;
   //rb->g_meta = &rb->global[rb->rank];
   //rb->gaddr = &rb->gaddrs[rb->rank];
 

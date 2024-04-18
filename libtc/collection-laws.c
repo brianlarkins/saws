@@ -291,16 +291,20 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
 
       // retrieve metadata indicating status of intranode processes first
       // TODO: set timer here; need to keep track of how long this takes
-      TC_START_TIMER(tc, global_ret);
       //shmem_getmem(local_md->global, local_md->gaddrs, sizeof(laws_global_t) * local_md->ncores, local_md->root);
       uint64_t gb_copy;
-      shmem_getmem(&gb_copy, local_md->global_bits, sizeof(uint64_t), local_md->root);
-      TC_STOP_TIMER(tc, global_ret);
-      tc->ct.global_ret_count++;
 
-      if (gb_copy != 0) {
-          v = gtc_select_target_laws(gtc, &vs_state);
-          v += local_md->root;
+      if (local_md->has_work) {
+          TC_START_TIMER(tc, global_ret);
+          shmem_getmem(&gb_copy, local_md->global_bits, sizeof(uint64_t), local_md->root);
+          TC_STOP_TIMER(tc, global_ret);
+          tc->ct.global_ret_count++;
+          if (gb_copy) {
+              v = gtc_select_target_laws(gtc, &vs_state);
+              v += local_md->root;
+          }else {
+              v = gtc_select_target(gtc, &vs_state);
+          }
       }else {
           v = gtc_select_target(gtc, &vs_state);
       }
@@ -386,6 +390,8 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
           if (steal_size > 0) {
             tc->ct.tasks_stolen += steal_size;
             tc->ct.num_steals += 1;
+            if (!local_md->has_work)
+                local_md->has_work = 1;
             // increment this if the steal was local
             if (is_local(v, local_md))
                 tc->ct.num_local_steals += 1; // numbr of successful local steals
