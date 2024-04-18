@@ -115,6 +115,7 @@ void gtc_progress_laws(gtc_t gtc) {
   GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
   TC_START_TIMER(tc,progress);
+  laws_t *local_md = (laws_t *)tc->shared_rb;
 
 #if 0 /* no task pushing */
   // Check the inbox for new work
@@ -138,6 +139,14 @@ void gtc_progress_laws(gtc_t gtc) {
 
   // Attempt to reclaim space
   laws_reclaim_space(tc->shared_rb);
+
+  // check for work from bitfield; if work available, set flag
+  if (local_md->procid == local_md->root) {
+      if (local_md->global_bits)
+          *(local_md->has_work_avail) = 1;
+      else
+          *(local_md->has_work_avail) = 0;
+  }
   ((laws_t *)tc->shared_rb)->nprogress++;
   TC_STOP_TIMER(tc,progress);
   GTC_EXIT();
@@ -219,6 +228,15 @@ int gtc_select_target_laws(gtc_t gtc, gtc_vs_state_t *state) {
     if (tc->ldbal_cfg.target_selection == TARGET_RANDOM) {
       do {
         v = rand() % local_md->ncores;
+        /*
+        for (int i = v; i != v - 1; i = (i + 1) % local_md->ncores) {
+            uint64_t num = 0x1 << i;
+            if (local_md->gb_copy & num){
+                v = i;
+                break;
+            }
+        }
+        */
       } while (v == local_md->rank);
     }
 
@@ -292,14 +310,15 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
       // retrieve metadata indicating status of intranode processes first
       // TODO: set timer here; need to keep track of how long this takes
       //shmem_getmem(local_md->global, local_md->gaddrs, sizeof(laws_global_t) * local_md->ncores, local_md->root);
-      uint64_t gb_copy;
 
+      uint8_t is_work;
       if (local_md->has_work) {
           TC_START_TIMER(tc, global_ret);
-          shmem_getmem(&gb_copy, local_md->global_bits, sizeof(uint64_t), local_md->root);
+          //shmem_getmem(&local_md->gb_copy, local_md->global_bits, sizeof(uint64_t), local_md->root);
+          shmem_getmem(&is_work, local_md->has_work_avail, sizeof(uint64_t), local_md->root);
           TC_STOP_TIMER(tc, global_ret);
           tc->ct.global_ret_count++;
-          if (gb_copy) {
+          if (is_work) {
               v = gtc_select_target_laws(gtc, &vs_state);
               v += local_md->root;
           }else {
@@ -390,8 +409,8 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
           if (steal_size > 0) {
             tc->ct.tasks_stolen += steal_size;
             tc->ct.num_steals += 1;
-            if (!local_md->has_work)
-                local_md->has_work = 1;
+            //if (!local_md->has_work)
+            local_md->has_work = 1;
             // increment this if the steal was local
             if (is_local(v, local_md))
                 tc->ct.num_local_steals += 1; // numbr of successful local steals
@@ -440,6 +459,9 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
 
       if (gtc_tasks_avail(gtc))
         got_task = gtc_get_local_buf(gtc, priority, buf);
+      else
+        if (local_md->has_work)
+            local_md->has_work--;
     }
 
   } else {

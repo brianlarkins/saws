@@ -84,6 +84,7 @@ laws_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   //rb->gaddrs = gtc_shmem_calloc(cores_per_node, sizeof(laws_global_t));
   //rb->global = calloc(cores_per_node, sizeof(laws_global_t));
   rb->global_bits = gtc_shmem_calloc(sizeof(uint64_t), 1);
+  rb->has_work_avail = gtc_shmem_calloc(sizeof(uint8_t), 1);
   
   // set pointers specifically for this process
   int multiple = procid / cores_per_node;
