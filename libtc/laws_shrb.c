@@ -555,6 +555,9 @@ static inline int laws_pop_n_tail_impl(laws_t *myrb, int proc, int n, void *e, i
     laws_unlock(myrb, proc); // Deferred copy unlocks early
 
     // Transfer work into the local buffer
+    // TODO: maybe calculate how many tasks we're retrieving per steal; there's a likely chance 
+    // that on average, we are retrieving less per steal than SDC, which would explain why 
+    // there are so many more steals with LAWS
     TC_START_TIMER(myrb->tc, steal);
     if ((&trb)->tail + (n-1) < (&trb)->max_size) {    // No need to wrap around
 
