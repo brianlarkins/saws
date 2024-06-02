@@ -59,18 +59,18 @@ struct laws_s {
   int             waiting;   // Am I currently waiting for transactions to complete?
   
   int             procid;
-  int             nproc;
+  int             nproc;    // number of processes in total (aka. across all nodes)
   int             max_size;  // Max size in number of elements
   int             elem_size; // Size of an element in bytes
-  int             root;
+  int             root;     // the root process relative to this one
   int             ncores; // number of cores on each node
   int             rank;
-  int             has_work;
+  int             has_work; // only attempt to retrieve work locally if this has been set (aka. we have previously successfully retrieved work through random selection)
   //uint8_t         *gaddrs; // the addresses of the global metadata stored on the root process
   //uint8_t         *global; // our copy of the global metadata
   uint64_t        *global_bits; // bitfield indicating work status of each process on a node
-  uint64_t         gb_copy;
-  uint64_t        *has_work_avail;
+  uint64_t         gb_copy;   // where the copy is stored when retrieved from memory
+  uint64_t        *has_work_avail;  
   //uint8_t         *g_meta; // pointer to our process's metadata specifically 
   //uint8_t         *gaddr;  // same as above, but with reference to the address from which that data is pulled
   uint64_t        our_bits; // used when modifying global bitfield

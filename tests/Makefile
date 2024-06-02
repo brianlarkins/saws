@@ -18,6 +18,7 @@ TARGETS=test-hello          \
 				threadtest          \
 				test-array          \
 				test-steal \
+				test-steal-local \
 				test-contention \
 				test-atomic \
 				test-atomic-contention \
@@ -76,6 +77,9 @@ test-array: tclibs test-array.o
 test-steal: tclibs test-steal.o 
 	$(CC) $(CFLAGS) -o $@ test-steal.o wctimer.o $(TC_LIBS)
 	
+test-steal-local: tclibs test-steal-local.o 
+	$(CC) $(CFLAGS) -o $@ test-steal-local.o wctimer.o $(TC_LIBS)
+
 test-contention: tclibs test-contention.o 
 	$(CC) $(CFLAGS) -o $@ test-contention.o wctimer.o $(TC_LIBS)
 

@@ -167,7 +167,7 @@ int gtc_tasks_avail_laws(gtc_t gtc) {
 }
 
 static inline int is_local(int v, laws_t *rb) {
-    if (v >= rb->root && v < rb->root + rb->nproc)
+    if (v >= rb->root && v < rb->root + rb->ncores)
      return 1;
     return 0;
 }
@@ -311,6 +311,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
       // TODO: set timer here; need to keep track of how long this takes
       //shmem_getmem(local_md->global, local_md->gaddrs, sizeof(laws_global_t) * local_md->ncores, local_md->root);
 
+      // since we're stealing randomly, we only need to check whether there is any work onnode at all; we can just use a single-byte flag for this
       uint8_t is_work;
       if (local_md->has_work) {
           TC_START_TIMER(tc, global_ret);
@@ -318,10 +319,12 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
           shmem_getmem(&is_work, local_md->has_work_avail, sizeof(uint64_t), local_md->root);
           TC_STOP_TIMER(tc, global_ret);
           tc->ct.global_ret_count++;
+          // choose onnode core randomly
           if (is_work) {
               v = gtc_select_target_laws(gtc, &vs_state);
               v += local_md->root;
           }else {
+          // ...or steal from any rank on any node
               v = gtc_select_target(gtc, &vs_state);
           }
       }else {
@@ -383,6 +386,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
            steal_attempts++) {
 
         // Apply linear backoff to avoid flooding remote nodes
+        // TODO: do we need this if we are stealing on-node?
         if (steal_attempts > 0) {
           int j;
           for (j = 0; j < steal_attempts*1000; j++)

@@ -4,11 +4,12 @@
 #include <stdarg.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <string.h>
 #include "tc.h"
 #define HALFKB 512
 #define KB HALFKB*(2) 
 #define MB KB*(1024)
-#define REPS 10000
+#define REPS 100000
 
 int dbg_printf_real(const char *format, ...) {
   va_list ap;
@@ -29,7 +30,7 @@ int main(void) {
     wc_tsc_calibrate();
     int my_pe = shmem_my_pe();
 
-    for (int i = 1; i <= 100000000; i *= 10) {
+    for (int i = 1; i <= 10000000; i *= 10) {
         char *q = shmem_malloc(i);
         char *our_q = malloc(i);
         
@@ -47,7 +48,7 @@ int main(void) {
         //WC_STOP_TIMER(timer);
         
         if (my_pe == 0) {
-            dbg_printf_real("copied %9d bytes in %15.8f usec\n", i, (WC_READ_TIMER_USEC(timer)/REPS));
+            dbg_printf_real("shmem: copied %9d bytes in %15.8f usec\n", i, (WC_READ_TIMER_USEC(timer)/REPS));
         }
 
         shmem_free(q);
