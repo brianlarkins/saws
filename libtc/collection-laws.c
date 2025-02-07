@@ -695,7 +695,7 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   maxtimes = gtc_shmem_calloc(ntimes, sizeof(double));
   sumtimes = gtc_shmem_calloc(ntimes, sizeof(double));
 
-  int ncounts = 15;
+  int ncounts = 16;
   counts = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
   mincounts = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
   maxcounts = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
@@ -750,6 +750,7 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   counts[LAWSReacquireCalls] = rb->nreacquire;
   counts[LAWSReleaseCalls] = rb->nrelease;
   counts[LAWSGlobalRetCalls] = tc->ct.global_ret_count;
+  counts[LAWSNumTasksStolen] = tc->ct.tasks_stolen;
 
   shmem_min_reduce(SHMEM_TEAM_WORLD, mintimes, times, ntimes);
   shmem_max_reduce(SHMEM_TEAM_WORLD, maxtimes, times, ntimes);
@@ -768,9 +769,15 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   */
 
   double percsteals;
+  double avg_tasks_per_steal;
   percsteals = ((double)sumcounts[LAWSNumLocalSteals] /
                 (double)sumcounts[LAWSNumSteals]) *
                100;
+
+  // How many tasks are stolen on average per steal?
+  avg_tasks_per_steal =
+      (double)sumcounts[LAWSNumTasksStolen] / (double)sumcounts[LAWSNumSteals];
+
   shmem_barrier_all();
 
   eprintf("        : shared heap memory allocated: %d    local heap memory "
@@ -820,11 +827,12 @@ void gtc_print_gstats_laws(gtc_t gtc) {
           mincounts[LAWSNumLocalSteals], maxcounts[LAWSNumLocalSteals],
           percsteals);
   eprintf("        :   get_tasks   time %6.2fms/%6.2fms/%6.2fms per "
-          "%6.2fus/%6.2fus/%6.2fus\n",
+          "%6.2fus/%6.2fus/%6.2fus; avg. tasks per steal: %6.2f\n",
 
           sumtimes[LAWSStealTime] / _c->size, mintimes[LAWSStealTime],
           maxtimes[LAWSStealTime], sumtimes[LAWSPerStealTime] / _c->size,
-          mintimes[LAWSPerStealTime], maxtimes[LAWSPerStealTime]);
+          mintimes[LAWSPerStealTime], maxtimes[LAWSPerStealTime],
+          avg_tasks_per_steal);
   eprintf("        :   fails lock %6lu (%6.2f/%3lu/%3lu)\n",
           sumcounts[LAWSStealFailsLocked],
           sumcounts[LAWSStealFailsLocked] / (double)_c->size,

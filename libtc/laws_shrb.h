@@ -42,7 +42,8 @@ typedef enum {
   LAWSEnsureCalls,
   LAWSReacquireCalls,
   LAWSReleaseCalls,
-  LAWSGlobalRetCalls
+  LAWSGlobalRetCalls,
+  LAWSNumTasksStolen
 } gtc_sdc_gcountstats_e;
 
 struct laws_s {
