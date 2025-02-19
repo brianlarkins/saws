@@ -201,7 +201,11 @@ void gtc_reset(gtc_t gtc) {
   tc->ct.tasks_completed = 0;
   tc->ct.tasks_spawned = 0;
   tc->ct.tasks_stolen = 0;
+  tc->ct.tasks_stolen_globally = 0;
+  tc->ct.tasks_stolen_locally = 0;
   tc->ct.num_steals = 0;
+  tc->ct.num_local_steals = 0;
+  tc->ct.num_global_steals = 0;
   tc->ct.passive_count = 0;
   tc->ct.failed_steals_locked = 0;
   tc->ct.failed_steals_unlocked = 0;

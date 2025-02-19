@@ -110,7 +110,7 @@ void gtc_progress_laws(gtc_t gtc) {
   GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
   TC_START_TIMER(tc, progress);
-  laws_t *local_md = (laws_t *)tc->shared_rb;
+  // laws_t *local_md = (laws_t *)tc->shared_rb;
 
 #if 0  /* no task pushing */
   // Check the inbox for new work
@@ -428,8 +428,15 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
             // if (!local_md->has_work)
             local_md->has_work = 1;
             // increment this if the steal was local
-            if (is_local(v, local_md))
-              tc->ct.num_local_steals += 1; // numbr of successful local steals
+            // TODO: also increment tasks stolen but for local steals
+            // specifically
+            if (is_local(v, local_md)) {
+              tc->ct.num_local_steals += 1; // number of successful local steals
+              tc->ct.tasks_stolen_locally += steal_size;
+            } else {
+              tc->ct.num_global_steals += 1;
+              tc->ct.tasks_stolen_globally += steal_size;
+            }
             steal_done = 1;
             tc->last_target = v;
 
@@ -697,6 +704,7 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   laws_t *rb = (laws_t *)tc->shared_rb;
   double *times, *mintimes, *maxtimes, *sumtimes;
   uint64_t *counts, *mincounts, *maxcounts, *sumcounts;
+  double percsteals, avg_tasks_per_steal, avg_tasks_global, avg_tasks_local;
 
   int ntimes = 18;
   times = gtc_shmem_calloc(ntimes, sizeof(double));
@@ -704,7 +712,7 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   maxtimes = gtc_shmem_calloc(ntimes, sizeof(double));
   sumtimes = gtc_shmem_calloc(ntimes, sizeof(double));
 
-  int ncounts = 16;
+  int ncounts = 19;
   counts = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
   mincounts = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
   maxcounts = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
@@ -750,6 +758,7 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   counts[LAWSGetLocalCalls] = tc->ct.getlocal;
   counts[LAWSNumSteals] = tc->ct.num_steals;
   counts[LAWSNumLocalSteals] = tc->ct.num_local_steals;
+  counts[LAWSNumGlobalSteals] = tc->ct.num_global_steals;
   counts[LAWSStealFailsLocked] = tc->ct.failed_steals_locked;
   counts[LAWSStealFailsUnlocked] = tc->ct.failed_steals_unlocked;
   counts[LAWSAbortedSteals] = tc->ct.aborted_steals;
@@ -760,6 +769,8 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   counts[LAWSReleaseCalls] = rb->nrelease;
   counts[LAWSGlobalRetCalls] = tc->ct.global_ret_count;
   counts[LAWSNumTasksStolen] = tc->ct.tasks_stolen;
+  counts[LAWSNumTasksStolenGlobally] = tc->ct.tasks_stolen_globally;
+  counts[LAWSNumTasksStolenLocally] = tc->ct.tasks_stolen_locally;
 
   shmem_min_reduce(SHMEM_TEAM_WORLD, mintimes, times, ntimes);
   shmem_max_reduce(SHMEM_TEAM_WORLD, maxtimes, times, ntimes);
@@ -777,8 +788,6 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   ((double)sumcounts[LAWSNumSteals]/_c->size)) * 100;
   */
 
-  double percsteals;
-  double avg_tasks_per_steal;
   percsteals = ((double)sumcounts[LAWSNumLocalSteals] /
                 (double)sumcounts[LAWSNumSteals]) *
                100;
@@ -786,6 +795,12 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   // How many tasks are stolen on average per steal?
   avg_tasks_per_steal =
       (double)sumcounts[LAWSNumTasksStolen] / (double)sumcounts[LAWSNumSteals];
+
+  avg_tasks_local = (double)sumcounts[LAWSNumTasksStolenLocally] /
+                    (double)sumcounts[LAWSNumLocalSteals];
+
+  avg_tasks_global = (double)sumcounts[LAWSNumTasksStolenGlobally] /
+                     (double)sumcounts[LAWSNumGlobalSteals];
 
   shmem_barrier_all();
 
@@ -837,12 +852,13 @@ void gtc_print_gstats_laws(gtc_t gtc) {
           mincounts[LAWSNumLocalSteals], maxcounts[LAWSNumLocalSteals],
           percsteals);
   eprintf("        :   get_tasks   time %6.2fms/%6.2fms/%6.2fms per "
-          "%6.2fus/%6.2fus/%6.2fus; avg. tasks per steal: %6.2f\n",
+          "%6.2fus/%6.2fus/%6.2fus; avg. tasks per steal (locally/globally): "
+          "%6.2f (%6.2f/%6.2f)\n",
 
           sumtimes[LAWSStealTime] / _c->size, mintimes[LAWSStealTime],
           maxtimes[LAWSStealTime], sumtimes[LAWSPerStealTime] / _c->size,
           mintimes[LAWSPerStealTime], maxtimes[LAWSPerStealTime],
-          avg_tasks_per_steal);
+          avg_tasks_per_steal, avg_tasks_local, avg_tasks_global);
   eprintf("        :   fails lock %6lu (%6.2f/%3lu/%3lu)\n",
           sumcounts[LAWSStealFailsLocked],
           sumcounts[LAWSStealFailsLocked] / (double)_c->size,

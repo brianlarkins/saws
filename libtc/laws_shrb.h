@@ -34,6 +34,7 @@ typedef enum {
   LAWSGetLocalCalls,
   LAWSNumSteals,
   LAWSNumLocalSteals,
+  LAWSNumGlobalSteals,
   LAWSStealFailsLocked,
   LAWSStealFailsUnlocked,
   LAWSAbortedSteals,
@@ -43,7 +44,9 @@ typedef enum {
   LAWSReacquireCalls,
   LAWSReleaseCalls,
   LAWSGlobalRetCalls,
-  LAWSNumTasksStolen
+  LAWSNumTasksStolen,
+  LAWSNumTasksStolenGlobally,
+  LAWSNumTasksStolenLocally
 } gtc_sdc_gcountstats_e;
 
 struct laws_s {
@@ -61,8 +64,10 @@ struct laws_s {
   int nproc;     // number of processes in total (aka. across all nodes)
   int max_size;  // Max size in number of elements
   int elem_size; // Size of an element in bytes
-  int root;      // the root process relative to this one
-  int ncores;    // number of cores on each node
+  int *avg_local_tasks_stolen;
+  int *num_local_steals;
+  int root;   // the root process relative to this one
+  int ncores; // number of cores on each node
   int rank;
   int has_work; // only attempt to retrieve work locally if this has been set
                 // (aka. we have previously successfully retrieved work through
