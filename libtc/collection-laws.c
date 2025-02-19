@@ -136,12 +136,12 @@ void gtc_progress_laws(gtc_t gtc) {
   laws_reclaim_space(tc->shared_rb);
 
   // check for work from bitfield; if work available, set flag
-  if (local_md->procid == local_md->root) {
-    if (local_md->global_bits)
-      *(local_md->has_work_avail) = 1;
-    else
-      *(local_md->has_work_avail) = 0;
-  }
+  /*if (local_md->procid == local_md->root) {*/
+  /*  if (local_md->global_bits)*/
+  /*    *(local_md->has_work_avail) = 1;*/
+  /*  else*/
+  /*    *(local_md->has_work_avail) = 0;*/
+  /*}*/
   ((laws_t *)tc->shared_rb)->nprogress++;
   TC_STOP_TIMER(tc, progress);
   GTC_EXIT();
@@ -258,6 +258,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
   int v, steal_size;
   int passive = 0;
   int searching = 0;
+  int perc_local = 70;
   gtc_vs_state_t vs_state = {0, 0, 0};
   laws_t rb_buf;
   laws_t *local_md = (laws_t *)tc->shared_rb;
@@ -309,26 +310,36 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
 
       // since we're stealing randomly, we only need to check whether there is
       // any work onnode at all; we can just use a single-byte flag for this
-      uint8_t is_work;
-      if (local_md->has_work) {
-        TC_START_TIMER(tc, global_ret);
-        // shmem_getmem(&local_md->gb_copy, local_md->global_bits,
-        // sizeof(uint64_t), local_md->root);
-        shmem_getmem(&is_work, local_md->has_work_avail, sizeof(uint8_t),
-                     local_md->root);
-        TC_STOP_TIMER(tc, global_ret);
-        tc->ct.global_ret_count++;
-        // choose onnode core randomly
-        if (is_work) {
-          v = gtc_select_target_laws(gtc, &vs_state);
-          v += local_md->root;
-        } else {
-          // ...or steal from any rank on any node
-          v = gtc_select_target(gtc, &vs_state);
-        }
+      /*uint8_t is_work;*/
+      /*if (local_md->has_work) {*/
+      /*  TC_START_TIMER(tc, global_ret);*/
+      /*  // shmem_getmem(&local_md->gb_copy, local_md->global_bits,*/
+      /*  // sizeof(uint64_t), local_md->root);*/
+      /*  shmem_getmem(&is_work, local_md->has_work_avail, sizeof(uint8_t),*/
+      /*               local_md->root);*/
+      /*  TC_STOP_TIMER(tc, global_ret);*/
+      /*  tc->ct.global_ret_count++;*/
+      /*  // choose onnode core randomly*/
+      /*  if (is_work) {*/
+      /*    v = gtc_select_target_laws(gtc, &vs_state);*/
+      /*    v += local_md->root;*/
+      /*  } else {*/
+      /*    // ...or steal from any rank on any node*/
+      /*    v = gtc_select_target(gtc, &vs_state);*/
+      /*  }*/
+      /*} else {*/
+      /*  v = gtc_select_target(gtc, &vs_state);*/
+      /*}*/
+
+      v = (rand() % 100);
+      if (v <= perc_local) {
+        v = gtc_select_target_laws(gtc, &vs_state);
+        v += local_md->root;
       } else {
         v = gtc_select_target(gtc, &vs_state);
       }
+
+      /*v = gtc_select_target_laws(gtc, &vs_state);*/
       // loop through the metadata array, seeing if any local cores have work
       // TODO: make this circular (i.e. when steal fails, move to next item in
       // array, rather than starting from beginning again)
@@ -466,8 +477,6 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
 
       if (gtc_tasks_avail(gtc))
         got_task = gtc_get_local_buf(gtc, priority, buf);
-      else if (local_md->has_work)
-        local_md->has_work--;
     }
 
   } else {
