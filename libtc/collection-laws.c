@@ -780,6 +780,7 @@ void gtc_print_gstats_laws(gtc_t gtc) {
 
   shmem_barrier_all();
 
+  eprintf("        : uts elem size : %d\n", rb->elem_size);
   eprintf("        : shared heap memory allocated: %d    local heap memory "
           "allocated: %d\n",
           _c->shmallocsize, _c->allocsize);

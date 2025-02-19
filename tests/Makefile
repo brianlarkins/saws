@@ -22,6 +22,7 @@ TARGETS=test-hello          \
 				test-contention \
 				test-atomic \
 				test-atomic-contention \
+				test-uts-stealtime \
 				# line eater
 
 TEST_DIRS=clod microbenchmarks shrb synch
@@ -73,6 +74,9 @@ threadtest: tclibs threadtest.o
 
 test-array: tclibs test-array.o
 	$(CC) $(CFLAGS) -o $@ test-array.o $(TC_LIBS)
+
+test-uts-stealtime: tclibs test-uts-stealtime.o
+	$(CC) $(CFLAGS) -o $@ test-uts-stealtime.o wctimer.o $(TC_LIBS)
 
 test-steal: tclibs test-steal.o 
 	$(CC) $(CFLAGS) -o $@ test-steal.o wctimer.o $(TC_LIBS)
