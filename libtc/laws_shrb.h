@@ -66,6 +66,8 @@ struct laws_s {
   int elem_size; // Size of an element in bytes
   int *avg_local_tasks_stolen;
   int *num_local_steals;
+  int *avg_global_tasks_stolen;
+  int *num_global_steals;
   int root;   // the root process relative to this one
   int ncores; // number of cores on each node
   int rank;
