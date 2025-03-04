@@ -392,6 +392,26 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
       shmem_getmem(target_rb, tc->shared_rb, sizeof(laws_t), v);
       TC_STOP_TIMER(tc, poptail);
 
+      // since the above get counts as attempting a steal (updating metadata), i
+      // think it would be useful data to retrieve
+      curr_time = (TC_READ_TIMER_MSEC(tc, passive));
+      time_idx = (int)curr_time;
+      if (is_local(v, local_md)) {
+        local_md->num_local_steals[time_idx] += 1;
+        local_md->local_steals++;
+        local_md->local_avg =
+            (local_md->local_avg * (local_md->local_steals - 1) + 0) /
+            (local_md->local_steals);
+        local_md->new_avgs_local[time_idx] = local_md->local_avg;
+      } else {
+        local_md->num_global_steals[time_idx] += 1;
+        local_md->global_steals++;
+        local_md->global_avg =
+            (local_md->global_avg * (local_md->global_steals - 1) + 0) /
+            (local_md->global_steals);
+        local_md->new_avgs_global[time_idx] = local_md->global_avg;
+      }
+
       // Poll the target for work.  In between polls, maintain progress on
       // termination detection.
       for (steal_attempts = 0, steal_done = 0;
@@ -435,17 +455,29 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
             if (is_local(v, local_md)) {
               tc->ct.num_local_steals += 1; // number of successful local steals
               tc->ct.tasks_stolen_locally += steal_size;
-              curr_time = (TC_READ_TIMER_MSEC(tc, passive) / 10);
+              curr_time = (TC_READ_TIMER_MSEC(tc, passive));
               time_idx = (int)curr_time;
-              local_md->avg_local_tasks_stolen[time_idx] += steal_size;
-              local_md->num_local_steals[time_idx] += 1;
+              /*local_md->avg_local_tasks_stolen[time_idx] += steal_size;*/
+              /*local_md->num_local_steals[time_idx] += 1;*/
+              local_md->local_steals++;
+              local_md->local_avg =
+                  (local_md->local_avg * (local_md->local_steals - 1) +
+                   steal_size) /
+                  (local_md->local_steals);
+              local_md->new_avgs_local[time_idx] = local_md->local_avg;
             } else {
               tc->ct.num_global_steals += 1;
               tc->ct.tasks_stolen_globally += steal_size;
-              curr_time = (TC_READ_TIMER_MSEC(tc, passive) / 10);
+              curr_time = (TC_READ_TIMER_MSEC(tc, passive));
               time_idx = (int)curr_time;
-              local_md->avg_global_tasks_stolen[time_idx] += steal_size;
-              local_md->num_global_steals[time_idx] += 1;
+              /*local_md->avg_global_tasks_stolen[time_idx] += steal_size;*/
+              /*local_md->num_global_steals[time_idx] += 1;*/
+              local_md->global_steals++;
+              local_md->global_avg =
+                  (local_md->global_avg * (local_md->global_steals - 1) +
+                   steal_size) /
+                  (local_md->global_steals);
+              local_md->new_avgs_global[time_idx] = local_md->global_avg;
             }
             steal_done = 1;
             tc->last_target = v;
@@ -453,6 +485,23 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
             // Steal failed: Got the lock, no longer any work on remote node
           } else if (steal_size == 0) {
             tc->ct.failed_steals_locked++;
+            curr_time = (TC_READ_TIMER_MSEC(tc, passive));
+            time_idx = (int)curr_time;
+            if (is_local(v, local_md)) {
+              local_md->num_local_steals[time_idx] += 1;
+              local_md->local_steals++;
+              local_md->local_avg =
+                  (local_md->local_avg * (local_md->local_steals - 1) + 0) /
+                  (local_md->local_steals);
+              local_md->new_avgs_local[time_idx] = local_md->local_avg;
+            } else {
+              local_md->num_global_steals[time_idx] += 1;
+              local_md->global_steals++;
+              local_md->global_avg =
+                  (local_md->global_avg * (local_md->global_steals - 1) + 0) /
+                  (local_md->global_steals);
+              local_md->new_avgs_global[time_idx] = local_md->global_avg;
+            }
             steal_done = 1;
 
             // Steal aborted: Didn't get the lock, refresh target metadata and
@@ -460,11 +509,25 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
           } else {
             if (steal_attempts + 1 == max_steal_attempts)
               tc->ct.aborted_steals++;
+            /*curr_time = (TC_READ_TIMER_MSEC(tc, passive) / 10);*/
+            /*time_idx = (int)curr_time;*/
+            /*if (is_local(v, local_md)) {*/
+            /*  local_md->num_local_steals[time_idx] += 1;*/
+            /*} else {*/
+            /*  local_md->num_global_steals[time_idx] += 1;*/
+            /*}*/
             vs_state.target_retry = 1;
           }
 
         } else /* ! (QUEUE_WORK_AVAIL(target_rb) > 0) */ {
           tc->ct.failed_steals_unlocked++;
+          curr_time = (TC_READ_TIMER_MSEC(tc, passive));
+          time_idx = (int)curr_time;
+          /*if (is_local(v, local_md)) {*/
+          /*  local_md->num_local_steals[time_idx] += 1;*/
+          /*} else {*/
+          /*  local_md->num_global_steals[time_idx] += 1;*/
+          /*}*/
           steal_done = 1;
         }
 
@@ -713,10 +776,15 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   tc_t *tc = gtc_lookup(gtc);
   laws_t *rb = (laws_t *)tc->shared_rb;
   double *times, *mintimes, *maxtimes, *sumtimes, *final_avgs,
-      *final_global_avgs;
+      *final_global_avgs, *proc_local_avgs, *proc_global_avgs;
   uint64_t *counts, *mincounts, *maxcounts, *sumcounts;
-  int *localavgs, *numsteals, *globalavgs, *globalsteals;
+  int *numsteals, *globalsteals;
+  // int rand_proc = 0;
+  double *localmin, *localmax, *globalmin, *globalmax, *localavgs, *globalavgs;
   double percsteals, avg_tasks_per_steal, avg_tasks_global, avg_tasks_local;
+
+  proc_local_avgs = gtc_shmem_calloc(500, sizeof(double));
+  proc_global_avgs = gtc_shmem_calloc(500, sizeof(double));
 
   int ntimes = 18;
   times = gtc_shmem_calloc(ntimes, sizeof(double));
@@ -730,11 +798,15 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   maxcounts = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
   sumcounts = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
 
-  localavgs = gtc_shmem_calloc(500, sizeof(int));
+  localavgs = gtc_shmem_calloc(500, sizeof(double));
+  localmin = gtc_shmem_calloc(500, sizeof(double));
+  localmax = gtc_shmem_calloc(500, sizeof(double));
   numsteals = gtc_shmem_calloc(500, sizeof(int));
   final_avgs = gtc_shmem_calloc(500, sizeof(double));
 
-  globalavgs = gtc_shmem_calloc(500, sizeof(int));
+  globalavgs = gtc_shmem_calloc(500, sizeof(double));
+  globalmin = gtc_shmem_calloc(500, sizeof(double));
+  globalmax = gtc_shmem_calloc(500, sizeof(double));
   globalsteals = gtc_shmem_calloc(500, sizeof(int));
   final_global_avgs = gtc_shmem_calloc(500, sizeof(double));
 
@@ -792,6 +864,18 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   counts[LAWSNumTasksStolenGlobally] = tc->ct.tasks_stolen_globally;
   counts[LAWSNumTasksStolenLocally] = tc->ct.tasks_stolen_locally;
 
+  for (int i = 0; i < 500; i++) {
+    // eprintf("hi there\n");
+    if (rb->num_local_steals[i])
+      proc_local_avgs[i] = (double)rb->avg_local_tasks_stolen[i] /
+                           (double)rb->num_local_steals[i];
+    if (rb->num_global_steals[i])
+      proc_global_avgs[i] = (double)rb->avg_global_tasks_stolen[i] /
+                            (double)rb->num_global_steals[i];
+  }
+
+  shmem_barrier_all();
+
   shmem_min_reduce(SHMEM_TEAM_WORLD, mintimes, times, ntimes);
   shmem_max_reduce(SHMEM_TEAM_WORLD, maxtimes, times, ntimes);
   shmem_sum_reduce(SHMEM_TEAM_WORLD, sumtimes, times, ntimes);
@@ -800,20 +884,23 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   shmem_max_reduce(SHMEM_TEAM_WORLD, maxcounts, counts, ncounts);
   shmem_sum_reduce(SHMEM_TEAM_WORLD, sumcounts, counts, ncounts);
 
-  shmem_sum_reduce(SHMEM_TEAM_WORLD, localavgs, rb->avg_local_tasks_stolen,
-                   500);
+  shmem_sum_reduce(SHMEM_TEAM_WORLD, localavgs, proc_local_avgs, 500);
+  shmem_min_reduce(SHMEM_TEAM_WORLD, localmin, proc_local_avgs, 500);
+  shmem_max_reduce(SHMEM_TEAM_WORLD, localmax, proc_local_avgs, 500);
+
   shmem_sum_reduce(SHMEM_TEAM_WORLD, numsteals, rb->num_local_steals, 500);
 
-  shmem_sum_reduce(SHMEM_TEAM_WORLD, globalavgs, rb->avg_global_tasks_stolen,
-                   500);
+  shmem_sum_reduce(SHMEM_TEAM_WORLD, globalavgs, proc_global_avgs, 500);
+  shmem_min_reduce(SHMEM_TEAM_WORLD, globalmin, proc_global_avgs, 500);
+  shmem_max_reduce(SHMEM_TEAM_WORLD, globalmax, proc_global_avgs, 500);
   shmem_sum_reduce(SHMEM_TEAM_WORLD, globalsteals, rb->num_global_steals, 500);
   /*for (int i = 0; i < 100; i++) {*/
   /*  eprintf("%d %d\n", i, localavgs[i]);*/
   /*}*/
 
   for (int i = 0; i < 500; i++) {
-    final_avgs[i] = (double)localavgs[i] / numsteals[i];
-    final_global_avgs[i] = (double)globalavgs[i] / globalsteals[i];
+    final_avgs[i] = (double)localavgs[i] / _c->size;
+    final_global_avgs[i] = (double)globalavgs[i] / _c->size;
   }
 
   /*
@@ -948,14 +1035,28 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   eprintf("&&&  %6.2f %6.2f ", sumtimes[LAWSPopTailTime] / _c->size,
           sumtimes[LAWSReacquireTime] / _c->size);
 
-  eprintf("\n");
-  for (int i = 0; i < 500; i++) {
-    eprintf("%d\t", i);
-    if (!isnan(final_avgs[i]))
-      eprintf("%g (%d)\t", final_avgs[i], numsteals[i]);
-    if (!isnan(final_global_avgs[i]))
-      eprintf("%g (%d)\t", final_global_avgs[i], globalsteals[i]);
-    eprintf("\n");
+  /*eprintf("\n");*/
+  /*for (int i = 0; i < 500; i++) {*/
+  /*  eprintf("%d\t", i);*/
+  /*  if (!isnan(final_avgs[i]))*/
+  /*    eprintf("%g (%d) (min. tasks: %g, max. tasks: %g)\t", final_avgs[i],*/
+  /*            numsteals[i], localmin[i], localmax[i]);*/
+  /*  if (!isnan(final_global_avgs[i]))*/
+  /*    eprintf("%g (%d) (min. tasks: %g, max. tasks: %g)\t",*/
+  /*            final_global_avgs[i], globalsteals[i], globalmin[i],*/
+  /*            globalmax[i]);*/
+  /*  eprintf("\n");*/
+  /*}*/
+
+  shmem_barrier_all();
+  // which process to use? How about 64?
+  // actually let's choose one randomly
+  if (rb->procid == 100) {
+    printf("\n");
+    for (int i = 0; i < 5000; i++) {
+      printf("%d\t%g\t%g\n", i, rb->new_avgs_local[i], rb->new_avgs_global[i]);
+    }
+    printf("\n");
   }
 
   shmem_free(times);
@@ -973,6 +1074,10 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   shmem_free(final_global_avgs);
   shmem_free(globalavgs);
   shmem_free(globalsteals);
+  shmem_free(localmin);
+  shmem_free(localmax);
+  shmem_free(globalmin);
+  shmem_free(globalmax);
   GTC_EXIT();
 }
 

@@ -89,6 +89,8 @@ laws_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   rb->num_local_steals = gtc_shmem_calloc(sizeof(int), 500);
   rb->avg_global_tasks_stolen = gtc_shmem_calloc(sizeof(int), 500);
   rb->num_global_steals = gtc_shmem_calloc(sizeof(int), 500);
+  rb->new_avgs_local = gtc_shmem_calloc(sizeof(double), 10000);
+  rb->new_avgs_global = gtc_shmem_calloc(sizeof(double), 10000);
 
   // set pointers specifically for this process
   int multiple = procid / cores_per_node;
@@ -147,6 +149,14 @@ void laws_reset(laws_t *rb) {
 
 void laws_destroy(laws_t *rb) {
   GTC_ENTRY();
+  shmem_free(rb->global_bits);
+  shmem_free(rb->has_work_avail);
+  shmem_free(rb->avg_local_tasks_stolen);
+  shmem_free(rb->num_local_steals);
+  shmem_free(rb->avg_global_tasks_stolen);
+  shmem_free(rb->num_global_steals);
+  shmem_free(rb->new_avgs_local);
+  shmem_free(rb->new_avgs_global);
   shmem_free(rb);
   GTC_EXIT();
 }

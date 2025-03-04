@@ -59,11 +59,17 @@ struct laws_s {
 
   synch_mutex_t lock; // lock for shared portion of this queue
   int waiting;        // Am I currently waiting for transactions to complete?
+  double local_avg;
+  double global_avg;
+  int global_steals;
+  int local_steals;
 
   int procid;
   int nproc;     // number of processes in total (aka. across all nodes)
   int max_size;  // Max size in number of elements
   int elem_size; // Size of an element in bytes
+  double *new_avgs_local;
+  double *new_avgs_global;
   int *avg_local_tasks_stolen;
   int *num_local_steals;
   int *avg_global_tasks_stolen;
