@@ -405,7 +405,7 @@ void *sdc_shrb_alloc_head(sdc_shrb_t *rb) {
 int sdc_shrb_pop_head(void *b, int proc, void *buf) {
   GTC_ENTRY();
   sdc_shrb_t *rb = (sdc_shrb_t *)b;
-  int   old_head;
+  int   old_head = 0;
   int   buf_valid = 0;
 
   assert(proc == rb->procid);
@@ -423,10 +423,11 @@ int sdc_shrb_pop_head(void *b, int proc, void *buf) {
     buf_valid = 1;
   }
 
+  //printf("popped head %d\n", old_head);
   // Assertion: !buf_valid => sdc_shrb_isempty(rb)
   assert(buf_valid || (!buf_valid && sdc_shrb_isempty(rb)));
 
-  // printf("(%d) popped head\n", rb->procid);
+  // printf("(%d) popped head: head num: %d\n", rb->procid, old_head);
 
   GTC_EXIT(buf_valid);
 }
@@ -505,6 +506,7 @@ static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, vo
     if ((&trb)->tail + (n-1) < (&trb)->max_size) {    // No need to wrap around
 
       shmem_getmem_nbi(e, sdc_shrb_elem_addr(myrb, proc, (&trb)->tail), n * (&trb)->elem_size, proc);    // Store n elems, starting at remote tail, in e
+      
       shmem_quiet();
 
     } else {    // Need to wrap around
@@ -517,6 +519,15 @@ static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, vo
       shmem_quiet();
 
     }
+
+    /*
+    int *steal_from;
+    for (int i = 1; i < n + 1; i++) {
+        steal_from = (int *)((e + (i * (&trb)->elem_size)) + 8);
+        printf("%d, ", *(steal_from - 4));
+    }
+    printf("\n");
+    */
 
 #ifndef SDC_NODC
     // Accumulate itail_inc onto the victim's intermediate tail

@@ -57,7 +57,7 @@ gtc_t gtc_create_laws(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg
   tc->rcb.push_n_head            = laws_push_n_head;
   tc->rcb.work_avail             = laws_size;
 
-  tc->qsize = sizeof(laws_t);
+  tc->qsize = sizeof(laws_local_t);
 
   shmem_barrier_all();
 
@@ -113,6 +113,7 @@ void gtc_progress_laws(gtc_t gtc) {
   GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
   TC_START_TIMER(tc,progress);
+  laws_local_t *local_md = (laws_local_t *)tc->shared_rb;
 
 #if 0 /* no task pushing */
   // Check the inbox for new work
@@ -131,12 +132,17 @@ void gtc_progress_laws(gtc_t gtc) {
   }
 #endif /* no task pushing */
 
+  // Update our view of global metadata
+  shmem_getmem(local_md->global, local_md->gaddrs, sizeof(laws_global_t) * local_md->ncores, local_md->root);
+  //shmem_getmem(local_md->g_meta, local_md->g_meta, sizeof(laws_global_t), local_md->root);
+
   // Update the split
-  laws_release(tc->shared_rb);
+  laws_release((laws_local_t *)tc->shared_rb);
 
   // Attempt to reclaim space
-  laws_reclaim_space(tc->shared_rb);
-  ((laws_t *)tc->shared_rb)->nprogress++;
+  // don't know if we can afford to do this here...
+  laws_reclaim_space((laws_local_t *)tc->shared_rb);
+  ((laws_local_t *)tc->shared_rb)->nprogress++;
   TC_STOP_TIMER(tc,progress);
   GTC_EXIT();
 }
@@ -168,22 +174,228 @@ int gtc_tasks_avail_laws(gtc_t gtc) {
  *                 found.  A NULL result here means that global termination
  *                 has occurred.  Returned buffer should be deleted by the user.
  */
-double gtc_get_dummy_work = 0.0;
+double gtc_get_dummy_work_laws = 0.0;
 
 int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
+  tc_t   *tc = gtc_lookup(gtc);
+  int     got_task = 0;
+  int     steal_size;
+  int     passive = 0;
+  int     searching = 0;
+  // int     off_node = 0;
+  int     steal_root = 0;
+  laws_global_t target_rb;
+
+  gtc_vs_state_t vs_state = {0, 0, 0};
+  // laws_local_t rb_buf;
+
+  // laws_local_t *local = (laws_local_t *)tc->shared_rb;
+  tc->ct.getcalls++;
+  TC_START_TIMER(tc, getbuf);
+
+  // Invoke the progress engine
+  // this operation should also retrieve global metadata
+  gtc_progress(gtc);
+
+  // Try to take my own work first.  We take from the head of our own queue.
+  // When we steal, we take work off of the tail of the target's queue.
+  got_task = gtc_get_local_buf(gtc, priority, buf);
+
+  // Time dispersion.  If I had work to start this should be ~0.
+  if (!tc->dispersed) TC_START_TIMER(tc, dispersion);
+
+  // No more local work, try to steal some
+  if (!got_task && tc->ldbal_cfg.stealing_enabled) {
+    gtc_lprintf(DBGGET, " Thread %d: gtc_get() searching for work\n", _c->rank);
+    vs_state.last_target = tc->last_target;
+      while (!got_task && !tc->terminated) {
+          tc->state = STATE_SEARCHING;
+          if (!searching) {
+              TC_START_TIMER(tc, search);
+              searching = 1;
+          }
+          int max_steal_attempts, steal_attempts, steal_done;
+          laws_global_t *memgrab = NULL;
+          // we're already retrieving global metadata, so we shouldn't have
+          // to retrieve again (at least at first)
+          //
+          // a retrieve will be attempted later
+
+          max_steal_attempts = tc->ldbal_cfg.max_steal_attempts_remote;
+          laws_local_t *local = (laws_local_t *)tc->shared_rb;
+          laws_global_t *garray = local->global;
+          laws_global_t *gcurr = &target_rb;
+
+          // shmem_getmem(garray, garray, sizeof(laws_global_t) * local->ncores, local->root);
+
+          // start the search for processes with work
+          int i; // just in case
+          int amnt = 0;
+          for (i = 0; i < local->ncores; i++) {
+              if (i == local->rank_in_node) {
+                  continue;
+              }
+              gcurr = &garray[i];
+              memgrab = &local->gaddrs[i];
+              amnt = laws_shared_size(gcurr);
+
+              if (amnt > 0) {
+                  // printf("hello! try to steal from proc %d\n", i);
+                  steal_root = local->root;
+                  //printf("will steal next from %d\n", i);
+                  break;
+              }
+          } 
+
+          // need to perform an off-node steal if no intranode work was found
+          // Problem/TODO: this may hang forever; no way to terminate if no work from other procs is ever found
+          // I think we've fixed this lol
+          // ...but now another problem lurks in the distance :(
+          int relative_proc = 0;
+          if (i == local->ncores) {
+             i = gtc_select_target(gtc, &vs_state);
+             // printf("Process %d: attempting steal from %d\n", local->procid, i);
+             steal_root = i - (i % local->ncores);
+             relative_proc = i % local->ncores;
+             local->alt_root = 1;  // we're using an alternative root from local node!
+                                   // this will be useful when we pop the tail in 
+                                   // laws_shrb!
+             gcurr = &target_rb;
+             //printf("shmem_getmem attempt #1\n");
+             //printf("Address to retrieve: %p\n", &garray[relative_proc]);
+             shmem_getmem(gcurr, &local->gaddrs[relative_proc], sizeof(laws_global_t), steal_root);
+             //printf("get was a success\n");
+             memgrab = &local->gaddrs[relative_proc];
+             amnt = laws_shared_size(gcurr);
+          }
+
+          int curr_proc = i;
+
+          // let's attempt a steal!
+          for (steal_attempts = 0, steal_done = 0; !steal_done && !tc->terminated && 
+                  steal_attempts < max_steal_attempts; steal_attempts++) {
+              if (local->alt_root) {
+                  // Apply linear backoff to avoid flooding remote nodes
+                  // only do this for internode steals
+                  // maybe this needs to be done intranode as well?
+                  if (steal_attempts > 0) {
+                      int j;
+                      for (j = 0; j < steal_attempts*1000; j++) {
+                          gtc_get_dummy_work_laws += 1.0;
+                      }
+                  }
+              }
+
+              if (amnt > 0) {
+                  tc->state = STATE_STEALING;
+
+                  if (searching) {
+#ifndef NO_SEATBELTS
+                    TC_STOP_TIMER(tc, search);
+#endif
+                    searching = 0;
+                  }
+
+                  if (tc->ldbal_cfg.steals_can_abort)
+                      steal_size = gtc_try_steal_tail(gtc, curr_proc);
+                  else
+                      steal_size = gtc_steal_tail(gtc, curr_proc);
+
+                  // Steal succeeded: Got some work from remote node
+                  if (steal_size > 0) {
+                    tc->ct.tasks_stolen += steal_size;
+                    tc->ct.num_steals += 1;
+                    steal_done = 1;
+                    tc->last_target = curr_proc;
+
+                  // Steal failed: Got the lock, no longer any work on remote node
+                  } else if (steal_size == 0) {
+                    tc->ct.failed_steals_locked++;
+                    steal_done = 1;
+
+                  // Steal aborted: Didn't get the lock, refresh target metadata and try again
+                  } else {
+                    if (steal_attempts + 1 == max_steal_attempts)
+                      tc->ct.aborted_steals++;
+                    vs_state.target_retry = 1;
+                          
+                  }
+              }else {
+                  tc->ct.failed_steals_unlocked++;
+                  steal_done = 1;
+              }
+
+            // Invoke the progress engine
+            // this doubles as a means to re-retrieve global metadata
+            // or maybe not...
+            gtc_progress(gtc);
+
+            // Still no work? Lock to be sure and check for termination.
+            // Locking is only needed here if we allow pushing.
+            // TODO: New TD should not require locking.  Remove locks and test.
+            if (gtc_tasks_avail(gtc) == 0 && !tc->external_work_avail) {
+              //QUEUE_LOCK(tc->shared_rb, _c->rank);
+              //shrb_lock(tc->inbox, _c->rank); /* no task pushing */
+              if (gtc_tasks_avail(gtc) == 0 && !tc->external_work_avail) {
+                td_set_counters(tc->td, tc->ct.tasks_spawned, tc->ct.tasks_completed);
+                tc->terminated = td_attempt_vote(tc->td);
+              }
+
+              //shrb_unlock(tc->inbox, _c->rank); /* no task pushing */
+              //QUEUE_UNLOCK(tc->shared_rb, _c->rank);
+
+              // re-retrieve the metadata of the process from which we're attempting
+              // to steal
+              if (local->alt_root && !steal_done) {
+                  //printf("shmem_getmem attempt #2\n");
+                  shmem_getmem(gcurr, memgrab, sizeof(laws_global_t), steal_root);
+              }
+              amnt = laws_shared_size(gcurr);
+
+            // We have work, done stealing
+            } else {
+              steal_done = 1;
+            }
+          }
+          local->alt_root = 0;
+          if (gtc_tasks_avail(gtc)) {
+              got_task = gtc_get_local_buf(gtc, priority, buf);
+          }
+      }
+  }else {
+      tc->ct.getlocal++;
+  }
+
+  if (!tc->dispersed) {
+    if (passive) TC_STOP_TIMER(tc, dispersion);
+    tc->dispersed = 1;
+    tc->ct.dispersion_attempts_unlocked = tc->ct.failed_steals_unlocked;
+    tc->ct.dispersion_attempts_locked   = tc->ct.failed_steals_locked;
+  }
+
+  gtc_lprintf(DBGGET, " Thread %d: gtc_get() %s\n", _c->rank, got_task? "got work":"no work");
+  if (got_task) tc->state = STATE_WORKING;
+  TC_STOP_TIMER(tc,getbuf);
+  GTC_EXIT(got_task);
+}
+
+int gtc_get_buf_laws_remote(gtc_t gtc, int priority, task_t *buf) {
   GTC_ENTRY();
   tc_t   *tc = gtc_lookup(gtc);
   int     got_task = 0;
   int     v, steal_size;
   int     passive = 0;
   int     searching = 0;
+  tc->laws = 1; // Make sure we are aware that we are using LAWS
   gtc_vs_state_t vs_state = {0, 0, 0};
-  laws_t rb_buf;
+  // laws_local_t rb_buf;
 
+  // laws_local_t *local = (laws_local_t *)tc->shared_rb;
   tc->ct.getcalls++;
   TC_START_TIMER(tc, getbuf);
 
   // Invoke the progress engine
+  // this operation should also retrieve global metadata
   gtc_progress(gtc);
 
   // Try to take my own work first.  We take from the head of our own queue.
@@ -210,7 +422,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
     // Keep searching until we find work or detect termination
     while (!got_task && !tc->terminated) {
       int      max_steal_attempts, steal_attempts, steal_done;
-      void *target_rb = &rb_buf;
+      void *target_rb = tc->shared_rb;
 
       tc->state = STATE_SEARCHING;
 
@@ -220,15 +432,16 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
       }
 
       // Select the next target
-      v = gtc_select_target(gtc, &vs_state);
+      v = gtc_select_target_laws(gtc, &vs_state);
 
       max_steal_attempts = tc->ldbal_cfg.max_steal_attempts_remote;
 
-      TC_START_TIMER(tc,poptail); // this counts as attempting to steal
-      shmem_getmem(target_rb, tc->shared_rb, sizeof(laws_t), v);
-      TC_STOP_TIMER(tc,poptail);
+      //TC_START_TIMER(tc,poptail); // this counts as attempting to steal
+      //shmem_getmem(target_rb, tc->shared_rb, sizeof(laws_local_t), v);
+      //TC_STOP_TIMER(tc,poptail);
 
       // Poll the target for work.  In between polls, maintain progress on termination detection.
+      laws_local_t *local_md = (laws_local_t *)tc->shared_rb;
       for (steal_attempts = 0, steal_done = 0;
            !steal_done && !tc->terminated && steal_attempts < max_steal_attempts;
            steal_attempts++) {
@@ -237,7 +450,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
         if (steal_attempts > 0) {
           int j;
           for (j = 0; j < steal_attempts*1000; j++)
-            gtc_get_dummy_work += 1.0;
+            gtc_get_dummy_work_laws += 1.0;
         }
 
         if (tc->rcb.work_avail(target_rb) > 0) {
@@ -280,12 +493,19 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
           steal_done = 1;
         }
 
+        // switch roots before reinvoking progress engine
+        if (local_md->alt_root != local_md->our_root) {
+            local_md->root = local_md->our_root;
+        }
+
         // Invoke the progress engine
         gtc_progress(gtc);
+
 
         // Still no work? Lock to be sure and check for termination.
         // Locking is only needed here if we allow pushing.
         // TODO: New TD should not require locking.  Remove locks and test.
+        printf("tc->external_work_avail: %d\n from %d\n", tc->external_work_avail, local_md->procid);
         if (gtc_tasks_avail(gtc) == 0 && !tc->external_work_avail) {
           //QUEUE_LOCK(tc->shared_rb, _c->rank);
           //shrb_lock(tc->inbox, _c->rank); /* no task pushing */
@@ -302,7 +522,16 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
         } else {
           steal_done = 1;
         }
+
+        // switch roots again so that process can continue to reattempt steals
+        if (local_md->alt_root != local_md->our_root) {
+            local_md->root = local_md->alt_root;
+        }
       }
+
+      // Reset root for upcoming steals from other procs
+      local_md->root = local_md->our_root;
+      local_md->alt_root = local_md->our_root;
 
       if (gtc_tasks_avail(gtc))
         got_task = gtc_get_local_buf(gtc, priority, buf);
@@ -443,7 +672,7 @@ void gtc_task_inplace_create_and_add_finish_laws(gtc_t gtc, task_t *t) {
 void gtc_print_stats_laws(gtc_t gtc) {
   GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
-  laws_t *rb = (laws_t *)tc->shared_rb;
+  laws_local_t *rb = (laws_local_t *)tc->shared_rb;
 
   uint64_t perget, peradd, perinplace, perfinish, perprogress, perreclaim, perensure, perrelease, perreacquire, perpoptail;
 
@@ -502,7 +731,7 @@ void gtc_print_stats_laws(gtc_t gtc) {
 void gtc_print_gstats_laws(gtc_t gtc) {
   GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
-  laws_t *rb = (laws_t *)tc->shared_rb;
+  laws_local_t *rb = (laws_local_t *)tc->shared_rb;
   double   *times, *mintimes, *maxtimes, *sumtimes;
   uint64_t *counts, *mincounts, *maxcounts, *sumcounts;
 
