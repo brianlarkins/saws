@@ -65,9 +65,10 @@ struct laws_s {
   int local_steals;
 
   int procid;
-  int nproc;     // number of processes in total (aka. across all nodes)
-  int max_size;  // Max size in number of elements
-  int elem_size; // Size of an element in bytes
+  int nproc;         // number of processes in total (aka. across all nodes)
+  int max_size;      // Max size in number of elements
+  int elem_size;     // Size of an element in bytes
+  int local_success; // did we previously successfully steal?
   double *new_avgs_local;
   double *new_avgs_global;
   int *avg_local_tasks_stolen;

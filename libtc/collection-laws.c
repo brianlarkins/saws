@@ -99,7 +99,7 @@ char *gtc_queue_name_laws() {
 #ifdef laws_NODC
   GTC_EXIT("Split (NODC)");
 #else
-  GTC_EXIT("Split Deferred-Copy");
+  GTC_EXIT("Locality-Aware Work Stealing (LAWS)");
 #endif
 }
 
@@ -258,7 +258,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
   int v, steal_size;
   int passive = 0;
   int searching = 0;
-  int perc_local = 50;
+  int perc_local = 5;
   int time_idx = 0;
   double curr_time = 0.0;
   gtc_vs_state_t vs_state = {0, 0, 0};
@@ -334,7 +334,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
       /*}*/
 
       v = (rand() % 100);
-      if (v < perc_local) {
+      if (v < perc_local || local_md->local_success) {
         v = gtc_select_target_laws(gtc, &vs_state);
         v += local_md->root;
       } else {
@@ -465,6 +465,8 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
                    steal_size) /
                   (local_md->local_steals);
               local_md->new_avgs_local[time_idx] = local_md->local_avg;
+              local_md->local_success = 1; // indicate we were successful;
+                                           // continue attempting local steals
             } else {
               tc->ct.num_global_steals += 1;
               tc->ct.tasks_stolen_globally += steal_size;
@@ -494,6 +496,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
                   (local_md->local_avg * (local_md->local_steals - 1) + 0) /
                   (local_md->local_steals);
               local_md->new_avgs_local[time_idx] = local_md->local_avg;
+              local_md->local_success = 0;
             } else {
               local_md->num_global_steals[time_idx] += 1;
               local_md->global_steals++;
@@ -507,9 +510,12 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
             // Steal aborted: Didn't get the lock, refresh target metadata and
             // try again
           } else {
-            if (steal_attempts + 1 == max_steal_attempts)
+            if (steal_attempts + 1 == max_steal_attempts) {
               tc->ct.aborted_steals++;
-            /*curr_time = (TC_READ_TIMER_MSEC(tc, passive) / 10);*/
+              if (is_local(v, local_md))
+                local_md->local_success = 0;
+            }
+            // TODO: time trylock
             /*time_idx = (int)curr_time;*/
             /*if (is_local(v, local_md)) {*/
             /*  local_md->num_local_steals[time_idx] += 1;*/
@@ -528,6 +534,8 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
           /*} else {*/
           /*  local_md->num_global_steals[time_idx] += 1;*/
           /*}*/
+          if (is_local(v, local_md))
+            local_md->local_success = 0;
           steal_done = 1;
         }
 
@@ -1051,13 +1059,14 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   shmem_barrier_all();
   // which process to use? How about 64?
   // actually let's choose one randomly
-  if (rb->procid == 100) {
-    printf("\n");
-    for (int i = 0; i < 5000; i++) {
-      printf("%d\t%g\t%g\n", i, rb->new_avgs_local[i], rb->new_avgs_global[i]);
-    }
-    printf("\n");
-  }
+  /*if (rb->procid == 100) {*/
+  /*  printf("\n");*/
+  /*  for (int i = 0; i < 5000; i++) {*/
+  /*    printf("%d\t%g\t%g\n", i, rb->new_avgs_local[i],
+   * rb->new_avgs_global[i]);*/
+  /*  }*/
+  /*  printf("\n");*/
+  /*}*/
 
   shmem_free(times);
   shmem_free(mintimes);

@@ -85,10 +85,10 @@ laws_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   // rb->global = calloc(cores_per_node, sizeof(laws_global_t));
   rb->global_bits = gtc_shmem_calloc(sizeof(uint64_t), 1);
   rb->has_work_avail = gtc_shmem_calloc(sizeof(uint8_t), 1);
-  rb->avg_local_tasks_stolen = gtc_shmem_calloc(sizeof(int), 500);
-  rb->num_local_steals = gtc_shmem_calloc(sizeof(int), 500);
-  rb->avg_global_tasks_stolen = gtc_shmem_calloc(sizeof(int), 500);
-  rb->num_global_steals = gtc_shmem_calloc(sizeof(int), 500);
+  rb->avg_local_tasks_stolen = gtc_shmem_calloc(sizeof(int), 10000);
+  rb->num_local_steals = gtc_shmem_calloc(sizeof(int), 10000);
+  rb->avg_global_tasks_stolen = gtc_shmem_calloc(sizeof(int), 10000);
+  rb->num_global_steals = gtc_shmem_calloc(sizeof(int), 10000);
   rb->new_avgs_local = gtc_shmem_calloc(sizeof(double), 10000);
   rb->new_avgs_global = gtc_shmem_calloc(sizeof(double), 10000);
 
@@ -152,9 +152,9 @@ void laws_destroy(laws_t *rb) {
   shmem_free(rb->global_bits);
   shmem_free(rb->has_work_avail);
   shmem_free(rb->avg_local_tasks_stolen);
-  shmem_free(rb->num_local_steals);
-  shmem_free(rb->avg_global_tasks_stolen);
-  shmem_free(rb->num_global_steals);
+  /*shmem_free(rb->num_local_steals);*/
+  /*shmem_free(rb->avg_global_tasks_stolen);*/
+  /*shmem_free(rb->num_global_steals);*/
   shmem_free(rb->new_avgs_local);
   shmem_free(rb->new_avgs_global);
   shmem_free(rb);

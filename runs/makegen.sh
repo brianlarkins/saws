@@ -37,7 +37,7 @@ function makefile() {
   #if  [ ! -z "queue" ]; then
   #  echo "#SBATCH -p $queue" >> $sfname
   #fi
-  #echo "#SBATCH -t $wtime" >> $sfname
+  echo "#SBATCH -t $wtime" >> $sfname
   echo "#SBATCH -n $ntasks" >> $sfname
   echo "#SBATCH -N $n" >> $sfname
   echo "#SBATCH --ntasks-per-node=$tpn" >> $sfname
@@ -48,7 +48,7 @@ function makefile() {
   echo ' ' >> $sfname
 
   echo "for i in \$(seq -w 01 10); do" >> $sfname
-  echo "  $runner --mpi=pmi2 -o $HOME/saws/runs/$exe/$exe.$pntasks.${label}_half.\$i $uenv $xpath/$exe $args_h" >> $sfname
-  echo "  $runner --mpi=pmi2 -o $HOME/saws/runs/$exe/$exe.$pntasks.${label}_base.\$i $uenv $xpath/$exe $args_b" >> $sfname
+  echo "  $runner -o $HOME/saws/runs/$exe/$exe.$pntasks.${label}_half.\$i $uenv $xpath/$exe $args_h" >> $sfname
+  echo "  $runner -o $HOME/saws/runs/$exe/$exe.$pntasks.${label}_base.\$i $uenv $xpath/$exe $args_b" >> $sfname
   echo "done" >> $sfname
 }
