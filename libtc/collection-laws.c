@@ -258,12 +258,13 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
   int v, steal_size;
   int passive = 0;
   int searching = 0;
-  int perc_local = 5;
+  int perc_local = 1;
   int time_idx = 0;
   double curr_time = 0.0;
   gtc_vs_state_t vs_state = {0, 0, 0};
   laws_t rb_buf;
   laws_t *local_md = (laws_t *)tc->shared_rb;
+  // local_md->steal_ratio = 0.0;
 
   tc->ct.getcalls++;
   TC_START_TIMER(tc, getbuf);
@@ -305,92 +306,23 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
         searching = 1;
       }
 
-      // retrieve metadata indicating status of intranode processes first
-      // TODO: set timer here; need to keep track of how long this takes
-      // shmem_getmem(local_md->global, local_md->gaddrs, sizeof(laws_global_t)
-      // * local_md->ncores, local_md->root);
-
-      // since we're stealing randomly, we only need to check whether there is
-      // any work onnode at all; we can just use a single-byte flag for this
-      /*uint8_t is_work;*/
-      /*if (local_md->has_work) {*/
-      /*  TC_START_TIMER(tc, global_ret);*/
-      /*  // shmem_getmem(&local_md->gb_copy, local_md->global_bits,*/
-      /*  // sizeof(uint64_t), local_md->root);*/
-      /*  shmem_getmem(&is_work, local_md->has_work_avail, sizeof(uint8_t),*/
-      /*               local_md->root);*/
-      /*  TC_STOP_TIMER(tc, global_ret);*/
-      /*  tc->ct.global_ret_count++;*/
-      /*  // choose onnode core randomly*/
-      /*  if (is_work) {*/
-      /*    v = gtc_select_target_laws(gtc, &vs_state);*/
-      /*    v += local_md->root;*/
-      /*  } else {*/
-      /*    // ...or steal from any rank on any node*/
-      /*    v = gtc_select_target(gtc, &vs_state);*/
-      /*  }*/
-      /*} else {*/
-      /*  v = gtc_select_target(gtc, &vs_state);*/
-      /*}*/
-
       v = (rand() % 100);
-      if (v < perc_local || local_md->local_success) {
+      // if we came across work, there's a much higher chance that the
+      // surrounding processes have also found work
+      if ((v < perc_local || local_md->local_success) && tc->dispersed) {
+        // if (local_md->local_success) {
         v = gtc_select_target_laws(gtc, &vs_state);
         v += local_md->root;
       } else {
         v = gtc_select_target(gtc, &vs_state);
       }
 
-      /*v = gtc_select_target_laws(gtc, &vs_state);*/
-      // loop through the metadata array, seeing if any local cores have work
-      // TODO: make this circular (i.e. when steal fails, move to next item in
-      // array, rather than starting from beginning again)
-      /*
-      v = -1;
-      for (int i = local_md->rank + 1; i != local_md->rank; i = (i + 1) %
-      local_md->ncores) { if (local_md->global[i]) { v = local_md->root + i;
-              //printf("stealing locally from process %d\n", v);
-              break;
-          }
-      }
-      */
-
-      /* for debugging purposes */
-
-      /*
-      printf("current locality array: ");
-      for (int i = 0; i < local_md->ncores; i++) {
-          printf("%d", local_md->global[i]);
-      }
-      printf("\n");
-      */
-
-      /*
-      for (int i = 0; i < local_md->ncores; i++) {
-          if (i == local_md->rank) {
-              continue;
-          }
-          if (local_md->global[i]) {
-              v = local_md->root + i;
-              //printf("stealing locally from process %d\n", v);
-              break;
-          }
-      }
-      */
-
-      // if we still couldn't find anything, choose randomly
-      /*
-      if (v == -1) {
-          v = gtc_select_target_laws(gtc, &vs_state);
-          //printf("stealing off-node from process %d\n", v);
-      }
-      */
-
       max_steal_attempts = tc->ldbal_cfg.max_steal_attempts_remote;
 
       TC_START_TIMER(tc, poptail); // this counts as attempting to steal
       shmem_getmem(target_rb, tc->shared_rb, sizeof(laws_t), v);
       TC_STOP_TIMER(tc, poptail);
+      // tc->ct.attempted_steals++;
 
       // since the above get counts as attempting a steal (updating metadata), i
       // think it would be useful data to retrieve
@@ -442,6 +374,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
             steal_size = gtc_try_steal_tail(gtc, v);
           else
             steal_size = gtc_steal_tail(gtc, v);
+          tc->ct.attempted_steals++;
 
           // Steal succeeded: Got some work from remote node
           if (steal_size > 0) {
@@ -570,6 +503,9 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
   } else {
     tc->ct.getlocal++;
   }
+
+  local_md->steal_ratio = (double)(tc->ct.num_steals) /
+                          (tc->ct.attempted_steals - tc->ct.num_steals);
 
 #ifndef NO_SEATBELTS
   if (passive)
@@ -1059,6 +995,11 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   shmem_barrier_all();
   // which process to use? How about 64?
   // actually let's choose one randomly
+  if (rb->procid == 100) {
+    printf("\n");
+    printf("steal ratio: %g\n", rb->steal_ratio);
+    printf("\n");
+  }
   /*if (rb->procid == 100) {*/
   /*  printf("\n");*/
   /*  for (int i = 0; i < 5000; i++) {*/

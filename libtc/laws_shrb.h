@@ -61,6 +61,7 @@ struct laws_s {
   int waiting;        // Am I currently waiting for transactions to complete?
   double local_avg;
   double global_avg;
+  double steal_ratio;
   int global_steals;
   int local_steals;
 

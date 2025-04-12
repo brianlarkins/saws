@@ -290,6 +290,7 @@ struct tc_counters_s {
   tc_counter_t tasks_stolen_locally; // Number of tasks stolen by this thread
   tc_counter_t tasks_stolen_globally; // Number of tasks stolen by this thread
   tc_counter_t num_steals;            // Number of successful steals
+  tc_counter_t attempted_steals;      // Number of attempted steals
   tc_counter_t num_local_steals;      // number of successful intranode steals
   tc_counter_t num_global_steals;
   tc_counter_t
