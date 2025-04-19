@@ -110,7 +110,7 @@ void gtc_progress_laws(gtc_t gtc) {
   GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
   TC_START_TIMER(tc, progress);
-  laws_t *local_md = (laws_t *)tc->shared_rb;
+  // laws_t *local_md = (laws_t *)tc->shared_rb;
 
 #if 0  /* no task pushing */
   // Check the inbox for new work
@@ -165,6 +165,31 @@ static inline int is_local(int v, laws_t *rb) {
   return 0;
 }
 
+static inline void increment_success(tc_t *tc) {
+  double curr_time = TC_READ_TIMER_MSEC(tc, passive);
+  laws_t *local_md = (laws_t *)tc->shared_rb;
+
+  int new_time = (int)curr_time;
+  local_md->successes[new_time]++;
+  local_md->curr_success++;
+  local_md->curr_ratio =
+      (double)local_md->curr_success / (double)local_md->curr_fails;
+  local_md->ratio[new_time] = local_md->curr_ratio;
+  local_md->local_successes[new_time] = local_md->local_success;
+}
+
+static inline void increment_fail(tc_t *tc) {
+  double curr_time = TC_READ_TIMER_MSEC(tc, passive);
+  laws_t *local_md = (laws_t *)tc->shared_rb;
+
+  int new_time = (int)curr_time;
+  local_md->fails[new_time]++;
+  local_md->curr_fails++;
+  local_md->curr_ratio =
+      (double)local_md->curr_success / (double)local_md->curr_fails;
+  local_md->ratio[new_time] = local_md->curr_ratio;
+  local_md->local_successes[new_time] = local_md->local_success;
+}
 /**
  * Find work to do, search everywhere. Use when you write your own
  * gtc_process() implementation.  Do NOT use together with
@@ -258,13 +283,17 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
   int v, steal_size;
   int passive = 0;
   int searching = 0;
-  int perc_local = 70;
+  int increment_avg = 0;
+  // int perc_local = 2;
   gtc_vs_state_t vs_state = {0, 0, 0};
   laws_t rb_buf;
   laws_t *local_md = (laws_t *)tc->shared_rb;
 
   tc->ct.getcalls++;
   TC_START_TIMER(tc, getbuf);
+  tc->ct.steals_at_run = 0;
+  tc->ct.runs++;
+  tc->ct.this_run = 0;
 
   // Invoke the progress engine
   gtc_progress(gtc);
@@ -279,6 +308,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
 
   // No more local work, try to steal some
   if (!got_task && tc->ldbal_cfg.stealing_enabled) {
+    increment_avg = 1;
     gtc_lprintf(DBGGET, " Thread %d: gtc_get() searching for work\n", _c->rank);
 
 #ifndef NO_SEATBELTS
@@ -303,86 +333,16 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
         searching = 1;
       }
 
-      // retrieve metadata indicating status of intranode processes first
-      // TODO: set timer here; need to keep track of how long this takes
-      // shmem_getmem(local_md->global, local_md->gaddrs, sizeof(laws_global_t)
-      // * local_md->ncores, local_md->root);
-
-      // since we're stealing randomly, we only need to check whether there is
-      // any work onnode at all; we can just use a single-byte flag for this
-      /*uint8_t is_work;*/
-      /*if (local_md->has_work) {*/
-      /*  TC_START_TIMER(tc, global_ret);*/
-      /*  // shmem_getmem(&local_md->gb_copy, local_md->global_bits,*/
-      /*  // sizeof(uint64_t), local_md->root);*/
-      /*  shmem_getmem(&is_work, local_md->has_work_avail, sizeof(uint8_t),*/
-      /*               local_md->root);*/
-      /*  TC_STOP_TIMER(tc, global_ret);*/
-      /*  tc->ct.global_ret_count++;*/
-      /*  // choose onnode core randomly*/
-      /*  if (is_work) {*/
-      /*    v = gtc_select_target_laws(gtc, &vs_state);*/
-      /*    v += local_md->root;*/
-      /*  } else {*/
-      /*    // ...or steal from any rank on any node*/
-      /*    v = gtc_select_target(gtc, &vs_state);*/
-      /*  }*/
-      /*} else {*/
-      /*  v = gtc_select_target(gtc, &vs_state);*/
-      /*}*/
-
       v = (rand() % 100);
-      if (v <= perc_local) {
+      // only try getting locally if we've already successfully stolen work
+      // prior
+      // if ((v <= perc_local || local_md->local_success) && tc->dispersed) {
+      if (tc->dispersed && local_md->local_success) {
         v = gtc_select_target_laws(gtc, &vs_state);
         v += local_md->root;
       } else {
         v = gtc_select_target(gtc, &vs_state);
       }
-
-      /*v = gtc_select_target_laws(gtc, &vs_state);*/
-      // loop through the metadata array, seeing if any local cores have work
-      // TODO: make this circular (i.e. when steal fails, move to next item in
-      // array, rather than starting from beginning again)
-      /*
-      v = -1;
-      for (int i = local_md->rank + 1; i != local_md->rank; i = (i + 1) %
-      local_md->ncores) { if (local_md->global[i]) { v = local_md->root + i;
-              //printf("stealing locally from process %d\n", v);
-              break;
-          }
-      }
-      */
-
-      /* for debugging purposes */
-
-      /*
-      printf("current locality array: ");
-      for (int i = 0; i < local_md->ncores; i++) {
-          printf("%d", local_md->global[i]);
-      }
-      printf("\n");
-      */
-
-      /*
-      for (int i = 0; i < local_md->ncores; i++) {
-          if (i == local_md->rank) {
-              continue;
-          }
-          if (local_md->global[i]) {
-              v = local_md->root + i;
-              //printf("stealing locally from process %d\n", v);
-              break;
-          }
-      }
-      */
-
-      // if we still couldn't find anything, choose randomly
-      /*
-      if (v == -1) {
-          v = gtc_select_target_laws(gtc, &vs_state);
-          //printf("stealing off-node from process %d\n", v);
-      }
-      */
 
       max_steal_attempts = tc->ldbal_cfg.max_steal_attempts_remote;
 
@@ -420,35 +380,87 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
             steal_size = gtc_try_steal_tail(gtc, v);
           else
             steal_size = gtc_steal_tail(gtc, v);
+          tc->ct.this_run++;
+          tc->ct.total_steals++;
+          if (tc->ct.this_run == 50 && local_md->local_success) {
+            local_md->local_success = 0;
+            break;
+          }
+          if (local_md->procid == 100) {
+            printf("%ld     %ld     %d\n", tc->ct.this_run, tc->ct.last_run,
+                   tc->dispersed);
+          }
+          if (local_md->local_success) {
+            tc->ct.steals_at_run++;
+            tc->ct.avg_steals_per_run =
+                (double)(tc->ct.avg_steals_per_run * (tc->ct.runs - 1) +
+                         tc->ct.steals_at_run) /
+                (tc->ct.runs);
+          }
 
           // Steal succeeded: Got some work from remote node
           if (steal_size > 0) {
             tc->ct.tasks_stolen += steal_size;
-            tc->ct.num_steals += 1;
+            tc->ct.num_steals++;
+            increment_success(tc);
             // if (!local_md->has_work)
             local_md->has_work = 1;
             // increment this if the steal was local
-            if (is_local(v, local_md))
-              tc->ct.num_local_steals += 1; // numbr of successful local steals
+            if (is_local(v, local_md)) {
+              // local_md->local_successes[local_md->local_idx]++;
+              tc->ct.num_local_steals++; // numbr of successful local steals
+              // if (local_md->procid == 100 && !local_md->local_success)
+              //   printf("local_success: 1\n");
+              // if (local_md->procid == 100)
+              //   printf("curr_ratio: %g\n", local_md->curr_ratio);
+              // local_md->local_success = 1;
+            }
             steal_done = 1;
             tc->last_target = v;
 
             // Steal failed: Got the lock, no longer any work on remote node
           } else if (steal_size == 0) {
             tc->ct.failed_steals_locked++;
+            increment_fail(tc);
+            // if the steal failed and we attempted locally, set flag off
+            if (is_local(v, local_md)) {
+              // if (local_md->procid == 100 && local_md->local_success)
+              //   printf("local_success: 0\n");
+              // printf("curr_ratio: %g\n", local_md->curr_ratio);
+              // local_md->local_success = 0;
+              // local_md->local_idx++;
+            }
             steal_done = 1;
 
             // Steal aborted: Didn't get the lock, refresh target metadata and
             // try again
           } else {
-            if (steal_attempts + 1 == max_steal_attempts)
+            if (steal_attempts + 1 == max_steal_attempts) {
               tc->ct.aborted_steals++;
+            }
             vs_state.target_retry = 1;
           }
 
         } else /* ! (QUEUE_WORK_AVAIL(target_rb) > 0) */ {
           tc->ct.failed_steals_unlocked++;
           steal_done = 1;
+          tc->ct.this_run++;
+          tc->ct.total_steals++;
+          if (tc->ct.this_run == 50 && local_md->local_success) {
+            local_md->local_success = 0;
+            break;
+          }
+          if (local_md->procid == 100 && tc->ct.this_run < 50) {
+            printf("%ld       %ld       %d\n", tc->ct.this_run, tc->ct.last_run,
+                   tc->dispersed);
+          }
+          if (is_local(v, local_md)) {
+            // if (local_md->procid == 100 && local_md->local_success)
+            //   printf("local_success: 0\n");
+            // local_md->local_success = 0;
+            //   printf("curr_ratio: %g\n", local_md->curr_ratio);
+          }
+          increment_fail(tc);
         }
 
         // Invoke the progress engine
@@ -498,12 +510,29 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
     if (passive)
       TC_STOP_TIMER(tc, dispersion);
     tc->dispersed = 1;
+    double curr_time = TC_READ_TIMER_MSEC(tc, passive);
+    int new_time = (int)curr_time;
+    local_md->dispersion_mark[new_time] = 1;
+
     tc->ct.dispersion_attempts_unlocked = tc->ct.failed_steals_unlocked;
     tc->ct.dispersion_attempts_locked = tc->ct.failed_steals_locked;
   }
+  if (increment_avg)
+    tc->ct.last_run = tc->ct.this_run;
+  /*if (local_md->local_success && increment_avg) {*/
+  /*  tc->ct.runs++;*/
+  /*  tc->ct.avg_steals_per_run =*/
+  /*      (double)((tc->ct.avg_steals_per_run * (tc->ct.runs - 1)) +*/
+  /*               (tc->ct.steals_at_run)) /*/
+  /*      (tc->ct.runs);*/
+  /*  if (local_md->procid == 32) {*/
+  /*    printf("%g\n", tc->ct.avg_steals_per_run);*/
+  /*  }*/
+  /*}*/
 
   gtc_lprintf(DBGGET, " Thread %d: gtc_get() %s\n", _c->rank,
               got_task ? "got work" : "no work");
+
   if (got_task)
     tc->state = STATE_WORKING;
   TC_STOP_TIMER(tc, getbuf);
@@ -695,7 +724,7 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
   laws_t *rb = (laws_t *)tc->shared_rb;
-  double *times, *mintimes, *maxtimes, *sumtimes;
+  double *times, *mintimes, *maxtimes, *sumtimes, *avgratio;
   uint64_t *counts, *mincounts, *maxcounts, *sumcounts;
 
   int ntimes = 18;
@@ -710,6 +739,7 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   maxcounts = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
   sumcounts = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
 
+  avgratio = gtc_shmem_calloc(100000, sizeof(double));
   times[LAWSPopTailTime] = TC_READ_TIMER_MSEC(tc, poptail);
   times[LAWSStealTime] = TC_READ_TIMER_MSEC(tc, steal);
   times[LAWSGetMetaTime] = TC_READ_TIMER_MSEC(tc, getmeta);
@@ -776,6 +806,20 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   (((double)sumcounts[LAWSNumLocalSteals]/_c->size) /
   ((double)sumcounts[LAWSNumSteals]/_c->size)) * 100;
   */
+
+  // calculate the ratio of steal successes to steal failures
+  // for (int i = 0; i < 100000; i++) {
+  //   if (rb->fails[i] != 0)
+  //     rb->ratio[i] = (double)rb->successes[i] / (double)rb->fails[i];
+  //   else
+  //     rb->ratio[i] = (double)rb->successes[i];
+  // }
+
+  shmem_sum_reduce(SHMEM_TEAM_WORLD, avgratio, rb->ratio, 100000);
+
+  for (int i = 0; i < 100000; i++) {
+    avgratio[i] /= rb->nproc;
+  }
 
   double percsteals;
   double avg_tasks_per_steal;
@@ -896,6 +940,29 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   eprintf("&&&  %6.2f %6.2f ", sumtimes[LAWSPopTailTime] / _c->size,
           sumtimes[LAWSReacquireTime] / _c->size);
 
+  /*for (int i = 0; i < 1000; i++) {*/
+  /*  if (rb->procid == 100) {*/
+  /*    // printf("%d    %d    %g\n", rb->successes[i], rb->fails[i],*/
+  /*    // rb->ratio[i]);*/
+  /*    printf("%g (local success: %d)", rb->ratio[i],
+   * rb->local_successes[i]);*/
+  /*    if (rb->dispersion_mark[i])*/
+  /*      printf("(dispersed)");*/
+  /*    printf("\n");*/
+  /*  }*/
+  /*for (int i = 0; i < rb->local_idx; i++) {*/
+  /*  if (rb->procid == 100) {*/
+  /*    printf("%d\n", rb->local_successes[i]);*/
+  /*  }*/
+  /*}*/
+  /*}*/
+  // for (int i = 0; i < 1000; i++) {
+  //     eprintf
+  // }
+  // for (int i = 0; i < 1000; i++) {
+  //   eprintf("%g\n", avgratio[i]);
+  // }
+
   shmem_free(times);
   shmem_free(mintimes);
   shmem_free(maxtimes);
@@ -905,6 +972,8 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   shmem_free(mincounts);
   shmem_free(maxcounts);
   shmem_free(sumcounts);
+
+  shmem_free(avgratio);
   GTC_EXIT();
 }
 

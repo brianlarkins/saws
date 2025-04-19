@@ -86,6 +86,12 @@ laws_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   rb->global_bits = gtc_shmem_calloc(sizeof(uint64_t), 1);
   rb->has_work_avail = gtc_shmem_calloc(sizeof(uint8_t), 1);
 
+  rb->successes = gtc_shmem_calloc(sizeof(int), 100000);
+  rb->fails = gtc_shmem_calloc(sizeof(int), 100000);
+  rb->ratio = gtc_shmem_calloc(sizeof(double), 100000);
+  rb->dispersion_mark = gtc_shmem_calloc(sizeof(int), 100000);
+  rb->local_successes = gtc_shmem_calloc(sizeof(int), 100000);
+
   // set pointers specifically for this process
   int multiple = procid / cores_per_node;
   int upper = multiple + 1;
@@ -99,6 +105,8 @@ laws_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   rb->our_invert = rb->our_bits ^ 0xffffffffffffffff;
   rb->root = procid - rb->rank;
   rb->has_work = 0;
+  rb->local_success = 1;
+  rb->local_idx = 0;
   // rb->g_meta = &rb->global[rb->rank];
   // rb->gaddr = &rb->gaddrs[rb->rank];
 

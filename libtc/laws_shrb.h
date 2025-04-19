@@ -64,6 +64,16 @@ struct laws_s {
   int root;      // the root process relative to this one
   int ncores;    // number of cores on each node
   int rank;
+  int *successes;
+  int *fails;
+  int *dispersion_mark;
+  int curr_success;
+  int curr_fails;
+  int *local_successes;
+  int local_idx;
+  double curr_ratio;
+  double *ratio;
+  int local_success; // were we previously successful in stealing work locally?
   int has_work; // only attempt to retrieve work locally if this has been set
                 // (aka. we have previously successfully retrieved work through
                 // random selection)
