@@ -14,6 +14,8 @@
 #include "tc.h"
 
 #include "laws_shrb.h"
+
+#define PROCID 128
 // #include "shr_ring.h"
 
 /**
@@ -110,7 +112,7 @@ void gtc_progress_laws(gtc_t gtc) {
   GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
   TC_START_TIMER(tc, progress);
-  // laws_t *local_md = (laws_t *)tc->shared_rb;
+  laws_t *local_md = (laws_t *)tc->shared_rb;
 
 #if 0  /* no task pushing */
   // Check the inbox for new work
@@ -136,12 +138,14 @@ void gtc_progress_laws(gtc_t gtc) {
   laws_reclaim_space(tc->shared_rb);
 
   // check for work from bitfield; if work available, set flag
-  /*if (local_md->procid == local_md->root) {*/
-  /*  if (local_md->global_bits)*/
-  /*    *(local_md->has_work_avail) = 1;*/
-  /*  else*/
-  /*    *(local_md->has_work_avail) = 0;*/
-  /*}*/
+  // if (local_md->procid == local_md->root)
+  // printf("%lu\n", *local_md->global_bits);
+  if (local_md->procid == local_md->root) {
+    if (*local_md->global_bits)
+      *(local_md->has_work_avail) = 1;
+    else
+      *(local_md->has_work_avail) = 0;
+  }
   ((laws_t *)tc->shared_rb)->nprogress++;
   TC_STOP_TIMER(tc, progress);
   GTC_EXIT();
@@ -288,6 +292,8 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
   gtc_vs_state_t vs_state = {0, 0, 0};
   laws_t rb_buf;
   laws_t *local_md = (laws_t *)tc->shared_rb;
+  // uint64_t node_has_work;
+  uint8_t node_cpy;
 
   tc->ct.getcalls++;
   TC_START_TIMER(tc, getbuf);
@@ -334,16 +340,27 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
       }
 
       v = (rand() % 100);
+
       // only try getting locally if we've already successfully stolen work
       // prior
       // if ((v <= perc_local || local_md->local_success) && tc->dispersed) {
-      if (tc->dispersed && local_md->local_success) {
+      //
+      // shmem_atomic_fetch(local_md->global_bits, local_md->root);
+
+      // printf("%lu\n", node_has_work);
+      shmem_getmem(&node_cpy, local_md->has_work_avail, 1, local_md->root);
+      // shmem_atomic_fetch(local_md->global_bits, local_md->root);
+      if (tc->dispersed && node_cpy) {
         v = gtc_select_target_laws(gtc, &vs_state);
         v += local_md->root;
       } else {
         v = gtc_select_target(gtc, &vs_state);
       }
 
+      /*if (local_md->procid == local_md->root)*/
+      /*  printf("%lu\n", *local_md->global_bits);*/
+      /*else*/
+      /*  printf("%u\n", node_cpy);*/
       max_steal_attempts = tc->ldbal_cfg.max_steal_attempts_remote;
 
       TC_START_TIMER(tc, poptail); // this counts as attempting to steal
@@ -380,15 +397,22 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
             steal_size = gtc_try_steal_tail(gtc, v);
           else
             steal_size = gtc_steal_tail(gtc, v);
+
           tc->ct.this_run++;
           tc->ct.total_steals++;
-          if (tc->ct.this_run == 50 && local_md->local_success) {
+          if (tc->ct.this_run >= 1000000 && local_md->local_success) {
+            //
+            // Idea: check that this_run is not substantially greater than
+            // last_run
+            // - if it is, we're unlikely to get any work anytime soon
+            // if (tc->ct.this_run >= tc->ct.last_run * 5 &&
+            //    local_md->local_success) {
             local_md->local_success = 0;
-            break;
           }
-          if (local_md->procid == 100) {
-            printf("%ld     %ld     %d\n", tc->ct.this_run, tc->ct.last_run,
-                   tc->dispersed);
+          if (local_md->procid == PROCID) {
+            /*printf("%ld     %ld     %d      %d      %d\n", tc->ct.this_run,*/
+            /*       tc->ct.last_run, tc->dispersed, steal_size,*/
+            /*       local_md->local_success);*/
           }
           if (local_md->local_success) {
             tc->ct.steals_at_run++;
@@ -400,6 +424,7 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
 
           // Steal succeeded: Got some work from remote node
           if (steal_size > 0) {
+            // printf("%d\n", steal_size);
             tc->ct.tasks_stolen += steal_size;
             tc->ct.num_steals++;
             increment_success(tc);
@@ -420,7 +445,12 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
 
             // Steal failed: Got the lock, no longer any work on remote node
           } else if (steal_size == 0) {
+            /*if (local_md->procid == 100 && tc->ct.this_run < 50) {*/
+            /*  printf("%ld       %ld       %d\n", tc->ct.this_run,*/
+            /*         tc->ct.last_run, tc->dispersed);*/
+            /*}*/
             tc->ct.failed_steals_locked++;
+            // printf("%u\n", node_cpy);
             increment_fail(tc);
             // if the steal failed and we attempted locally, set flag off
             if (is_local(v, local_md)) {
@@ -443,16 +473,19 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
 
         } else /* ! (QUEUE_WORK_AVAIL(target_rb) > 0) */ {
           tc->ct.failed_steals_unlocked++;
+          /*if (local_md->procid == local_md->root)*/
+          /*  printf("%lu\n", *local_md->global_bits);*/
+          /*else*/
+          /*  printf("%u\n", node_cpy);*/
           steal_done = 1;
           tc->ct.this_run++;
           tc->ct.total_steals++;
-          if (tc->ct.this_run == 50 && local_md->local_success) {
+          if (tc->ct.this_run >= 1000000 && local_md->local_success) {
             local_md->local_success = 0;
-            break;
           }
-          if (local_md->procid == 100 && tc->ct.this_run < 50) {
-            printf("%ld       %ld       %d\n", tc->ct.this_run, tc->ct.last_run,
-                   tc->dispersed);
+          if (local_md->procid == PROCID) {
+            /*printf("%ld       %ld       %d      %d\n", tc->ct.this_run,*/
+            /*       tc->ct.last_run, tc->dispersed, local_md->local_success);*/
           }
           if (is_local(v, local_md)) {
             // if (local_md->procid == 100 && local_md->local_success)
@@ -650,6 +683,9 @@ void gtc_print_stats_laws(gtc_t gtc) {
   uint64_t perget, peradd, perinplace, perfinish, perprogress, perreclaim,
       perensure, perrelease, perreacquire, perpoptail;
 
+  if (rb->procid == 0) {
+    printf("hi there!\n");
+  }
   if (!getenv("SCIOTO_DISABLE_STATS") &&
       !getenv("SCIOTO_DISABLE_PERNODE_STATS")) {
     // avoid floating point exceptions...

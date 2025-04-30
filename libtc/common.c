@@ -657,6 +657,7 @@ void gtc_print_gstats(gtc_t gtc) {
   char *ext_stats_enabled = getenv("SCIOTO_EXTENDED_STATS");
   char *unordered_stats = getenv("SCIOTO_UNORDERED_STATS");
   tc_t *tc = gtc_lookup(gtc);
+  // laws_t *local_md = (laws_t *)tc->shared_rb;
   double *times, *mintimes, *maxtimes, *sumtimes;
   uint64_t *counts, *mincounts, *maxcounts, *sumcounts;
 
@@ -771,7 +772,9 @@ void gtc_print_stats(gtc_t gtc) {
   char *stats_disabled = getenv("SCIOTO_DISABLE_STATS");
   char *pernode_stats_disabled = getenv("SCIOTO_DISABLE_PERNODE_STATS");
   char *unordered_stats = getenv("SCIOTO_UNORDERED_STATS");
+  // int pernode_stats_dis = strtol(pernode_stats_disabled, NULL, 10);
   tc_t *tc = gtc_lookup(gtc);
+  // laws_t *local_md = (laws_t *)tc->shared_rb;
   double *times, *mintimes, *maxtimes, *sumtimes;
   // double avg_tasks_per_steal;
   uint64_t *counts, *mincounts, *maxcounts, *sumcounts;
@@ -780,7 +783,9 @@ void gtc_print_stats(gtc_t gtc) {
     return;
 
   shmem_barrier_all();
+  // if (!pernode_stats_dis) {
   if (!pernode_stats_disabled) {
+    // printf("hi there again!\n");
     if (unordered_stats) {
       gtc_print_my_stats(gtc);
     } else {
@@ -793,6 +798,7 @@ void gtc_print_stats(gtc_t gtc) {
   }
   fflush(NULL);
   shmem_barrier_all();
+  // printf("hi there one more time!\n");
 
   int ntimes = 7;
   times = gtc_shmem_calloc(ntimes, sizeof(double));
@@ -897,9 +903,11 @@ void gtc_print_my_stats(gtc_t gtc) {
   GTC_ENTRY();
   double avg_acquire_time_ms;
   tc_t *tc = gtc_lookup(gtc);
+  laws_t *local_md = (laws_t *)tc->shared_rb;
 
   char *stats_disabled = getenv("SCIOTO_DISABLE_STATS");
   char *pernode_stats_disabled = getenv("SCIOTO_DISABLE_PERNODE_STATS");
+  // int pernode_stats_dis = strtol(pernode_stats_disabled, NULL, 10);
 
   if (stats_disabled)
     return;
@@ -908,6 +916,9 @@ void gtc_print_my_stats(gtc_t gtc) {
       (TC_READ_TIMER(tc, passive) - TC_READ_TIMER(tc, imbalance)) /
       (tc->ct.num_steals * (double)10e6);
 
+  if (local_md->procid == 100) {
+    printf("hi there!\n");
+  }
   if (!pernode_stats_disabled) {
     printf(" %4d - Tasks: completed %3lu, spawned %3lu, stolen %3lu\n"
            " %4d -      : nsteals %3lu, steal fails -- %3lu, aborted %3lu\n"

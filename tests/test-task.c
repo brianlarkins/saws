@@ -1,8 +1,8 @@
+#include <malloc.h>
+#include <shmem.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <malloc.h>
-#include <shmem.h>
 
 #include <tc.h>
 
@@ -28,25 +28,27 @@ void task_fcn(gtc_t gtc, task_t *task);
  **/
 void task_fcn(gtc_t gtc, task_t *task) {
   int timeout;
-  mytask_t *t = (mytask_t*) gtc_task_body(task);
-  //static mytask_t *s = NULL;
+  mytask_t *t = (mytask_t *)gtc_task_body(task);
+  // static mytask_t *s = NULL;
 
-  //if (rand() < RAND_MAX/2) {
-  // 50% Chance of spawning a new task
-  // create_task(gtc, task_class, mythread, t->task_num+1);
-  //}
+  // if (rand() < RAND_MAX/2) {
+  //  50% Chance of spawning a new task
+  //  create_task(gtc, task_class, mythread, t->task_num+1);
+  // }
 
   timeout = (gtimeout > 0) ? gtimeout : rand() % 1000000;
   usleep(timeout);
   sleep_time += timeout;
-  //printf("  Task (%2d, %3d) processed by worker %dn", t->parent_id, t->task_num, mythread);
-  //printf("  Task (%2d, %3d) processed by worker %d", t->parent_id, t->task_num, mythread);
-  printf("  Task (%2d, %3d) ", t->parent_id, t->task_num);
-  if (t->stolen_from == -1) {
-      printf("\n");
-  }else {
-      printf(", stolen from %d\n", t->stolen_from);
-  }
+  // printf("  Task (%2d, %3d) processed by worker %dn", t->parent_id,
+  // t->task_num, mythread); printf("  Task (%2d, %3d) processed by worker %d",
+  // t->parent_id, t->task_num, mythread);
+  // printf("  Task (%2d, %3d) ", t->parent_id, t->task_num);
+  /*if (t->stolen_from == -1) {*/
+  /*  printf("\n");*/
+  /*} else {*/
+  /*  printf(", stolen from %d\n", t->stolen_from);*/
+  /*}*/
+  t->stolen_from = -1;
   __gtc_marker[4]++; // completed
 }
 
@@ -59,11 +61,11 @@ void task_fcn(gtc_t gtc, task_t *task) {
  * @param task_num  Sequence number for output by task_fcn()
  **/
 void create_task(gtc_t gtc, task_class_t tclass, int my_id, int task_num) {
-  task_t   *task = gtc_task_create(tclass);
-  mytask_t *t    = (mytask_t*) gtc_task_body(task);
+  task_t *task = gtc_task_create(tclass);
+  mytask_t *t = (mytask_t *)gtc_task_body(task);
 
   t->parent_id = my_id;
-  t->task_num  = task_num;
+  t->task_num = task_num;
   t->stolen_from = -1;
 
   gtc_add(gtc, task, mythread);
@@ -71,11 +73,8 @@ void create_task(gtc_t gtc, task_class_t tclass, int my_id, int task_num) {
   __gtc_marker[3]++; // spawned
 }
 
-
-
-int main(int argc, char **argv)
-{
-  int   i, arg;
+int main(int argc, char **argv) {
+  int i, arg;
   gtc_t gtc;
   gtc_qtype_t qtype = GtcQueueSAWS;
   int num_tasks = NUM_TASKS;
@@ -87,18 +86,18 @@ int main(int argc, char **argv)
 
   while ((arg = getopt(argc, argv, "BHNLn:t:")) != -1) {
     switch (arg) {
-      case 'B':
-        qtype = GtcQueueSDC;
-        break;
-      case 'L':
-        qtype = GtcQueueLAWS;
-        break;
-      case 'n':
-        num_tasks = atoi(optarg);
-        break;
-      case 't':
-        gtimeout = atoi(optarg);
-        break;
+    case 'B':
+      qtype = GtcQueueSDC;
+      break;
+    case 'L':
+      qtype = GtcQueueLAWS;
+      break;
+    case 'n':
+      num_tasks = atoi(optarg);
+      break;
+    case 't':
+      gtimeout = atoi(optarg);
+      break;
     }
   }
 
@@ -135,10 +134,11 @@ int main(int argc, char **argv)
 
   // Find the ideal execution time
   shmem_sum_reduce(SHMEM_TEAM_WORLD, &ideal_time, &sleep_time, 1);
-  //gtc_reduce(&sleep_time, &ideal_time, GtcReduceOpSum, LongType, 1);
+  // gtc_reduce(&sleep_time, &ideal_time, GtcReduceOpSum, LongType, 1);
   if (mythread == 0)
-    printf("Total sleep time = %f sec, Ideal = %f sec (compare with process time above)\n",
-        ideal_time/1e6, ideal_time/1e6/nthreads);
+    printf("Total sleep time = %f sec, Ideal = %f sec (compare with process "
+           "time above)\n",
+           ideal_time / 1e6, ideal_time / 1e6 / nthreads);
 
   gtc_destroy(gtc);
   return 0;

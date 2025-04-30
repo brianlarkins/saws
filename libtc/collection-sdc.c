@@ -151,7 +151,12 @@ int gtc_tasks_avail_sdc(gtc_t gtc) {
 }
 
 static inline int is_local(sdc_shrb_t *rb, int v) {
-  int cores = sysconf(_SC_NPROCESSORS_ONLN);
+  int cores;
+  if (getenv("SLURM_NTASKS_PER_NODE") == NULL) {
+    cores = sysconf(_SC_NPROCESSORS_ONLN);
+  } else {
+    cores = strtol(getenv("SLURM_NTASKS_PER_NODE"), NULL, 10);
+  }
   int root = rb->procid - (rb->procid % cores);
   if (v >= root && v < root + cores)
     return 1;
@@ -263,6 +268,7 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
 
           // Steal succeeded: Got some work from remote node
           if (steal_size > 0) {
+            // printf("%d\n", steal_size);
             tc->ct.tasks_stolen += steal_size;
             tc->ct.num_steals += 1;
             steal_done = 1;
