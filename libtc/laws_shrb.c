@@ -87,12 +87,17 @@ laws_t *laws_create(int elem_size, int max_size, tc_t *tc) {
 
   // int cores_per_node = sysconf(_SC_NPROCESSORS_ONLN);
   int cores_per_node;
+  int num_nodes;
   if (getenv("SLURM_NTASKS_PER_NODE") == NULL) {
     cores_per_node = sysconf(_SC_NPROCESSORS_ONLN);
   } else {
     cores_per_node = (int)strtol(getenv("SLURM_NTASKS_PER_NODE"), NULL, 10);
   }
 
+  num_nodes = nproc / cores_per_node;
+  printf("num_nodes: %d\n", num_nodes);
+  rb->nnodes = num_nodes;
+  rb->node_num = procid / cores_per_node;
   // rb->gaddrs = gtc_shmem_calloc(cores_per_node, sizeof(laws_global_t));
   // rb->global = calloc(cores_per_node, sizeof(laws_global_t));
   rb->global_bits = gtc_shmem_calloc(sizeof(uint64_t), 1);
@@ -103,6 +108,8 @@ laws_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   rb->ratio = gtc_shmem_calloc(sizeof(double), 100000);
   rb->dispersion_mark = gtc_shmem_calloc(sizeof(int), 100000);
   rb->local_successes = gtc_shmem_calloc(sizeof(int), 100000);
+  rb->num_tasks_per_core = gtc_shmem_calloc(sizeof(int), cores_per_node);
+  rb->num_tasks_per_node = gtc_shmem_calloc(sizeof(int), num_nodes);
 
   // set pointers specifically for this process
   int multiple = procid / cores_per_node;
@@ -117,8 +124,13 @@ laws_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   rb->our_invert = rb->our_bits ^ 0xffffffffffffffff;
   rb->root = procid - rb->rank;
   rb->has_work = 0;
-  rb->local_success = 1;
+  rb->local_success = 0;
   rb->local_idx = 0;
+  rb->sdc_back = 0;
+  rb->num_tasks_stolen = gtc_shmem_calloc(sizeof(int), 1);
+
+  // printf("rb
+
   // rb->g_meta = &rb->global[rb->rank];
   // rb->gaddr = &rb->gaddrs[rb->rank];
 

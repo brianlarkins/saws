@@ -266,6 +266,8 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
           else
             steal_size = gtc_steal_tail(gtc, v);
 
+          printf("%d : %d\n", steal_size, v);
+
           // Steal succeeded: Got some work from remote node
           if (steal_size > 0) {
             // printf("%d\n", steal_size);

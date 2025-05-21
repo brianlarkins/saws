@@ -114,6 +114,7 @@ void gtc_progress_laws(gtc_t gtc) {
   TC_START_TIMER(tc, progress);
   laws_t *local_md = (laws_t *)tc->shared_rb;
 
+  // printf("entering gtc progress\n");
 #if 0  /* no task pushing */
   // Check the inbox for new work
   if (shrb_size(tc->inbox) > 0) {
@@ -140,12 +141,33 @@ void gtc_progress_laws(gtc_t gtc) {
   // check for work from bitfield; if work available, set flag
   // if (local_md->procid == local_md->root)
   // printf("%lu\n", *local_md->global_bits);
+  int num_tasks = laws_size(local_md);
+  int total_tasks = 0;
+  // int node_num;
+  /*printf("local_md->procid: %d\n", local_md->procid);*/
+  /*printf("local_md->root: %d\n", local_md->root);*/
+  /*printf("local_md->ncores: %d\n", local_md->ncores);*/
+  /*printf("local_md->nnodes: %d\n", local_md->nnodes);*/
   if (local_md->procid == local_md->root) {
+    local_md->num_tasks_per_core[0] = num_tasks;
+    for (int i = 0; i < local_md->ncores; i++) {
+      total_tasks += local_md->num_tasks_per_core[i];
+    }
+    /*shmem_putmem(&local_md->num_tasks_per_node[local_md->node_num],*/
+    /*             &total_tasks, 1, 0);*/
+    /*for (int i = 0; i < local_md->nnodes; i++) {*/
+    /*  // printf("1\n");*/
+    /*  printf("%d |", local_md->num_tasks_per_node[i]);*/
+    /*}*/
     if (*local_md->global_bits)
       *(local_md->has_work_avail) = 1;
     else
       *(local_md->has_work_avail) = 0;
+  } else {
+    shmem_putmem(&local_md->num_tasks_per_core[local_md->rank], &num_tasks, 1,
+                 local_md->root);
   }
+
   ((laws_t *)tc->shared_rb)->nprogress++;
   TC_STOP_TIMER(tc, progress);
   GTC_EXIT();
@@ -350,12 +372,20 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
       // printf("%lu\n", node_has_work);
       shmem_getmem(&node_cpy, local_md->has_work_avail, 1, local_md->root);
       // shmem_atomic_fetch(local_md->global_bits, local_md->root);
-      if (tc->dispersed && node_cpy) {
+      // if (tc->dispersed && local_md->local_success) {
+      if (local_md->procid % 2 == 0 && tc->dispersed) {
+        // if (node_cpy) {
         v = gtc_select_target_laws(gtc, &vs_state);
         v += local_md->root;
       } else {
         v = gtc_select_target(gtc, &vs_state);
       }
+      /*if (local_md->procid % 3 == 0) {*/
+      /*  v = gtc_select_target(gtc, &vs_state);*/
+      /*} else {*/
+      /*  v = gtc_select_target_laws(gtc, &vs_state);*/
+      /*  v += local_md->root;*/
+      /*}*/
 
       /*if (local_md->procid == local_md->root)*/
       /*  printf("%lu\n", *local_md->global_bits);*/
@@ -397,10 +427,27 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
             steal_size = gtc_try_steal_tail(gtc, v);
           else
             steal_size = gtc_steal_tail(gtc, v);
+          // printf("%d : %d\n", steal_size, v);
 
+          local_md->curr_task_avg =
+              local_md->curr_task_avg +
+              ((double)(steal_size - local_md->curr_task_avg) /
+               (tc->ct.total_steals + 1));
+
+          if (!local_md->sdc_back) {
+            if (local_md->curr_task_avg > local_md->sdc_avg &&
+                !local_md->local_success) {
+              local_md->sdc_avg = local_md->curr_task_avg;
+            } else if (!local_md->local_success) {
+              local_md->local_success = 1;
+              local_md->sdc_back = 1;
+            }
+          }
+          // printf("%g\n", local_md->curr_task_avg);
           tc->ct.this_run++;
           tc->ct.total_steals++;
-          if (tc->ct.this_run >= 1000000 && local_md->local_success) {
+          if (tc->ct.this_run >= tc->ct.last_run + 25 &&
+              local_md->local_success) {
             //
             // Idea: check that this_run is not substantially greater than
             // last_run
@@ -425,6 +472,10 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
           // Steal succeeded: Got some work from remote node
           if (steal_size > 0) {
             // printf("%d\n", steal_size);
+            // increment number of tasks stolen per node
+            if (!is_local(v, local_md))
+              shmem_atomic_add(local_md->num_tasks_stolen, steal_size,
+                               local_md->root);
             tc->ct.tasks_stolen += steal_size;
             tc->ct.num_steals++;
             increment_success(tc);
@@ -480,7 +531,8 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
           steal_done = 1;
           tc->ct.this_run++;
           tc->ct.total_steals++;
-          if (tc->ct.this_run >= 1000000 && local_md->local_success) {
+          if (tc->ct.this_run >= tc->ct.last_run + 25 &&
+              local_md->local_success) {
             local_md->local_success = 0;
           }
           if (local_md->procid == PROCID) {
@@ -549,9 +601,12 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
 
     tc->ct.dispersion_attempts_unlocked = tc->ct.failed_steals_unlocked;
     tc->ct.dispersion_attempts_locked = tc->ct.failed_steals_locked;
+
+    // local_md->sdc_avg = local_md->curr_task_avg;
   }
   if (increment_avg)
     tc->ct.last_run = tc->ct.this_run;
+
   /*if (local_md->local_success && increment_avg) {*/
   /*  tc->ct.runs++;*/
   /*  tc->ct.avg_steals_per_run =*/
@@ -975,6 +1030,11 @@ void gtc_print_gstats_laws(gtc_t gtc) {
 
   eprintf("&&&  %6.2f %6.2f ", sumtimes[LAWSPopTailTime] / _c->size,
           sumtimes[LAWSReacquireTime] / _c->size);
+
+  shmem_barrier_all();
+  if (rb->procid == rb->root) {
+    printf("%d : %d\n", rb->procid, *rb->num_tasks_stolen);
+  }
 
   /*for (int i = 0; i < 1000; i++) {*/
   /*  if (rb->procid == 100) {*/

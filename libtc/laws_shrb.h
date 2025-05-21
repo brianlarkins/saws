@@ -63,7 +63,9 @@ struct laws_s {
   int elem_size; // Size of an element in bytes
   int root;      // the root process relative to this one
   int ncores;    // number of cores on each node
+  int nnodes;    // number of nodes
   int rank;
+  int *num_tasks_stolen;
   int *successes;
   int *fails;
   int *dispersion_mark;
@@ -71,9 +73,15 @@ struct laws_s {
   int curr_fails;
   int *local_successes;
   int local_idx;
+  int node_num;
   double curr_ratio;
+  double curr_task_avg;
+  int *num_tasks_per_core;
+  int *num_tasks_per_node;
+  double sdc_avg;
   double *ratio;
   int local_success; // were we previously successful in stealing work locally?
+  int sdc_back;
   int has_work; // only attempt to retrieve work locally if this has been set
                 // (aka. we have previously successfully retrieved work through
                 // random selection)
