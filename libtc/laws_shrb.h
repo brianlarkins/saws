@@ -1,5 +1,7 @@
 #ifndef __SDC_SHR_RING_H__
 #define __SDC_SHR_RING_H__
+#define LAWS_ENABLE
+#define STEAL_CNT 512
 
 #include <mutex.h>
 #include <shmem.h>
@@ -65,6 +67,7 @@ struct laws_s {
   int ncores;    // number of cores on each node
   int nnodes;    // number of nodes
   int rank;
+  int *all_dispersed;
   int *num_tasks_stolen;
   int *successes;
   int *fails;
