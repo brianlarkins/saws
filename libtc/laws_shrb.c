@@ -578,7 +578,11 @@ static inline int laws_pop_n_tail_impl(laws_t *myrb, int proc, int n, void *e,
       // (&trb)->root);
     }
 #ifdef LAWS_ENABLE
-    if (((&trb)->split - new_tail) < STEAL_CNT) {
+    // if (((&trb)->split - new_tail) < STEAL_CNT) {
+    int rem_tasks = (&trb)->split - new_tail;
+    if (rem_tasks < 0)
+      rem_tasks += (&trb)->max_size;
+    if (rem_tasks < STEAL_CNT) {
       shmem_atomic_and((&trb)->global_bits, (&trb)->our_invert, (&trb)->root);
     }
 #endif

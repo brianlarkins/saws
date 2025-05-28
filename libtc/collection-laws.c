@@ -280,6 +280,26 @@ int gtc_select_target_laws(gtc_t gtc, gtc_vs_state_t *state) {
   tc_t *tc = gtc_lookup(gtc);
   laws_t *local_md = (laws_t *)tc->shared_rb;
 
+  // TODO: check our node, then check other nodes to determine whether they have
+  // work available
+  // uint64_t chosen_bits = 0;
+  int rand_node;
+  int root = local_md->root;
+  int attempts = 0;
+  shmem_atomic_fetch(local_md->global_bits, local_md->root);
+  // printf("%lu\n", *local_md->global_bits);
+  while (!*local_md->global_bits && attempts < 15) {
+    rand_node = rand() % local_md->nnodes;
+    root = rand_node * local_md->ncores;
+    if (root != local_md->root)
+      shmem_atomic_fetch(local_md->global_bits, root);
+    attempts++;
+  }
+  if (attempts == 15) {
+    v = gtc_select_target(gtc, state);
+    GTC_EXIT(v);
+  }
+  // printf("Done!\n");
   /* SINGLE: Single processor run
    */
   if (_c->size == 1) {
@@ -308,17 +328,22 @@ int gtc_select_target_laws(gtc_t gtc, gtc_vs_state_t *state) {
   if (v < 0) {
     // Target Random: Randomly select the next target
     if (tc->ldbal_cfg.target_selection == TARGET_RANDOM) {
+      // printf("local_md->root: %d\n", local_md->root);
+      // uint64_t num_two = *local_md->global_bits;
+      // for (int i = 0; i < 64; i++) {
+      //   num_two = *local_md->global_bits << i;
+      //   printf("%lu", (num_two & 0x1));
+      // }
+      // printf("\n");
       do {
         v = rand() % local_md->ncores;
-        /*
-        for (int i = v; i != v - 1; i = (i + 1) % local_md->ncores) {
-            uint64_t num = 0x1 << i;
-            if (local_md->gb_copy & num){
-                v = i;
-                break;
-            }
+        uint64_t new_num = *local_md->global_bits >> v;
+        int i;
+        for (i = v; (new_num & 1) == 0; i = (i + 1) % local_md->ncores) {
+          new_num = *local_md->global_bits >> i;
+          // printf("%d\n", i);
         }
-        */
+        v = i;
       } while (v == local_md->rank);
     }
 
@@ -335,7 +360,21 @@ int gtc_select_target_laws(gtc_t gtc, gtc_vs_state_t *state) {
 
   state->last_target = v;
 
-  GTC_EXIT(v);
+  GTC_EXIT(v + root);
+}
+
+int gtc_get_buf_laws_2(gtc_t gtc, int priority, task_t *buf) {
+  // 1). check to see whether we have work locally
+  // 2). if not, attempt to steal from another process
+  //      - start by checking for work available locally
+  //          (have an array of metadata)
+  //          (reduces memory which is grabbed)
+  //
+  // possible rewrite incoming! (depends on how I feel about the progress for
+  // this thing...)
+
+  // tc_t *tc = gtc_lookup(gtc);
+  return 0;
 }
 
 int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
@@ -409,17 +448,31 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
 
       // printf("%lu\n", node_has_work);
 #else
-      uint8_t node_cpy;
-      shmem_getmem(&node_cpy, local_md->has_work_avail, 1, local_md->root);
+      // uint8_t node_cpy;
+      // shmem_getmem(&node_cpy, local_md->has_work_avail, 1, local_md->root);
+      // shmem_getmem(&local_md->gb_copy, local_md->
       // shmem_atomic_fetch(local_md->global_bits, local_md->root);
+      // uint64_t num_again = *local_md->global_bits;
+      // if (*local_md->global_bits) {
+      //   printf("%lu\n", *local_md->global_bits);
+      //   for (int i = 0; i < 64; i++) {
+      //     num_again = *local_md->global_bits >> i;
+      //     printf("%lu", (num_again & 1));
+      //   }
+      //   printf("\n");
+      // }
       // if (tc->dispersed && local_md->local_success) {
       // if (local_md->procid % 2 == 0 && tc->dispersed) {
-      if (node_cpy && tc->dispersed) {
+      // if (*local_md->global_bits && tc->dispersed) {
+      //   v = gtc_select_target_laws(gtc, &vs_state);
+      //   v += local_md->root;
+      // } else {
+      //   v = gtc_select_target(gtc, &vs_state);
+      // }
+      if (tc->dispersed)
         v = gtc_select_target_laws(gtc, &vs_state);
-        v += local_md->root;
-      } else {
+      else
         v = gtc_select_target(gtc, &vs_state);
-      }
 #endif
       /*if (local_md->procid % 3 == 0) {*/
       /*  v = gtc_select_target(gtc, &vs_state);*/
@@ -477,17 +530,17 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
 
           if (local_md->procid == 35)
             // printf("%g\n", local_md->curr_task_avg);
-            printf("%d\n", steal_size);
+            // printf("%d\n", steal_size);
 
-          if (!local_md->sdc_back) {
-            if (local_md->curr_task_avg > local_md->sdc_avg &&
-                !local_md->local_success) {
-              local_md->sdc_avg = local_md->curr_task_avg;
-            } else if (!local_md->local_success) {
-              local_md->local_success = 1;
-              local_md->sdc_back = 1;
+            if (!local_md->sdc_back) {
+              if (local_md->curr_task_avg > local_md->sdc_avg &&
+                  !local_md->local_success) {
+                local_md->sdc_avg = local_md->curr_task_avg;
+              } else if (!local_md->local_success) {
+                local_md->local_success = 1;
+                local_md->sdc_back = 1;
+              }
             }
-          }
           // printf("%g\n", local_md->curr_task_avg);
           tc->ct.this_run++;
           tc->ct.total_steals++;
@@ -783,9 +836,9 @@ void gtc_print_stats_laws(gtc_t gtc) {
   uint64_t perget, peradd, perinplace, perfinish, perprogress, perreclaim,
       perensure, perrelease, perreacquire, perpoptail;
 
-  if (rb->procid == 0) {
-    printf("hi there!\n");
-  }
+  // if (rb->procid == 0) {
+  //   printf("hi there!\n");
+  // }
   if (!getenv("SCIOTO_DISABLE_STATS") &&
       !getenv("SCIOTO_DISABLE_PERNODE_STATS")) {
     // avoid floating point exceptions...
@@ -1076,10 +1129,10 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   eprintf("&&&  %6.2f %6.2f ", sumtimes[LAWSPopTailTime] / _c->size,
           sumtimes[LAWSReacquireTime] / _c->size);
 
-  shmem_barrier_all();
-  if (rb->procid == rb->root) {
-    printf("%d : %d\n", rb->procid, *rb->num_tasks_stolen);
-  }
+  // shmem_barrier_all();
+  // if (rb->procid == rb->root) {
+  //   printf("%d : %d\n", rb->procid, *rb->num_tasks_stolen);
+  // }
 
   /*for (int i = 0; i < 1000; i++) {*/
   /*  if (rb->procid == 100) {*/

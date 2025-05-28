@@ -1,7 +1,7 @@
 #ifndef __SDC_SHR_RING_H__
 #define __SDC_SHR_RING_H__
 #define LAWS_ENABLE
-#define STEAL_CNT 512
+#define STEAL_CNT 32
 
 #include <mutex.h>
 #include <shmem.h>
