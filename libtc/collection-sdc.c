@@ -574,7 +574,7 @@ void gtc_print_gstats_sdc(gtc_t gtc) {
   times[SDCPerEnsureTime] =
       rb->nensure != 0 ? TC_READ_TIMER_USEC(tc, ensure) / rb->nensure : 0.0;
   times[SDCPerReacquireTime] =
-      rb->nreacquire != 0 ? TC_READ_TIMER_MSEC(tc, reacquire) / rb->nreacquire
+      rb->nreacquire != 0 ? TC_READ_TIMER_USEC(tc, reacquire) / rb->nreacquire
                           : 0.0;
   times[SDCPerReleaseTime] =
       rb->nrelease != 0 ? TC_READ_TIMER_USEC(tc, release) / rb->nrelease : 0.0;
@@ -692,7 +692,7 @@ void gtc_print_gstats_sdc(gtc_t gtc) {
           maxtimes[SDCEnsureTime], sumtimes[SDCPerEnsureTime] / _c->size,
           mintimes[SDCPerEnsureTime], maxtimes[SDCPerEnsureTime]);
   eprintf("        : reacquire  %6.2f/%3lu/%3lu time %6.2fms/%6.2fms/%6.2fms "
-          "per %6.2fms/%6.2fms/%6.2fms\n",
+          "per %6.2fus/%6.2fus/%6.2fus\n",
           sumcounts[SDCReacquireCalls] / (double)_c->size,
           mincounts[SDCReacquireCalls], maxcounts[SDCReacquireCalls],
           sumtimes[SDCReacquireTime] / _c->size, mintimes[SDCReacquireTime],

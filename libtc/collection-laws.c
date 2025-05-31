@@ -16,6 +16,7 @@
 #include "laws_shrb.h"
 
 #define PROCID 128
+#define ATTEMPTS 10
 // #define STEAL_CNT 32
 // #define LAWS_ENABLE
 // #undef LAWS_ENABLE
@@ -158,6 +159,8 @@ void gtc_progress_laws(gtc_t gtc) {
   /*printf("local_md->ncores: %d\n", local_md->ncores);*/
   /*printf("local_md->nnodes: %d\n", local_md->nnodes);*/
   if (local_md->procid == local_md->root) {
+    *local_md->gb_copy &= *local_md->global_bits;
+    *local_md->gb_copy |= *local_md->global_bits;
     /*local_md->num_tasks_per_core[0] = num_tasks;*/
     /*for (int i = 0; i < local_md->ncores; i++) {*/
     /*  total_tasks += local_md->num_tasks_per_core[i];*/
@@ -227,6 +230,19 @@ static inline int is_local(int v, laws_t *rb) {
   return 0;
 }
 
+static inline char *print_bits(uint64_t num) {
+  static char bitstring[65];
+  char cur_str[2];
+  bitstring[64] = '\0';
+  for (int i = 0; i < 64; i++) {
+    // num >>= 1;
+    sprintf(cur_str, "%lu", (num & 1));
+    bitstring[64 - (i + 1)] = cur_str[0];
+    num >>= 1;
+  }
+  return bitstring;
+}
+
 static inline void increment_success(tc_t *tc) {
   double curr_time = TC_READ_TIMER_MSEC(tc, passive);
   laws_t *local_md = (laws_t *)tc->shared_rb;
@@ -286,16 +302,34 @@ int gtc_select_target_laws(gtc_t gtc, gtc_vs_state_t *state) {
   int rand_node;
   int root = local_md->root;
   int attempts = 0;
+  // if (local_md->procid == 2) {
+  uint64_t gb_copy = 0;
+  shmem_getmem(&gb_copy, local_md->gb_copy, 1, local_md->root);
+  // printf("approx: %s\n", print_bits(gb_copy));
+  //}
+  // TC_START_TIMER(tc, atomic_get);
   shmem_atomic_fetch(local_md->global_bits, local_md->root);
-  // printf("%lu\n", *local_md->global_bits);
-  while (!*local_md->global_bits && attempts < 15) {
+  if (gb_copy) {
+    printf("%d: %s\n", local_md->procid, print_bits(gb_copy));
+  }
+  if (local_md->procid == 2) {
+    // printf("actual: %s\n", print_bits(*local_md->global_bits));
+  }
+  // TC_STOP_TIMER(tc, atomic_get);
+  // tc->ct.atomic_gets++;
+  //  printf("%lu\n", *local_md->global_bits);
+  while (!*local_md->global_bits && attempts < ATTEMPTS) {
     rand_node = rand() % local_md->nnodes;
     root = rand_node * local_md->ncores;
-    if (root != local_md->root)
+    if (root != local_md->root) {
+      TC_START_TIMER(tc, atomic_get);
       shmem_atomic_fetch(local_md->global_bits, root);
+      TC_STOP_TIMER(tc, atomic_get);
+      tc->ct.atomic_gets++;
+    }
     attempts++;
   }
-  if (attempts == 15) {
+  if (attempts == ATTEMPTS) {
     v = gtc_select_target(gtc, state);
     GTC_EXIT(v);
   }
@@ -916,13 +950,13 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   double *times, *mintimes, *maxtimes, *sumtimes, *avgratio;
   uint64_t *counts, *mincounts, *maxcounts, *sumcounts;
 
-  int ntimes = 18;
+  int ntimes = 20;
   times = gtc_shmem_calloc(ntimes, sizeof(double));
   mintimes = gtc_shmem_calloc(ntimes, sizeof(double));
   maxtimes = gtc_shmem_calloc(ntimes, sizeof(double));
   sumtimes = gtc_shmem_calloc(ntimes, sizeof(double));
 
-  int ncounts = 16;
+  int ncounts = 17;
   counts = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
   mincounts = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
   maxcounts = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
@@ -954,13 +988,18 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   times[LAWSPerEnsureTime] =
       rb->nensure != 0 ? TC_READ_TIMER_USEC(tc, ensure) / rb->nensure : 0.0;
   times[LAWSPerReacquireTime] =
-      rb->nreacquire != 0 ? TC_READ_TIMER_MSEC(tc, reacquire) / rb->nreacquire
+      rb->nreacquire != 0 ? TC_READ_TIMER_USEC(tc, reacquire) / rb->nreacquire
                           : 0.0;
   times[LAWSPerReleaseTime] =
       rb->nrelease != 0 ? TC_READ_TIMER_USEC(tc, release) / rb->nrelease : 0.0;
   times[LAWSPerGlobalRetTime] =
       tc->ct.global_ret_count != 0
           ? TC_READ_TIMER_USEC(tc, global_ret) / tc->ct.global_ret_count
+          : 0.0;
+  times[LAWSAtomicGetTime] = TC_READ_TIMER_MSEC(tc, atomic_get);
+  times[LAWSPerAtomicGetTime] =
+      tc->ct.atomic_gets != 0
+          ? TC_READ_TIMER_USEC(tc, atomic_get) / tc->ct.atomic_gets
           : 0.0;
 
   counts[LAWSNumGets] = rb->ngets;
@@ -979,6 +1018,7 @@ void gtc_print_gstats_laws(gtc_t gtc) {
   counts[LAWSReleaseCalls] = rb->nrelease;
   counts[LAWSGlobalRetCalls] = tc->ct.global_ret_count;
   counts[LAWSNumTasksStolen] = tc->ct.tasks_stolen;
+  counts[LAWSNumAtomicGets] = tc->ct.atomic_gets;
 
   shmem_min_reduce(SHMEM_TEAM_WORLD, mintimes, times, ntimes);
   shmem_max_reduce(SHMEM_TEAM_WORLD, maxtimes, times, ntimes);
@@ -1047,6 +1087,15 @@ void gtc_print_gstats_laws(gtc_t gtc) {
           maxtimes[LAWSGetMetaTime], sumtimes[LAWSPerGetMetaTime] / _c->size,
           mintimes[LAWSPerGetMetaTime], maxtimes[LAWSPerGetMetaTime]);
 
+  eprintf("        :   atomic_gets   %6lu (%6.2f/%3lu/%3lu) time "
+          "%6.2fms/%6.2fms/%6.2fms per %6.2fus/%6.2fus/%6.2fus\n",
+          sumcounts[LAWSNumAtomicGets],
+          sumcounts[LAWSNumAtomicGets] / (double)_c->size,
+          mincounts[LAWSNumAtomicGets], maxcounts[LAWSNumAtomicGets],
+          sumtimes[LAWSAtomicGetTime] / _c->size, mintimes[LAWSAtomicGetTime],
+          maxtimes[LAWSAtomicGetTime],
+          sumtimes[LAWSPerAtomicGetTime] / _c->size,
+          mintimes[LAWSPerAtomicGetTime], maxtimes[LAWSPerAtomicGetTime]);
   eprintf("        :   get_global   %6lu (%6.2f/%3lu/%3lu) time "
           "%6.2fms/%6.2fms/%6.2fms per %6.2fus/%6.2fus/%6.2fus\n",
           sumcounts[LAWSGlobalRetCalls],
@@ -1111,7 +1160,7 @@ void gtc_print_gstats_laws(gtc_t gtc) {
           maxtimes[LAWSEnsureTime], sumtimes[LAWSPerEnsureTime] / _c->size,
           mintimes[LAWSPerEnsureTime], maxtimes[LAWSPerEnsureTime]);
   eprintf("        : reacquire  %6.2f/%3lu/%3lu time %6.2fms/%6.2fms/%6.2fms "
-          "per %6.2fms/%6.2fms/%6.2fms\n",
+          "per %6.2fus/%6.2fus/%6.2fus\n",
           sumcounts[LAWSReacquireCalls] / (double)_c->size,
           mincounts[LAWSReacquireCalls], maxcounts[LAWSReacquireCalls],
           sumtimes[LAWSReacquireTime] / _c->size, mintimes[LAWSReacquireTime],

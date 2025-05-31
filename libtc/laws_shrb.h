@@ -1,7 +1,7 @@
 #ifndef __SDC_SHR_RING_H__
 #define __SDC_SHR_RING_H__
 #define LAWS_ENABLE
-#define STEAL_CNT 32
+#define STEAL_CNT 1
 
 #include <mutex.h>
 #include <shmem.h>
@@ -26,7 +26,9 @@ typedef enum {
   LAWSReleaseTime,
   LAWSPerReleaseTime,
   LAWSGlobalRetTime,
-  LAWSPerGlobalRetTime
+  LAWSPerGlobalRetTime,
+  LAWSAtomicGetTime,
+  LAWSPerAtomicGetTime
 } gtc_sdc_gtimestats_e;
 
 typedef enum {
@@ -45,7 +47,8 @@ typedef enum {
   LAWSReacquireCalls,
   LAWSReleaseCalls,
   LAWSGlobalRetCalls,
-  LAWSNumTasksStolen
+  LAWSNumTasksStolen,
+  LAWSNumAtomicGets
 } gtc_sdc_gcountstats_e;
 
 struct laws_s {
@@ -93,7 +96,7 @@ struct laws_s {
   // metadata
   uint64_t
       *global_bits; // bitfield indicating work status of each process on a node
-  uint64_t gb_copy; // where the copy is stored when retrieved from memory
+  uint64_t *gb_copy; // where the copy is stored when retrieved from memory
   uint8_t *has_work_avail;
   // uint8_t         *g_meta; // pointer to our process's metadata specifically
   // uint8_t         *gaddr;  // same as above, but with reference to the

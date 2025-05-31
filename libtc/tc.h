@@ -278,6 +278,7 @@ struct tc_timers_s {
   tc_timer_t getsteal;
   tc_timer_t getfail;
   tc_timer_t getmeta;
+  tc_timer_t atomic_get;
   tc_timer_t t[5]; // general purpose
 };
 typedef struct tc_timers_s tc_timers_t;
@@ -309,6 +310,7 @@ struct tc_counters_s {
   tc_counter_t getcalls;            // # of calls to get_buf
   tc_counter_t getlocal;            // # of calls resulting in local work found
   tc_counter_t global_ret_count;
+  tc_counter_t atomic_gets;
 };
 typedef struct tc_counters_s tc_counters_t;
 

@@ -106,6 +106,7 @@ laws_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   // rb->global = calloc(cores_per_node, sizeof(laws_global_t));
   rb->global_bits = gtc_shmem_calloc(sizeof(uint64_t), 1);
   rb->has_work_avail = gtc_shmem_calloc(sizeof(uint8_t), 1);
+  rb->gb_copy = gtc_shmem_calloc(sizeof(uint64_t), 1);
 
   rb->successes = gtc_shmem_calloc(sizeof(int), 100000);
   rb->fails = gtc_shmem_calloc(sizeof(int), 100000);
@@ -335,8 +336,8 @@ void laws_release(laws_t *rb) {
     // uint8_t yep = 1;
     // shmem_putmem(rb->gaddr, &yep, sizeof(laws_global_t), rb->root);
 #ifdef LAWS_ENABLE
-    if (laws_shared_size(rb) >= STEAL_CNT)
-      shmem_atomic_or(rb->global_bits, rb->our_bits, rb->root);
+    // if (laws_shared_size(rb) >= STEAL_CNT)
+    shmem_atomic_or(rb->global_bits, rb->our_bits, rb->root);
 #endif
 
     gtc_lprintf(DBGSHRB, "release: local size: %d shared size: %d\n",

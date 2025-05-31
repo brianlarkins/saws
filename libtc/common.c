@@ -97,6 +97,7 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size,
   TC_INIT_TIMER(tc, getsteal);
   TC_INIT_TIMER(tc, getfail);
   TC_INIT_TIMER(tc, getmeta);
+  TC_INIT_TIMER(tc, atomic_get);
 
   if (!ldbal_cfg) {
     ldbal_cfg = gtc_malloc(sizeof(gtc_ldbal_cfg_t));
