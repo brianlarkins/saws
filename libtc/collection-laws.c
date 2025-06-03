@@ -309,7 +309,9 @@ int gtc_select_target_laws(gtc_t gtc, gtc_vs_state_t *state) {
   //}
   // TC_START_TIMER(tc, atomic_get);
   shmem_atomic_fetch(local_md->global_bits, local_md->root);
-  // printf("%d: %s\n", local_md->procid, print_bits(*local_md->global_bits));
+  if (gb_copy) {
+    printf("%d: %s\n", local_md->procid, print_bits(gb_copy));
+  }
   if (local_md->procid == 2) {
     // printf("actual: %s\n", print_bits(*local_md->global_bits));
   }
@@ -325,8 +327,6 @@ int gtc_select_target_laws(gtc_t gtc, gtc_vs_state_t *state) {
       TC_STOP_TIMER(tc, atomic_get);
       tc->ct.atomic_gets++;
     }
-    // printf("%d : %s\n", local_md->procid,
-    // print_bits(*local_md->global_bits));
     attempts++;
   }
   if (attempts == ATTEMPTS) {
