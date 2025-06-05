@@ -303,15 +303,15 @@ int gtc_select_target_laws(gtc_t gtc, gtc_vs_state_t *state) {
   int root = local_md->root;
   int attempts = 0;
   // if (local_md->procid == 2) {
-  uint64_t gb_copy = 0;
-  shmem_getmem(&gb_copy, local_md->gb_copy, 1, local_md->root);
+  // uint64_t gb_copy = 0;
+  // shmem_getmem(&gb_copy, local_md->gb_copy, 1, local_md->root);
   // printf("approx: %s\n", print_bits(gb_copy));
   //}
   // TC_START_TIMER(tc, atomic_get);
   shmem_atomic_fetch(local_md->global_bits, local_md->root);
-  if (gb_copy) {
-    printf("%d: %s\n", local_md->procid, print_bits(gb_copy));
-  }
+  // if (gb_copy) {
+  //  printf("%d: %s\n", local_md->procid, print_bits(gb_copy));
+  //}
   if (local_md->procid == 2) {
     // printf("actual: %s\n", print_bits(*local_md->global_bits));
   }

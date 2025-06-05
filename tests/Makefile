@@ -22,6 +22,7 @@ TARGETS=test-hello          \
 				test-contention \
 				test-atomic \
 				test-atomic-contention \
+				test-atomic-contention-shm \
 				test-uts-stealtime \
 				# line eater
 
@@ -92,6 +93,9 @@ test-atomic: tclibs test-atomic.o
 
 test-atomic-contention: tclibs test-atomic-contention.o
 	$(CC) $(CFLAGS) -o $@ test-atomic-contention.o wctimer.o $(TC_LIBS)
+
+test-atomic-contention-shm: tclibs test-atomic-contention-shm.o
+	$(CC) $(CFLAGS) -o $@ test-atomic-contention-shm.o wctimer.o $(TC_LIBS)
 
 clean: tcclean
 	for dir in $(TEST_DIRS); do \

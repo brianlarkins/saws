@@ -182,6 +182,7 @@ void laws_reset(laws_t *rb) {
 void laws_destroy(laws_t *rb) {
   GTC_ENTRY();
   shmem_free(rb->global_bits);
+  shmem_free(rb->gb_copy);
   shmem_free(rb->has_work_avail);
   shmem_free(rb->successes);
   shmem_free(rb->fails);
