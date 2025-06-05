@@ -6,6 +6,7 @@
 /***********************************************************/
 
 #include <math.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -116,7 +117,7 @@ void gtc_progress_laws(gtc_t gtc) {
   GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
   TC_START_TIMER(tc, progress);
-  laws_t *local_md = (laws_t *)tc->shared_rb;
+  // laws_t *local_md = (laws_t *)tc->shared_rb;
 
   // printf("entering gtc progress\n");
 #if 0  /* no task pushing */
@@ -152,6 +153,7 @@ void gtc_progress_laws(gtc_t gtc) {
   /*  shmem_atomic_and(local_md->global_bits, local_md->our_invert, 0);*/
   /*}*/
   // int total_tasks = 0;
+#if 0
   int cores_with_tasks = 0;
   // int node_num;
   /*printf("local_md->procid: %d\n", local_md->procid);*/
@@ -193,7 +195,6 @@ void gtc_progress_laws(gtc_t gtc) {
     /*                 local_md->root);*/
   }
 
-#if 0
   shmem_quiet();
   if (local_md->procid == 0) {
     printf("\n");
@@ -308,7 +309,7 @@ int gtc_select_target_laws(gtc_t gtc, gtc_vs_state_t *state) {
   // printf("approx: %s\n", print_bits(gb_copy));
   //}
   // TC_START_TIMER(tc, atomic_get);
-  shmem_atomic_fetch(local_md->global_bits, local_md->root);
+  // shmem_atomic_fetch(local_md->global_bits, local_md->root);
   // if (gb_copy) {
   //  printf("%d: %s\n", local_md->procid, print_bits(gb_copy));
   //}
@@ -323,7 +324,7 @@ int gtc_select_target_laws(gtc_t gtc, gtc_vs_state_t *state) {
     root = rand_node * local_md->ncores;
     if (root != local_md->root) {
       TC_START_TIMER(tc, atomic_get);
-      shmem_atomic_fetch(local_md->global_bits, root);
+      // shmem_atomic_fetch(local_md->global_bits, root);
       TC_STOP_TIMER(tc, atomic_get);
       tc->ct.atomic_gets++;
     }
@@ -397,7 +398,7 @@ int gtc_select_target_laws(gtc_t gtc, gtc_vs_state_t *state) {
   GTC_EXIT(v + root);
 }
 
-int gtc_get_buf_laws_2(gtc_t gtc, int priority, task_t *buf) {
+int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
   // 1). check to see whether we have work locally
   // 2). if not, attempt to steal from another process
   //      - start by checking for work available locally
@@ -406,12 +407,100 @@ int gtc_get_buf_laws_2(gtc_t gtc, int priority, task_t *buf) {
   //
   // possible rewrite incoming! (depends on how I feel about the progress for
   // this thing...)
+  // edit: atomic operations are working, and working well!! I think a rewrite
+  // is in order
+  GTC_ENTRY();
+  int got_task = 0;
+  int searching = 0;
+  int steal_size = 0;
+  int steal_done = 0;
+  int use_sdc = 0;
+  int v = 0;
+  gtc_vs_state_t vs_state = {0, 0, 0};
 
-  // tc_t *tc = gtc_lookup(gtc);
-  return 0;
+  tc_t *tc = gtc_lookup(gtc);
+  laws_t *local_md = (laws_t *)tc->shared_rb;
+
+  // Invoke the progress engine
+  gtc_progress(gtc);
+
+  // check for work locally first
+  got_task = gtc_get_local_buf(gtc, priority, buf);
+
+  // Start dispersion timer
+  if (!tc->dispersed)
+    TC_START_TIMER(tc, dispersion);
+
+  // if no local work, try to retrieve some from elsewhere
+  if (!got_task && tc->ldbal_cfg.stealing_enabled) {
+    while (!got_task && !tc->terminated) {
+      int max_steal_attempts, steal_attempts, steal_done;
+      tc->state = STATE_SEARCHING;
+
+      if (!searching) {
+        TC_START_TIMER(tc, search);
+        searching = 1;
+      }
+
+      // Here's the interesting part...
+      // Check to see if there is work on the node
+      uint64_t vbit = 0;
+      uint64_t mask = 0;
+      uint64_t old = 0;
+      while (1) {
+        v = rand() % local_md->ncores;
+        vbit = 1 << v;
+        mask = vbit ^ 0xffffffffffffffff;
+        old = atomic_fetch_and(local_md->global_bits, mask);
+        if (old & vbit || !old)
+          break;
+      }
+      if (!old) { // no work on-node, use SDC instead
+        if (local_md->nnodes == 1) {
+          // if there is only one node, no work indicated by old means that we
+          // are likely done and can begin termination detection
+        }
+        printf("perform SDC\n");
+        use_sdc = 1;
+        v = gtc_select_target(gtc, &vs_state);
+      } else { // we found work on-node, let's steal that
+        printf("perform LAWS\n");
+        use_sdc = 0;
+        if (searching) {
+#ifndef NO_SEATBELTS
+          TC_STOP_TIMER(tc, search);
+#endif
+          searching = 0;
+        }
+      }
+
+      while (!steal_done) {
+        tc->state = STATE_STEALING;
+        if (tc->ldbal_cfg.steals_can_abort)
+          steal_size = gtc_try_steal_tail(gtc, v);
+        else
+          steal_size = gtc_steal_tail(gtc, v);
+
+        // Found work; done with stealing
+        if (steal_size > 0) {
+          steal_done = 1;
+          tc->last_target = v;
+          // No more work is available
+        } else if (steal_size == 0) {
+          steal_done = 1;
+          // didn't get the lock
+        } else {
+          vs_state.target_retry = 1;
+        }
+
+        gtc_progress(gtc);
+      }
+    }
+  }
+  GTC_EXIT(0);
 }
 
-int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
+int gtc_get_buf_laws_orig(gtc_t gtc, int priority, task_t *buf) {
   GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
   int got_task = 0;
@@ -524,6 +613,10 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
       TC_START_TIMER(tc, poptail); // this counts as attempting to steal
       shmem_getmem(target_rb, tc->shared_rb, sizeof(laws_t), v);
       TC_STOP_TIMER(tc, poptail);
+
+      uint64_t old = atomic_load(local_md->global_bits);
+      if (old)
+        printf("%d : %s\n", local_md->procid, print_bits(old));
 
       // Poll the target for work.  In between polls, maintain progress on
       // termination detection.

@@ -8,12 +8,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/types.h>
 #include <unistd.h>
 
 #include <mutex.h>
+#include <stdatomic.h>
 
 #include "laws_shrb.h"
+#include "shared.h"
 #include "tc.h"
 // #define STEAL_CNT 32
 
@@ -100,13 +103,19 @@ laws_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   /*}*/
   num_nodes = nproc / cores_per_node;
   // printf("num_nodes: %d\n", num_nodes);
+  if (procid == 0) {
+    printf("size of atomic_ulong: %lu\n", sizeof(atomic_ulong));
+    printf("size of unsigned long: %lu\n", sizeof(unsigned long));
+  }
+
   rb->nnodes = num_nodes;
   rb->node_num = procid / cores_per_node;
   // rb->gaddrs = gtc_shmem_calloc(cores_per_node, sizeof(laws_global_t));
   // rb->global = calloc(cores_per_node, sizeof(laws_global_t));
-  rb->global_bits = gtc_shmem_calloc(sizeof(uint64_t), 1);
+  // rb->global_bits = gtc_shmem_calloc(sizeof(uint64_t), 1);
+
   rb->has_work_avail = gtc_shmem_calloc(sizeof(uint8_t), 1);
-  rb->gb_copy = gtc_shmem_calloc(sizeof(uint64_t), 1);
+  // rb->gb_copy = gtc_shmem_calloc(sizeof(uint64_t), 1);
 
   rb->successes = gtc_shmem_calloc(sizeof(int), 100000);
   rb->fails = gtc_shmem_calloc(sizeof(int), 100000);
@@ -134,6 +143,22 @@ laws_t *laws_create(int elem_size, int max_size, tc_t *tc) {
   rb->local_idx = 0;
   rb->sdc_back = 0;
   rb->num_tasks_stolen = gtc_shmem_calloc(sizeof(int), 1);
+
+  // Create a buffer using mmap and shm_open rather than shmem
+  // uses atomic operations built into the architecture
+  char file_name[10];
+  sprintf(file_name, "/%d", rb->node_num);
+  if (rb->rank == 0) {
+    rb->global_bits =
+        (atomic_ulong *)allocate_shared(file_name, sizeof(atomic_ulong));
+    atomic_store(rb->global_bits, 0);
+  }
+
+  shmem_barrier_all();
+
+  if (rb->rank != 0)
+    rb->global_bits =
+        (atomic_ulong *)get_shared(file_name, sizeof(atomic_ulong));
 
   // printf("rb
 
@@ -181,7 +206,8 @@ void laws_reset(laws_t *rb) {
 
 void laws_destroy(laws_t *rb) {
   GTC_ENTRY();
-  shmem_free(rb->global_bits);
+  munmap(rb->global_bits, sizeof(atomic_ulong));
+  // shmem_free(rb->global_bits);
   shmem_free(rb->gb_copy);
   shmem_free(rb->has_work_avail);
   shmem_free(rb->successes);
@@ -193,6 +219,11 @@ void laws_destroy(laws_t *rb) {
   shmem_free(rb->num_tasks_per_node);
   shmem_free(rb->all_dispersed);
   shmem_free(rb->num_tasks_stolen);
+  if (rb->rank == 0) {
+    char file_name[10];
+    sprintf(file_name, "/%d", rb->node_num);
+    shm_unlink(file_name);
+  }
   shmem_free(rb);
   GTC_EXIT();
 }
@@ -336,10 +367,11 @@ void laws_release(laws_t *rb) {
     // shmem_atomic_fetch_or(rb->gaddr, 1, rb->root);
     // uint8_t yep = 1;
     // shmem_putmem(rb->gaddr, &yep, sizeof(laws_global_t), rb->root);
-#ifdef LAWS_ENABLE
-    // if (laws_shared_size(rb) >= STEAL_CNT)
-    shmem_atomic_or(rb->global_bits, rb->our_bits, rb->root);
-#endif
+    // #ifdef LAWS_ENABLE
+    //  if (laws_shared_size(rb) >= STEAL_CNT)
+    //  shmem_atomic_or(rb->global_bits, rb->our_bits, rb->root);
+    atomic_fetch_or(rb->global_bits, rb->our_bits);
+    // #endif
 
     gtc_lprintf(DBGSHRB, "release: local size: %d shared size: %d\n",
                 laws_local_size(rb), laws_shared_size(rb));
@@ -378,14 +410,15 @@ int laws_reacquire(laws_t *rb) {
       if (rb->split < 0)
         rb->split += rb->max_size;
       rb->nreacquire++;
-#ifdef LAWS_ENABLE
-      if (laws_shared_size(rb) < STEAL_CNT) {
+      // #ifdef LAWS_ENABLE
+      if (laws_shared_size(rb) < 1) {
         // shmem_atomic_fetch_and(rb->gaddr, 0, rb->root);
         // uint8_t nope = 0;
         // shmem_putmem(rb->gaddr, &nope, sizeof(laws_global_t), rb->root);
-        shmem_atomic_and(rb->global_bits, rb->our_invert, rb->root);
+        // shmem_atomic_and(rb->global_bits, rb->our_invert, rb->root);
+        atomic_fetch_and(rb->global_bits, rb->our_invert);
       }
-#endif
+      // #endif
       gtc_lprintf(DBGSHRB, "reacquire: local size: %d shared size: %d\n",
                   laws_local_size(rb), laws_shared_size(rb));
     }
@@ -579,15 +612,16 @@ static inline int laws_pop_n_tail_impl(laws_t *myrb, int proc, int n, void *e,
       // shmem_atomic_and((&trb)->global_bits, (&trb)->our_invert,
       // (&trb)->root);
     }
-#ifdef LAWS_ENABLE
-    // if (((&trb)->split - new_tail) < STEAL_CNT) {
+    // #ifdef LAWS_ENABLE
+    //  if (((&trb)->split - new_tail) < STEAL_CNT) {
     int rem_tasks = (&trb)->split - new_tail;
     if (rem_tasks < 0)
       rem_tasks += (&trb)->max_size;
-    if (rem_tasks < STEAL_CNT) {
-      shmem_atomic_and((&trb)->global_bits, (&trb)->our_invert, (&trb)->root);
-    }
-#endif
+    // if (rem_tasks < STEAL_CNT) {
+    //   shmem_atomic_and((&trb)->global_bits, (&trb)->our_invert,
+    //   (&trb)->root);
+    // }
+    // #endif
     shmem_putmem(rem_addr, loc_addr, xfer_size, proc);
 
     laws_unlock(myrb, proc); // Deferred copy unlocks early
