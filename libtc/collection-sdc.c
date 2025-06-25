@@ -232,9 +232,12 @@ int gtc_get_buf_sdc(gtc_t gtc, int priority, task_t *buf) {
 
       max_steal_attempts = tc->ldbal_cfg.max_steal_attempts_remote;
 
-      TC_START_TIMER(tc, poptail); // this counts as attempting to steal
+      // TC_START_TIMER(tc, poptail); // this counts as attempting to steal
+      TC_START_TIMER(tc, getmeta);
       shmem_getmem(target_rb, tc->shared_rb, sizeof(sdc_shrb_t), v);
-      TC_STOP_TIMER(tc, poptail);
+      TC_STOP_TIMER(tc, getmeta);
+      ((sdc_shrb_t *)tc->shared_rb)->nmeta++;
+      // TC_STOP_TIMER(tc, poptail);
 
       // Poll the target for work.  In between polls, maintain progress on
       // termination detection.
@@ -564,7 +567,7 @@ void gtc_print_gstats_sdc(gtc_t gtc) {
       tc->ct.num_steals != 0 ? TC_READ_TIMER_USEC(tc, steal) / tc->ct.num_steals
                              : 0.0;
   times[SDCPerGetMetaTime] =
-      rb->nmeta != 0 ? TC_READ_TIMER_MSEC(tc, getmeta) / rb->nmeta : 0.0;
+      rb->nmeta != 0 ? TC_READ_TIMER_USEC(tc, getmeta) / rb->nmeta : 0.0;
   times[SDCPerProgressTime] =
       rb->nprogress != 0 ? TC_READ_TIMER_USEC(tc, progress) / rb->nprogress
                          : 0.0;
@@ -630,7 +633,7 @@ void gtc_print_gstats_sdc(gtc_t gtc) {
           mincounts[SDCGetCalls], maxcounts[SDCGetCalls]);
 
   eprintf("        :   get_meta   %6lu (%6.2f/%3lu/%3lu) time "
-          "%6.2fms/%6.2fms/%6.2fms per %6.2fms/%6.2fms/%6.2fms\n",
+          "%6.2fms/%6.2fms/%6.2fms per %6.2fus/%6.2fus/%6.2fus\n",
           sumcounts[SDCNumMeta], sumcounts[SDCNumMeta] / (double)_c->size,
           mincounts[SDCNumMeta], maxcounts[SDCNumMeta],
           sumtimes[SDCGetMetaTime] / _c->size, mintimes[SDCGetMetaTime],

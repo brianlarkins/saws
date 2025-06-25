@@ -140,8 +140,16 @@ void gtc_progress_laws(gtc_t gtc) {
   // Update the split
   laws_release(tc->shared_rb);
 
+  // check how much work we have
+  // if (laws_shared_size(tc->shared_rb) > 0) {
+  //   atomic_fetch_or(local_md->global_bits, local_md->our_bits);
+  // } else {
+  //   atomic_fetch_and(local_md->global_bits, local_md->our_invert);
+  // }
+  // laws_size(tc->shared_rb);
+
   // Attempt to reclaim space
-  laws_reclaim_space(tc->shared_rb);
+  // laws_reclaim_space(tc->shared_rb);
 
   // check for work from bitfield; if work available, set flag
   // if (local_md->procid == local_md->root)
@@ -398,7 +406,8 @@ int gtc_select_target_laws(gtc_t gtc, gtc_vs_state_t *state) {
   GTC_EXIT(v + root);
 }
 
-int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
+#if 0
+int gtc_get_buf_laws_refactor(gtc_t gtc, int priority, task_t *buf) {
   // 1). check to see whether we have work locally
   // 2). if not, attempt to steal from another process
   //      - start by checking for work available locally
@@ -459,6 +468,8 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
         if (local_md->nnodes == 1) {
           // if there is only one node, no work indicated by old means that we
           // are likely done and can begin termination detection
+          td_set_counters(tc->td, tc->ct.tasks_spawned, tc->ct.tasks_completed);
+          tc->terminated = td_attempt_vote(tc->td);
         }
         printf("perform SDC\n");
         use_sdc = 1;
@@ -499,8 +510,9 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
   }
   GTC_EXIT(0);
 }
+#endif
 
-int gtc_get_buf_laws_orig(gtc_t gtc, int priority, task_t *buf) {
+int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
   GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
   int got_task = 0;
@@ -510,7 +522,7 @@ int gtc_get_buf_laws_orig(gtc_t gtc, int priority, task_t *buf) {
   int increment_avg = 0;
   // int perc_local = 2;
   gtc_vs_state_t vs_state = {0, 0, 0};
-  laws_t rb_buf;
+  // laws_t rb_buf;
   laws_t *local_md = (laws_t *)tc->shared_rb;
   // uint64_t node_has_work;
   // uint8_t node_cpy;
@@ -522,6 +534,7 @@ int gtc_get_buf_laws_orig(gtc_t gtc, int priority, task_t *buf) {
   tc->ct.this_run = 0;
 
   // Invoke the progress engine
+  // if (tc->ct.getcalls % 2 == 0)
   gtc_progress(gtc);
 
   // Try to take my own work first.  We take from the head of our own queue.
@@ -550,7 +563,7 @@ int gtc_get_buf_laws_orig(gtc_t gtc, int priority, task_t *buf) {
     // Keep searching until we find work or detect termination
     while (!got_task && !tc->terminated) {
       int max_steal_attempts, steal_attempts, steal_done;
-      void *target_rb = &rb_buf;
+      // void *target_rb = &rb_buf;
 
       tc->state = STATE_SEARCHING;
 
@@ -610,13 +623,51 @@ int gtc_get_buf_laws_orig(gtc_t gtc, int priority, task_t *buf) {
       /*  printf("%u\n", node_cpy);*/
       max_steal_attempts = tc->ldbal_cfg.max_steal_attempts_remote;
 
-      TC_START_TIMER(tc, poptail); // this counts as attempting to steal
-      shmem_getmem(target_rb, tc->shared_rb, sizeof(laws_t), v);
-      TC_STOP_TIMER(tc, poptail);
+      //  TODO: replace this with atomic bitfield fetch
+      //  uint64_t mask = 1 << v;
+      uint64_t state;
+      // uint64_t invert;
+      // int has_work;
+      // TODO: switch between this and SDC depending on the circumstance
+      // invert = (1 << (v % local_md->ncores)) ^ 0xffffffffffffffff;
+      TC_START_TIMER(tc, atomic_get);
+      // state = atomic_fetch_and(local_md->global_bits, invert);
+      state = atomic_load(local_md->global_bits);
+      // if (local_md->procid == 0 && !state) {
+      //   printf("%s\n", print_bits(*local_md->global_bits));
+      // }
+      // int has_work = (int)(state & (1 << v));
 
-      uint64_t old = atomic_load(local_md->global_bits);
-      if (old)
-        printf("%d : %s\n", local_md->procid, print_bits(old));
+      // while (state && !(state & (1 << v))) {
+      //   v = (v + 1) % local_md->ncores;
+      // }
+      int has_work = state & (1 << v);
+      // if (!has_work) {
+      //   printf("%d : %s\n", local_md->procid,
+      //          print_bits(*local_md->global_bits));
+      // }
+      TC_STOP_TIMER(tc, atomic_get);
+      tc->ct.atomic_gets++;
+
+      // first check for work locally
+#if 0
+      if (state) {
+        has_work = state & (1 << (v % local_md->ncores));
+        v %= local_md->ncores;
+        // otherwise check for work across nodes
+      } else {
+        TC_START_TIMER(tc, getmeta); // this counts as attempting to steal
+        shmem_getmem(target_rb, tc->shared_rb, sizeof(laws_t), v);
+        TC_STOP_TIMER(tc, getmeta);
+        local_md->nmeta++;
+        has_work = tc->rcb.work_avail(target_rb);
+      }
+#endif
+      // int has_work = (int)(atomic_load(local_md->global_bits) & (1 << v));
+
+      // uint64_t old = atomic_load(local_md->global_bits);
+      // if (old)
+      //   printf("%d : %s\n", local_md->procid, print_bits(old));
 
       // Poll the target for work.  In between polls, maintain progress on
       // termination detection.
@@ -633,7 +684,8 @@ int gtc_get_buf_laws_orig(gtc_t gtc, int priority, task_t *buf) {
             gtc_get_dummy_work_laws += 1.0;
         }
 
-        if (tc->rcb.work_avail(target_rb) > 0) {
+        // if (tc->rcb.work_avail(target_rb) > 0) {
+        if (has_work) {
           tc->state = STATE_STEALING;
 
           if (searching) {
@@ -682,7 +734,8 @@ int gtc_get_buf_laws_orig(gtc_t gtc, int priority, task_t *buf) {
             local_md->local_success = 0;
           }
           if (local_md->procid == PROCID) {
-            /*printf("%ld     %ld     %d      %d      %d\n", tc->ct.this_run,*/
+            /*printf("%ld     %ld     %d      %d      %d\n",
+             * tc->ct.this_run,*/
             /*       tc->ct.last_run, tc->dispersed, steal_size,*/
             /*       local_md->local_success);*/
           }
@@ -748,6 +801,7 @@ int gtc_get_buf_laws_orig(gtc_t gtc, int priority, task_t *buf) {
           }
 
         } else /* ! (QUEUE_WORK_AVAIL(target_rb) > 0) */ {
+          // printf("%s\n", print_bits(*local_md->global_bits));
           tc->ct.failed_steals_unlocked++;
           /*if (local_md->procid == local_md->root)*/
           /*  printf("%lu\n", *local_md->global_bits);*/
@@ -762,7 +816,8 @@ int gtc_get_buf_laws_orig(gtc_t gtc, int priority, task_t *buf) {
           }
           if (local_md->procid == PROCID) {
             /*printf("%ld       %ld       %d      %d\n", tc->ct.this_run,*/
-            /*       tc->ct.last_run, tc->dispersed, local_md->local_success);*/
+            /*       tc->ct.last_run, tc->dispersed,
+             * local_md->local_success);*/
           }
           if (is_local(v, local_md)) {
             // if (local_md->procid == 100 && local_md->local_success)
@@ -774,7 +829,7 @@ int gtc_get_buf_laws_orig(gtc_t gtc, int priority, task_t *buf) {
         }
 
         // Invoke the progress engine
-        gtc_progress(gtc);
+        // gtc_progress(gtc);
 
         // Still no work? Lock to be sure and check for termination.
         // Locking is only needed here if we allow pushing.
@@ -800,7 +855,6 @@ int gtc_get_buf_laws_orig(gtc_t gtc, int priority, task_t *buf) {
       if (gtc_tasks_avail(gtc))
         got_task = gtc_get_local_buf(gtc, priority, buf);
     }
-
   } else {
     tc->ct.getlocal++;
   }
@@ -862,8 +916,8 @@ int gtc_get_buf_laws_orig(gtc_t gtc, int priority, task_t *buf) {
  * @param task  INOUT Task to be added. user manages buffer when call
  *                    returns. Preferably allocated in ARMCI local allocated
  * memory when proc != tc->procid for improved RDMA performance.  This call
- * fills in task field and the contents of task will match what is in the queue
- *                    when the call returns.
+ * fills in task field and the contents of task will match what is in the
+ * queue when the call returns.
  *
  * @return 0 on success.
  */
@@ -900,10 +954,10 @@ int gtc_add_laws(gtc_t gtc, task_t *task, int proc) {
 
 /**
  * Create-and-add a task in-place on the head of the queue.  Note, you should
- * not do *ANY* other queue operations until all outstanding in-place creations
- * have finished.  The pointer returned points directly to an element in the
- * queue.  Do not add it, do not free it, discard the pointer when you are
- * finished assigning the task body.
+ * not do *ANY* other queue operations until all outstanding in-place
+ * creations have finished.  The pointer returned points directly to an
+ * element in the queue.  Do not add it, do not free it, discard the pointer
+ * when you are finished assigning the task body.
  *
  * @param gtc    Portable reference to the task collection
  * @param tclass Desired task class
@@ -941,8 +995,8 @@ void gtc_task_inplace_create_and_add_finish_laws(gtc_t gtc, task_t *t) {
   GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
   UNUSED(t);
-  // TODO: Maintain a counter of how many are outstanding to avoid corruption at
-  // the head of the queue
+  // TODO: Maintain a counter of how many are outstanding to avoid corruption
+  // at the head of the queue
   TC_START_TIMER(tc, addfinish);
 
   // Can't release until the inplace op completes

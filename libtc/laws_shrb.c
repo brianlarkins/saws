@@ -323,10 +323,10 @@ int laws_reclaim_space(laws_t *rb) {
   GTC_EXIT(reclaimed);
 }
 
-void laws_ensure_space(laws_t *rb, int n) {
-  GTC_ENTRY();
-  // Ensure that there is enough free space in the queue.  If there isn't
-  // wait until others finish their deferred copies so we can reclaim space.
+static inline void laws_ensure_space(laws_t *rb, int n) {
+  // GTC_ENTRY();
+  //  Ensure that there is enough free space in the queue.  If there isn't
+  //  wait until others finish their deferred copies so we can reclaim space.
   TC_START_TIMER(rb->tc, ensure);
   if (rb->max_size - (laws_local_size(rb) + laws_public_size(rb)) < n) {
     laws_lock(rb, rb->procid);
@@ -349,7 +349,8 @@ void laws_ensure_space(laws_t *rb, int n) {
     laws_unlock(rb, rb->procid);
   }
   TC_STOP_TIMER(rb->tc, ensure);
-  GTC_EXIT();
+  rb->nensure++;
+  // GTC_EXIT();
 }
 
 void laws_release(laws_t *rb) {
@@ -361,7 +362,7 @@ void laws_release(laws_t *rb) {
     int amount = laws_local_size(rb) / 2 + laws_local_size(rb) % 2;
     rb->nlocal -= amount;
     rb->split = (rb->split + amount) % rb->max_size;
-    rb->nrelease++;
+    // rb->nrelease++;
 
     // indicate to other intranode processes that there's work here
     // shmem_atomic_fetch_or(rb->gaddr, 1, rb->root);
@@ -375,8 +376,11 @@ void laws_release(laws_t *rb) {
 
     gtc_lprintf(DBGSHRB, "release: local size: %d shared size: %d\n",
                 laws_local_size(rb), laws_shared_size(rb));
+    // } else if (laws_shared_size(rb) > 0 && ()) {
+    //   printf("something interesting here\n");
   }
   TC_STOP_TIMER(rb->tc, release);
+  rb->nrelease++;
   GTC_EXIT();
 }
 
@@ -549,12 +553,12 @@ int laws_pop_tail(laws_t *rb, int proc, void *buf) {
  *  @param myrb  Pointer to the RB
  *  @param proc  Process to perform the pop on
  *  @param n     Requested/Max. number of elements to pop.
- *  @param e     Buffer to store result in.  Should be rb->elem_size*n bytes big
- * and should also be allocated with laws_malloc().
+ *  @param e     Buffer to store result in.  Should be rb->elem_size*n bytes
+ * big and should also be allocated with laws_malloc().
  *  @param steal_vol Enumeration that selects between different schemes for
  * determining the amount we steal.
- *  @param trylock Indicates whether to use trylock or lock.  Using trylock will
- * result in a fail return value when trylock does not succeed.
+ *  @param trylock Indicates whether to use trylock or lock.  Using trylock
+ * will result in a fail return value when trylock does not succeed.
  *
  *  @return      The number of tasks stolen or -1 on failure
  */
@@ -617,9 +621,13 @@ static inline int laws_pop_n_tail_impl(laws_t *myrb, int proc, int n, void *e,
     int rem_tasks = (&trb)->split - new_tail;
     if (rem_tasks < 0)
       rem_tasks += (&trb)->max_size;
-    // if (rem_tasks < STEAL_CNT) {
-    //   shmem_atomic_and((&trb)->global_bits, (&trb)->our_invert,
-    //   (&trb)->root);
+    if (rem_tasks < 1 && myrb->root == (&trb)->root) {
+      //  shmem_atomic_and((&trb)->global_bits, (&trb)->our_invert,
+      //  (&trb)->root);
+      atomic_fetch_and(myrb->global_bits, (&trb)->our_invert);
+    }
+    // if (rem_tasks > 0 && myrb->root == (&trb)->root) {
+    //   atomic_fetch_or(myrb->global_bits, (&trb)->our_bits);
     // }
     // #endif
     shmem_putmem(rem_addr, loc_addr, xfer_size, proc);
@@ -627,9 +635,10 @@ static inline int laws_pop_n_tail_impl(laws_t *myrb, int proc, int n, void *e,
     laws_unlock(myrb, proc); // Deferred copy unlocks early
 
     // Transfer work into the local buffer
-    // TODO: maybe calculate how many tasks we're retrieving per steal; there's
-    // a likely chance that on average, we are retrieving less per steal than
-    // SDC, which would explain why there are so many more steals with LAWS
+    // TODO: maybe calculate how many tasks we're retrieving per steal;
+    // there's a likely chance that on average, we are retrieving less per
+    // steal than SDC, which would explain why there are so many more steals
+    // with LAWS
     TC_START_TIMER(myrb->tc, steal);
     if ((&trb)->tail + (n - 1) < (&trb)->max_size) { // No need to wrap around
 
@@ -686,6 +695,10 @@ static inline int laws_pop_n_tail_impl(laws_t *myrb, int proc, int n, void *e,
 #endif
 
   } else /* (n <= 0) */ {
+    // if ((myrb->root == (&trb)->root) &&
+    //     (atomic_load(myrb->global_bits) & (&trb)->our_bits)) {
+    //   atomic_fetch_and(myrb->global_bits, (&trb)->our_invert);
+    // }
     laws_unlock(myrb, proc);
   }
   TC_STOP_TIMER(myrb->tc, poptail);
