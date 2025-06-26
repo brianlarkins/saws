@@ -116,7 +116,7 @@ void gtc_progress_laws(gtc_t gtc) {
   GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
   TC_START_TIMER(tc, progress);
-  laws_t *local_md = (laws_t *)tc->shared_rb;
+  // laws_t *local_md = (laws_t *)tc->shared_rb;
 
   // printf("entering gtc progress\n");
 #if 0  /* no task pushing */
@@ -140,7 +140,8 @@ void gtc_progress_laws(gtc_t gtc) {
   laws_release(tc->shared_rb);
 
   // Attempt to reclaim space
-  laws_reclaim_space(tc->shared_rb);
+  // Is this really needed? We're already calling reclaim from ensure_space?
+  // laws_reclaim_space(tc->shared_rb);
 
   // check for work from bitfield; if work available, set flag
   // if (local_md->procid == local_md->root)
@@ -152,6 +153,7 @@ void gtc_progress_laws(gtc_t gtc) {
   /*  shmem_atomic_and(local_md->global_bits, local_md->our_invert, 0);*/
   /*}*/
   // int total_tasks = 0;
+#if 0
   int cores_with_tasks = 0;
   // int node_num;
   /*printf("local_md->procid: %d\n", local_md->procid);*/
@@ -192,6 +194,7 @@ void gtc_progress_laws(gtc_t gtc) {
      * num_tasks,*/
     /*                 local_md->root);*/
   }
+#endif
 
 #if 0
   shmem_quiet();
@@ -308,7 +311,8 @@ int gtc_select_target_laws(gtc_t gtc, gtc_vs_state_t *state) {
   // printf("approx: %s\n", print_bits(gb_copy));
   //}
   // TC_START_TIMER(tc, atomic_get);
-  shmem_atomic_fetch(local_md->global_bits, local_md->root);
+  uint64_t fetched = shmem_atomic_fetch(local_md->global_bits, local_md->root);
+  tc->ct.atomic_gets++;
   // if (gb_copy) {
   //  printf("%d: %s\n", local_md->procid, print_bits(gb_copy));
   //}
@@ -318,12 +322,12 @@ int gtc_select_target_laws(gtc_t gtc, gtc_vs_state_t *state) {
   // TC_STOP_TIMER(tc, atomic_get);
   // tc->ct.atomic_gets++;
   //  printf("%lu\n", *local_md->global_bits);
-  while (!*local_md->global_bits && attempts < ATTEMPTS) {
+  while (!fetched && attempts < ATTEMPTS) {
     rand_node = rand() % local_md->nnodes;
     root = rand_node * local_md->ncores;
     if (root != local_md->root) {
       TC_START_TIMER(tc, atomic_get);
-      shmem_atomic_fetch(local_md->global_bits, root);
+      fetched = shmem_atomic_fetch(local_md->global_bits, root);
       TC_STOP_TIMER(tc, atomic_get);
       tc->ct.atomic_gets++;
     }
@@ -371,10 +375,10 @@ int gtc_select_target_laws(gtc_t gtc, gtc_vs_state_t *state) {
       // printf("\n");
       do {
         v = rand() % local_md->ncores;
-        uint64_t new_num = *local_md->global_bits >> v;
+        uint64_t new_num = fetched >> v;
         int i;
         for (i = v; (new_num & 1) == 0; i = (i + 1) % local_md->ncores) {
-          new_num = *local_md->global_bits >> i;
+          new_num = fetched >> i;
           // printf("%d\n", i);
         }
         v = i;
@@ -507,6 +511,20 @@ int gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf) {
         v = gtc_select_target_laws(gtc, &vs_state);
       else
         v = gtc_select_target(gtc, &vs_state);
+      v = rand() % local_md->ncores;
+      uint64_t fetched =
+          shmem_atomic_fetch(local_md->global_bits, local_md->root);
+      // uint64_t fetched;
+      // shmem_getmem(&fetched, local_md->global_bits, 1, local_md->root);
+      //  if (!fetched) {
+      //    int randroot = (rand() % local_md->nnodes) * local_md->ncores;
+      //    fetched = shmem_atomic_fetch(local_md->global_bits, randroot);
+      //  }
+
+      if (local_md->procid == 2 && fetched) {
+        printf("%s\n", print_bits(fetched));
+      }
+
 #endif
       /*if (local_md->procid % 3 == 0) {*/
       /*  v = gtc_select_target(gtc, &vs_state);*/
