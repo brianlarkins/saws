@@ -28,8 +28,6 @@ struct CudaScope {
   template<class T> static GPUTC_HD bool cas_acquire(T* p, T expected, T desired) {
     return ref<T>(*p).compare_exchange_strong(expected, desired, cuda::memory_order_acquire, cuda::memory_order_relaxed);
   }
-  static GPUTC_HD void fence_release() { cuda::atomic_thread_fence(cuda::memory_order_release, S); }
-  static GPUTC_HD void fence_acquire() { cuda::atomic_thread_fence(cuda::memory_order_acquire, S); }
 };
 
 using BlockScope  = CudaScope<cuda::thread_scope_block>;
@@ -48,8 +46,6 @@ struct HostScope {
   template<class T> static bool cas_acquire(T* p, T expected, T desired) {
     return __atomic_compare_exchange_n(p, &expected, desired, false, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED);
   }
-  static void fence_release() { __atomic_thread_fence(__ATOMIC_RELEASE); }
-  static void fence_acquire() { __atomic_thread_fence(__ATOMIC_ACQUIRE); }
 };
 
 #endif

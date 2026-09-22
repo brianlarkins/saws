@@ -7,7 +7,7 @@ CXX      ?= c++
 CXXFLAGS ?= -O2 -g
 CXXFLAGS += -std=c++17 -Wall -Wextra -I. -pthread
 
-TESTS = test_steal_word test_ring test_saws_ring
+TESTS = test_steal_word test_saws_ring
 HEADERS = $(wildcard *.hpp) tests/check.hpp
 
 BUILD = build
@@ -26,8 +26,12 @@ $(TSAN)/%: tests/%.cpp $(HEADERS)
 test: $(TESTS:%=$(BUILD)/%)
 	@for t in $^; do $$t || exit 1; done
 
+# Linux kernels with high mmap randomization break TSan's memory layout
+# ("unexpected memory mapping"); running without ASLR avoids it.
+TSAN_RUN ?= $(if $(filter Linux,$(shell uname -s)),setarch $(shell uname -m) -R)
+
 tsan: $(TESTS:%=$(TSAN)/%)
-	@for t in $^; do $$t || exit 1; done
+	@for t in $^; do $(TSAN_RUN) $$t || exit 1; done
 
 clean:
 	rm -rf $(BUILD)

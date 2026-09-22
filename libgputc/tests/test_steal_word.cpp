@@ -3,7 +3,7 @@
 #include <thread>
 #include <vector>
 
-#include "StealWord.hpp"
+#include "steal_word.hpp"
 #include "atomics.hpp"
 #include "check.hpp"
 
@@ -45,12 +45,15 @@ static void test_tiling() {
   }
 }
 
-// Overclaim can wrap the claim counter without touching the low half.
+// Overclaim can wrap the claim counter without touching the low half, but the
+// wrapped counter makes issued chunks claimable again. Only probing before
+// claiming keeps an exhausted word from getting there.
 static void test_claim_wrap() {
   uint64_t w = pack(Fields{0xFFFFFFF0u, false, 7, 100, 42});
   for (int i = 0; i < 64; ++i) w += claim_increment(1);
   Fields f = unpack(w);
   CHECK(f.epoch == 7 && f.avail == 100 && f.base == 42 && !f.closed);
+  CHECK(f.claimed == 48 && stealable(w));
   CHECK(!stealable(pack(Fields{100, false, 0, 100, 0})));
   CHECK(!stealable(closed_word()));
   CHECK(stealable(pack(Fields{99, false, 0, 100, 0})));

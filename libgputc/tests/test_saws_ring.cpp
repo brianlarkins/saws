@@ -46,19 +46,20 @@ static bool steal_once(Ring& ring, std::mt19937& rng, uint32_t max_n, Seen& seen
   return true;
 }
 
-// One owner pushing, popping, releasing and reacquiring against thieves: the
-// shape of a warp deque.
-template<class Cfg>
-static void test_owner_vs_thieves(uint32_t cap_chunks, int nthieves, uint32_t ntasks, unsigned seed) {
-  using Ring = SawsRing<Body, HostScope, Cfg>;
-  constexpr uint32_t C = Cfg::chunk;
-  RingState<Cfg::epochs> state;
-  state.init();
-  std::vector<Body> storage(cap_chunks * C);
-  Ring ring(&state, storage.data(), cap_chunks);
+// One owner pushing, popping, releasing, reacquiring and spilling its oldest
+// chunks against thieves: the shape of a warp deque. `start` is the first
+// task position, so positions near 2^32 exercise wraparound.
+template<uint32_t C, uint32_t Cap, int E>
+static void test_owner_vs_thieves(int nthieves, uint32_t ntasks, uint32_t start, unsigned seed) {
+  using Ring = SawsRing<Body, HostScope, C, Cap, E>;
+  RingState<E> state;
+  state.init(start);
+  std::vector<Body> storage(Ring::capacity);
+  Ring ring(&state, storage.data());
   Seen seen(ntasks);
   std::atomic<bool> done{false};
   std::atomic<uint64_t> stolen{0};
+  uint64_t spilled = 0;
 
   std::vector<std::thread> thieves;
   for (int t = 0; t < nthieves; ++t)
@@ -77,22 +78,34 @@ static void test_owner_vs_thieves(uint32_t cap_chunks, int nthieves, uint32_t nt
     for (uint32_t i = 0; i < r.n; ++i) seen.mark(ring[r.pos + i].id);
     return r.n;
   };
+  auto spill = [&] {
+    ring.reacquire();
+    uint32_t full = ring.private_size() / C;
+    if (full == 0) return;
+    Range r = ring.take_oldest(1 + rng() % full);
+    CHECK(r.n > 0 && r.n % C == 0 && r.pos % C == 0);
+    for (uint32_t i = 0; i < r.n; ++i) seen.mark(ring[r.pos + i].id);
+    spilled += r.n;
+  };
 
   while (next < ntasks) {
-    uint32_t op = rng() % 10;
-    if (op < 5) {
-      uint32_t n = min_u32(1 + rng() % C, ntasks - next);
-      uint32_t pos;
-      if (ring.try_push_reserve(n, pos)) {
-        for (uint32_t i = 0; i < n; ++i) ring[pos + i].id = next++;
+    uint32_t op = rng() % 20;
+    if (op < 10) {
+      uint32_t want = min_u32(1 + rng() % (2 * C), ntasks - next);
+      Range r = ring.push_reserve(want, min_u32(want, C));
+      if (r.n > 0) {
+        CHECK(r.n <= want && r.n >= min_u32(want, C));
+        for (uint32_t i = 0; i < r.n; ++i) ring[r.pos + i].id = next++;
       } else if (pop_consume() == 0) {
         std::this_thread::yield();  // full of chunks thieves are still copying
       }
-    } else if (op < 8) {
+    } else if (op < 16) {
       pop_consume();
-    } else if (op < 9) {
+    } else if (op < 18) {
       uint32_t full = ring.private_size() / C;
       if (full) ring.release(full > 1 ? full / 2 : 1);
+    } else if (op < 19) {
+      spill();
     } else {
       ring.reclaim();
     }
@@ -105,21 +118,19 @@ static void test_owner_vs_thieves(uint32_t cap_chunks, int nthieves, uint32_t nt
   CHECK(ring.used() == 0);
   CHECK(ring.private_size() == 0 && ring.public_chunks() == 0);
   seen.check_all_once();
-  std::printf("  owner-vs-thieves cap=%u chunks, %d thieves: %llu of %u tasks stolen\n",
-              cap_chunks, nthieves, (unsigned long long)stolen.load(), ntasks);
+  std::printf("  owner-vs-thieves cap=%u chunks, %d thieves, start=%#x: %llu stolen, %llu spilled of %u tasks\n",
+              Cap, nthieves, start, (unsigned long long)stolen.load(), (unsigned long long)spilled, ntasks);
 }
 
-// Several producers promoting into one ring under a lock, thieves claiming
+// Several producers pushing into one ring under a lock, thieves claiming
 // mixed widths: the shape of the block's global ring.
-template<class Cfg>
-static void test_promoters_vs_thieves(uint32_t cap_chunks, int nproducers, int nthieves,
-                                      uint32_t chunks_each, unsigned seed) {
-  using Ring = SawsRing<Body, HostScope, Cfg>;
-  constexpr uint32_t C = Cfg::chunk;
-  RingState<Cfg::epochs> state;
+template<uint32_t C, uint32_t Cap, int E>
+static void test_producers_vs_thieves(int nproducers, int nthieves, uint32_t chunks_each, unsigned seed) {
+  using Ring = SawsRing<Body, HostScope, C, Cap, E>;
+  RingState<E> state;
   state.init();
-  std::vector<Body> storage(cap_chunks * C);
-  Ring ring(&state, storage.data(), cap_chunks);
+  std::vector<Body> storage(Ring::capacity);
+  Ring ring(&state, storage.data());
   const uint32_t ntasks = nproducers * chunks_each * C;
   Seen seen(ntasks);
   std::mutex lock;
@@ -144,13 +155,13 @@ static void test_promoters_vs_thieves(uint32_t cap_chunks, int nproducers, int n
       while (id < end) {
         uint32_t k = min_u32(1 + rng() % 3, (end - id) / C);
         std::unique_lock<std::mutex> g(lock);
-        uint32_t pos;
-        if (!ring.try_push_reserve(k * C, pos)) {
+        Range r = ring.push_reserve(k * C, k * C);
+        if (r.n == 0) {
           g.unlock();
           std::this_thread::yield();
           continue;
         }
-        for (uint32_t i = 0; i < k * C; ++i) ring[pos + i].id = id++;
+        for (uint32_t i = 0; i < k * C; ++i) ring[r.pos + i].id = id++;
         while (!ring.can_release()) std::this_thread::yield();
         CHECK(ring.release(k));
       }
@@ -162,22 +173,20 @@ static void test_promoters_vs_thieves(uint32_t cap_chunks, int nproducers, int n
   ring.reclaim();
   CHECK(ring.used() == 0);
   seen.check_all_once();
-  std::printf("  promoters-vs-thieves cap=%u chunks, %d producers, %d thieves: %u tasks\n",
-              cap_chunks, nproducers, nthieves, ntasks);
+  std::printf("  producers-vs-thieves cap=%u chunks, %d producers, %d thieves: %u tasks\n",
+              Cap, nproducers, nthieves, ntasks);
 }
-
-struct TinyCfg { static constexpr int chunk = 4; static constexpr int epochs = 4; };
-struct WideCfg { static constexpr int chunk = 8; static constexpr int epochs = 16; };
 
 int main(int argc, char** argv) {
   uint32_t scale = argc > 1 ? uint32_t(std::atoi(argv[1])) : 1;
+  const uint32_t near_wrap = 0u - 4096u;
   std::printf("test_saws_ring:\n");
   for (unsigned seed = 1; seed <= 3; ++seed) {
-    test_owner_vs_thieves<TinyCfg>(4, 3, 50000 * scale, seed);
-    test_owner_vs_thieves<TinyCfg>(16, 7, 50000 * scale, seed);
-    test_owner_vs_thieves<WideCfg>(8, 4, 50000 * scale, seed);
-    test_promoters_vs_thieves<TinyCfg>(8, 3, 4, 2000 * scale, seed);
-    test_promoters_vs_thieves<WideCfg>(64, 4, 6, 2000 * scale, seed);
+    test_owner_vs_thieves<4, 4, 4>(3, 50000 * scale, 0, seed);
+    test_owner_vs_thieves<4, 16, 4>(7, 50000 * scale, near_wrap, seed);
+    test_owner_vs_thieves<8, 8, 16>(4, 50000 * scale, near_wrap, seed);
+    test_producers_vs_thieves<4, 8, 4>(3, 4, 2000 * scale, seed);
+    test_producers_vs_thieves<8, 64, 16>(4, 6, 2000 * scale, seed);
   }
   std::printf("test_saws_ring: ok\n");
 }

@@ -1,3 +1,5 @@
 *.o
 gpu-uts
 test-uts-dev
+uts-seq
+bench.log

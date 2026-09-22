@@ -7,10 +7,11 @@
 //  |    claimed     | closed| epoch |   avail   |   base   |
 //  +----------------+-------+-------+-----------+----------+
 //
-// claimed must be the high half: thieves fetch_add (n << CLAIM_SHIFT), and a
-// carry out of bit 63 is discarded instead of corrupting the other fields.
-// Overclaim is bounded by probing (stealable()) before claiming, and every
-// newly published epoch starts again at claimed = 0.
+// claimed must be the high half: thieves fetch_add (n << CLAIM_SHIFT), and the
+// add never carries into the other fields. It can still wrap: after 2^32
+// claims the counter is small again and already-issued chunks look claimable.
+// Probing (stealable()) before claiming bounds the overshoot by the number of
+// concurrent thieves, and every newly published epoch starts at claimed = 0.
 
 #include "common.hpp"
 
@@ -20,11 +21,11 @@ constexpr int BITS_BASE  = 14;
 constexpr int BITS_AVAIL = 13;
 constexpr int BITS_EPOCH = 4;
 
-constexpr int SHIFT_BASE  = 0;
-constexpr int SHIFT_AVAIL = SHIFT_BASE + BITS_BASE;
-constexpr int SHIFT_EPOCH = SHIFT_AVAIL + BITS_AVAIL;
+constexpr int SHIFT_BASE   = 0;
+constexpr int SHIFT_AVAIL  = SHIFT_BASE + BITS_BASE;
+constexpr int SHIFT_EPOCH  = SHIFT_AVAIL + BITS_AVAIL;
 constexpr int SHIFT_CLOSED = SHIFT_EPOCH + BITS_EPOCH;
-constexpr int CLAIM_SHIFT = 32;
+constexpr int CLAIM_SHIFT  = 32;
 
 static_assert(SHIFT_CLOSED == 31, "closed bit must sit directly below claimed");
 
@@ -45,6 +46,12 @@ struct Fields {
   uint32_t base;
 };
 
+GPUTC_HD constexpr uint32_t claimed_of(uint64_t w) { return uint32_t(w >> CLAIM_SHIFT); }
+GPUTC_HD constexpr bool     closed_of(uint64_t w)  { return (w & CLOSED_BIT) != 0; }
+GPUTC_HD constexpr uint32_t epoch_of(uint64_t w)   { return uint32_t((w >> SHIFT_EPOCH) & MASK_EPOCH); }
+GPUTC_HD constexpr uint32_t avail_of(uint64_t w)   { return uint32_t((w >> SHIFT_AVAIL) & MASK_AVAIL); }
+GPUTC_HD constexpr uint32_t base_of(uint64_t w)    { return uint32_t((w >> SHIFT_BASE) & MASK_BASE); }
+
 GPUTC_HD constexpr uint64_t pack(Fields f) {
   return (uint64_t(f.claimed) << CLAIM_SHIFT)
        | (f.closed ? CLOSED_BIT : 0)
@@ -54,13 +61,7 @@ GPUTC_HD constexpr uint64_t pack(Fields f) {
 }
 
 GPUTC_HD constexpr Fields unpack(uint64_t w) {
-  return Fields{
-    uint32_t(w >> CLAIM_SHIFT),
-    (w & CLOSED_BIT) != 0,
-    uint32_t((w >> SHIFT_EPOCH) & MASK_EPOCH),
-    uint32_t((w >> SHIFT_AVAIL) & MASK_AVAIL),
-    uint32_t((w >> SHIFT_BASE)  & MASK_BASE),
-  };
+  return Fields{claimed_of(w), closed_of(w), epoch_of(w), avail_of(w), base_of(w)};
 }
 
 GPUTC_HD constexpr uint64_t closed_word() { return CLOSED_BIT; }
@@ -69,15 +70,13 @@ GPUTC_HD constexpr uint64_t claim_increment(uint32_t n) { return uint64_t(n) << 
 
 // Probe: is a claim against this word worth issuing?
 GPUTC_HD constexpr bool stealable(uint64_t w) {
-  return !(w & CLOSED_BIT)
-      && uint32_t(w >> CLAIM_SHIFT) < uint32_t((w >> SHIFT_AVAIL) & MASK_AVAIL);
+  return !closed_of(w) && claimed_of(w) < avail_of(w);
 }
 
 // Chunks of the epoch that belong to valid tickets, from the word returned by
 // the owner's close (fetch_or). Close and claims linearize on the same word.
 GPUTC_HD constexpr uint32_t taken(uint64_t pre_close) {
-  return min_u32(uint32_t(pre_close >> CLAIM_SHIFT),
-                 uint32_t((pre_close >> SHIFT_AVAIL) & MASK_AVAIL));
+  return min_u32(claimed_of(pre_close), avail_of(pre_close));
 }
 
 // A thief's share: ticket k owns chunk k. `first` is relative to the epoch, so

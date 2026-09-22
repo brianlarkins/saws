@@ -9,6 +9,8 @@
 
 #include "common.hpp"
 
+namespace uts { constexpr int GEO_DEPTHS = 256; }
+
 struct UtsParams {
   int    type;           // tree_t
   double b_0;
@@ -18,6 +20,7 @@ struct UtsParams {
   double nonLeafProb;
   double shiftDepth;
   int    computeGranularity;
+  double geo_log_q[uts::GEO_DEPTHS];  // uts::geo_log_q(depth), filled on the host
 };
 
 struct UtsNode {
@@ -35,16 +38,19 @@ constexpr int MAXNUMCHILDREN = 100;
 
 GPUTC_HD uint32_t rotl(uint32_t x, int n) { return (x << n) | (x >> (32 - n)); }
 
-// SHA-1 of a message of at most 55 bytes (one block).
-GPUTC_HD void sha1(const uint8_t* msg, int len, uint8_t out[20]) {
-  uint32_t w[16];
-  for (int i = 0; i < 16; ++i) w[i] = 0;
-  for (int i = 0; i < len; ++i) w[i >> 2] |= uint32_t(msg[i]) << (24 - 8 * (i & 3));
-  w[len >> 2] |= 0x80u << (24 - 8 * (len & 3));
-  w[15] = uint32_t(len) * 8;
+GPUTC_HD uint32_t get_be32(const uint8_t* p) {
+  return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | uint32_t(p[3]);
+}
 
-  uint32_t h[5] = {0x67452301u, 0xefcdab89u, 0x98badcfeu, 0x10325476u, 0xc3d2e1f0u};
-  uint32_t a = h[0], b = h[1], c = h[2], d = h[3], e = h[4];
+GPUTC_HD void put_be32(uint8_t* p, uint32_t v) {
+  p[0] = uint8_t(v >> 24); p[1] = uint8_t(v >> 16); p[2] = uint8_t(v >> 8); p[3] = uint8_t(v);
+}
+
+// SHA-1 of one padded 64-byte block, as big-endian words. The rounds are fully
+// unrolled so every index into w is a constant and w stays in registers.
+GPUTC_HD void sha1_block(uint32_t w[16], uint8_t out[20]) {
+  uint32_t a = 0x67452301u, b = 0xefcdab89u, c = 0x98badcfeu, d = 0x10325476u, e = 0xc3d2e1f0u;
+  GPUTC_UNROLL
   for (int t = 0; t < 80; ++t) {
     uint32_t wt;
     if (t < 16) {
@@ -61,25 +67,25 @@ GPUTC_HD void sha1(const uint8_t* msg, int len, uint8_t out[20]) {
     uint32_t tmp = rotl(a, 5) + f + e + k + wt;
     e = d; d = c; c = rotl(b, 30); b = a; a = tmp;
   }
-  h[0] += a; h[1] += b; h[2] += c; h[3] += d; h[4] += e;
-  for (int i = 0; i < 20; ++i) out[i] = uint8_t(h[i >> 2] >> (24 - 8 * (i & 3)));
+  put_be32(out + 0,  0x67452301u + a);
+  put_be32(out + 4,  0xefcdab89u + b);
+  put_be32(out + 8,  0x98badcfeu + c);
+  put_be32(out + 12, 0x10325476u + d);
+  put_be32(out + 16, 0xc3d2e1f0u + e);
 }
 
-GPUTC_HD void put_be32(uint8_t* p, int v) {
-  p[0] = uint8_t(v >> 24); p[1] = uint8_t(v >> 16); p[2] = uint8_t(v >> 8); p[3] = uint8_t(v);
-}
-
+// SHA-1 of the 20-byte message {16 zero bytes, seed}.
 GPUTC_HD void rng_init(uint8_t state[20], int seed) {
-  uint8_t msg[20] = {};
-  put_be32(msg + 16, seed);
-  sha1(msg, 20, state);
+  uint32_t w[16] = {0, 0, 0, 0, uint32_t(seed), 0x80000000u, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20 * 8};
+  sha1_block(w, state);
 }
 
+// SHA-1 of the 24-byte message {parent state, spawn_number}.
 GPUTC_HD void rng_spawn(const uint8_t parent[20], uint8_t child[20], int spawn_number) {
-  uint8_t msg[24];
-  for (int i = 0; i < 20; ++i) msg[i] = parent[i];
-  put_be32(msg + 20, spawn_number);
-  sha1(msg, 24, child);
+  uint32_t w[16] = {get_be32(parent), get_be32(parent + 4), get_be32(parent + 8), get_be32(parent + 12),
+                    get_be32(parent + 16), uint32_t(spawn_number), 0x80000000u,
+                    0, 0, 0, 0, 0, 0, 0, 0, 24 * 8};
+  sha1_block(w, child);
 }
 
 GPUTC_HD int rng_rand(const uint8_t state[20]) {
@@ -94,9 +100,10 @@ GPUTC_HD int num_children_bin(const UtsNode& n, const UtsParams& p) {
   return to_prob(rng_rand(n.state)) < p.nonLeafProb ? p.nonLeafBF : 0;
 }
 
-GPUTC_HD int num_children_geo(const UtsNode& n, const UtsParams& p) {
+// log(1 - p) for the geometric child distribution of a node at this depth,
+// whose expected branching factor b_i comes from the shape function.
+GPUTC_HD double geo_log_q(int depth, const UtsParams& p) {
   double b_i = p.b_0;
-  int depth = n.height;
   if (depth > 0) {
     switch (p.shape_fn) {
       case EXPDEC:
@@ -116,8 +123,15 @@ GPUTC_HD int num_children_geo(const UtsNode& n, const UtsParams& p) {
     }
   }
   double prob = 1.0 / (1.0 + b_i);
+  return ::log(1 - prob);
+}
+
+// Depths below GEO_DEPTHS read log(1 - p) from the table the host filled, which
+// also keeps FP64 transcendentals off the GPU's slow double-precision units.
+GPUTC_HD int num_children_geo(const UtsNode& n, const UtsParams& p) {
+  double log_q = n.height < GEO_DEPTHS ? p.geo_log_q[n.height] : geo_log_q(n.height, p);
   double u = to_prob(rng_rand(n.state));
-  return int(::floor(::log(1 - u) / ::log(1 - prob)));
+  return int(::floor(::log(1 - u) / log_q));
 }
 
 GPUTC_HD int num_children(const UtsNode& n, const UtsParams& p) {

@@ -2,13 +2,13 @@
 
 // Closed epochs awaiting reclamation, in ring order.
 //
-// Sequence numbers [head, open) are closed epochs whose chunks may still be in
-// transit to thieves. Sequence `open` names the slot of the epoch currently
-// published in the steal word (if any). Slot of a sequence is seq % N, which is
-// also the epoch field thieves read from the steal word.
+// Sequence numbers [head, next) are closed epochs whose chunks may still be in
+// transit to thieves. The epoch published in the steal word (if any) uses
+// sequence `next`. The slot of a sequence is seq % N, which is also the epoch
+// field thieves read from the steal word.
 
 #include "common.hpp"
-#include "StealWord.hpp"
+#include "steal_word.hpp"
 
 namespace gputc {
 
@@ -23,19 +23,19 @@ struct EpochFifo {
   static_assert(N >= 2 && N <= int(MAX_EPOCHS) && is_pow2(N), "epoch count must fit the steal word");
 
   uint32_t head;
-  uint32_t open;
+  uint32_t next;
   EpochRec rec[N];
 
   static GPUTC_HD constexpr uint32_t slot(uint32_t seq) { return seq & (N - 1); }
-  GPUTC_HD uint32_t pending() const { return open - head; }
-  GPUTC_HD bool empty() const { return head == open; }
+  GPUTC_HD uint32_t pending() const { return next - head; }
+  GPUTC_HD bool empty() const { return head == next; }
 
-  // Closing the open epoch may push one more entry; the new open epoch then
-  // needs its own slot, so at most N - 1 entries may be pending afterwards.
-  GPUTC_HD bool can_close_and_reopen() const { return pending() + 2 <= uint32_t(N); }
+  // Closing the published epoch may add one pending entry; the epoch published
+  // after it then needs its own slot, so at most N - 1 may be pending.
+  GPUTC_HD bool can_close_and_publish() const { return pending() + 2 <= uint32_t(N); }
 
-  GPUTC_HD EpochRec& front() { return rec[slot(head)]; }
-  GPUTC_HD EpochRec& current() { return rec[slot(open)]; }
+  GPUTC_HD EpochRec& oldest() { return rec[slot(head)]; }
+  GPUTC_HD EpochRec& published() { return rec[slot(next)]; }
 };
 
 } // namespace gputc

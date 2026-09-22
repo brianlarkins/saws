@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <vector>
 
 #include <cuda_runtime.h>
 
@@ -22,30 +23,27 @@ namespace gputc {
 // Run a task tree to completion from one root task on the current device.
 template<class Task, class Cfg = DefaultConfig>
 Stats run(const typename Task::Body& root, const Policy& policy = Policy{}) {
-  using Body  = typename Task::Body;
-  using State = RingState<Cfg::epochs>;
+  using Body    = typename Task::Body;
+  using Control = GlobalControl<Cfg>;
   const size_t global_slots = size_t(Cfg::global_chunks) * Cfg::chunk;
 
-  State init;
-  init.init();
+  Control init{};
+  init.ring.init();
 
-  State*    d_state = nullptr;
-  Body*     d_slots = nullptr;
-  uint32_t* d_lock  = nullptr;
-  Counters* d_out   = nullptr;
-  GPUTC_CUDA_CHECK(cudaMalloc(&d_state, sizeof(State)));
+  Control*      d_control = nullptr;
+  Body*         d_slots   = nullptr;
+  WarpCounters* d_out     = nullptr;
+  GPUTC_CUDA_CHECK(cudaMalloc(&d_control, sizeof(Control)));
   GPUTC_CUDA_CHECK(cudaMalloc(&d_slots, global_slots * sizeof(Body)));
-  GPUTC_CUDA_CHECK(cudaMalloc(&d_lock, sizeof(uint32_t)));
-  GPUTC_CUDA_CHECK(cudaMalloc(&d_out, sizeof(Counters)));
-  GPUTC_CUDA_CHECK(cudaMemcpy(d_state, &init, sizeof(State), cudaMemcpyHostToDevice));
-  GPUTC_CUDA_CHECK(cudaMemset(d_lock, 0, sizeof(uint32_t)));
-  GPUTC_CUDA_CHECK(cudaMemset(d_out, 0, sizeof(Counters)));
+  GPUTC_CUDA_CHECK(cudaMalloc(&d_out, Cfg::warps * sizeof(WarpCounters)));
+  GPUTC_CUDA_CHECK(cudaMemcpy(d_control, &init, sizeof(Control), cudaMemcpyHostToDevice));
+  GPUTC_CUDA_CHECK(cudaMemset(d_out, 0, Cfg::warps * sizeof(WarpCounters)));
 
   const size_t smem = deque_shared_bytes<Task, Cfg>();
   auto kernel = persistent_kernel<Task, Cfg>;
   GPUTC_CUDA_CHECK(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, int(smem)));
 
-  KernelArgs<Task, Cfg> args{GlobalRef<Body, Cfg>{d_state, d_slots, d_lock}, d_out, policy, root};
+  KernelArgs<Task, Cfg> args{d_control, d_slots, d_out, policy, root};
 
   cudaEvent_t start, stop;
   GPUTC_CUDA_CHECK(cudaEventCreate(&start));
@@ -58,16 +56,22 @@ Stats run(const typename Task::Body& root, const Policy& policy = Policy{}) {
 
   float ms = 0;
   GPUTC_CUDA_CHECK(cudaEventElapsedTime(&ms, start, stop));
+
   Stats stats{};
-  GPUTC_CUDA_CHECK(cudaMemcpy(static_cast<Counters*>(&stats), d_out, sizeof(Counters), cudaMemcpyDeviceToHost));
+  stats.shape = RunShape{Cfg::warps, Cfg::chunk, Cfg::warp_chunks, Cfg::global_chunks, Cfg::timing};
   stats.seconds = ms / 1000.0;
+  stats.per_warp.resize(Cfg::warps);
+  GPUTC_CUDA_CHECK(cudaMemcpy(stats.per_warp.data(), d_out, Cfg::warps * sizeof(WarpCounters), cudaMemcpyDeviceToHost));
+  Control final_control;
+  GPUTC_CUDA_CHECK(cudaMemcpy(&final_control, d_control, sizeof(Control), cudaMemcpyDeviceToHost));
+  stats.global_peak = final_control.peak;
+  stats.reduce();
 
   cudaEventDestroy(start);
   cudaEventDestroy(stop);
   cudaFree(d_out);
-  cudaFree(d_lock);
   cudaFree(d_slots);
-  cudaFree(d_state);
+  cudaFree(d_control);
   return stats;
 }
 

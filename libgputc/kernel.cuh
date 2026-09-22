@@ -22,8 +22,6 @@ persistent_kernel(KernelArgs<Task, Cfg> args) {
   static_assert(alignof(Body) <= 16, "task body alignment exceeds the shared-memory carve-up");
   static_assert(Cfg::chunk == warp::SIZE, "lane-width tasks: one chunk is one task per lane");
   static_assert(Cfg::warps >= 1 && Cfg::warps <= warp::SIZE, "a probe covers at most 32 sibling warps");
-  static_assert(valid_capacity(Cfg::warp_chunks) && valid_capacity(Cfg::global_chunks),
-                "ring capacities must be powers of two that fit the steal word");
 
   extern __shared__ __align__(16) unsigned char gputc_dynamic_smem[];
   __shared__ Shared<Cfg> sh;
@@ -33,7 +31,7 @@ persistent_kernel(KernelArgs<Task, Cfg> args) {
   if (warp::leader()) {
     sh.warp_state[me].init();
     sh.term.init(me);
-    sh.counters[me] = Counters{};
+    sh.counters[me] = WarpCounters{};
   }
   if (threadIdx.x == 0) sh.term.done = 0;
   __syncthreads();
@@ -43,7 +41,7 @@ persistent_kernel(KernelArgs<Task, Cfg> args) {
   __syncthreads();
 
   worker.run();
-  worker.flush(args.out);
+  worker.finish(args.out);
 }
 
 } // namespace gputc

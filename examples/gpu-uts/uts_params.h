@@ -10,7 +10,9 @@
 #undef min
 
 inline UtsParams uts_params_from_globals() {
-  return UtsParams{int(type), b_0, gen_mx, int(shape_fn), nonLeafBF, nonLeafProb, shiftDepth, computeGranularity};
+  UtsParams p{int(type), b_0, gen_mx, int(shape_fn), nonLeafBF, nonLeafProb, shiftDepth, computeGranularity, {}};
+  for (int d = 0; d < uts::GEO_DEPTHS; ++d) p.geo_log_q[d] = uts::geo_log_q(d, p);
+  return p;
 }
 
 inline UtsNode uts_root() {
