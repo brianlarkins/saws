@@ -1,0 +1,3 @@
+*.o
+gpu-uts
+test-uts-dev

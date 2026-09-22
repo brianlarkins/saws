@@ -1,225 +1,186 @@
-# libgputc
+# libgputc: GPU SAWS (V1)
 
-A prototype port of the SAWS task collection to CUDA + NVSHMEM.
+Header-only work stealing for irregular, discovery-driven workloads on one GPU,
+following the SAWS protocol of `libtc/saws_shrb.c` with GPU-shaped steals:
 
-**Status: sketch.** This has never been compiled and there is no GPU on the
-machine it was written on. It exists to show the shape of the port — how the
-steal protocol maps onto device code, where the CPU design survives intact, and
-where it has to change. Treat every line as a design proposal, not as working
-code.
+- One persistent block of `Cfg::warps` warps. Each warp is a worker.
+- Each warp owns a **warp deque** in shared memory: a private end it pushes and
+  pops without atomics, and a public end described by one 64-bit steal word
+  that sibling warps claim from with block-scope atomics.
+- The block owns one **global ring** in device memory, the same queue with
+  device-scope atomics. It is fed when a warp deque overflows and drained by any
+  warp whose sibling probes come up empty.
+- Tasks are lane width: one chunk is 32 tasks, lane `i` runs task `i`. Steals
+  take whole chunks straight into the thief's registers.
 
-## What ports unchanged
+## API
 
-The core of SAWS is not the ring buffer. It is this:
+```cpp
+#include "gputc.cuh"
 
-> Replace negotiation with a locally computable allocation function over an
-> atomically issued ticket.
+struct UtsTask {
+  using Body = UtsNode;                          // trivially copyable, align <= 16
 
-A steal is one `fetch_add` that simultaneously claims a ticket and returns the
-epoch parameters, followed by pure arithmetic that recovers the thief's exact
-byte range, followed by a one-sided transfer. The victim never participates.
+  template<class Ctx>
+  static __device__ void execute(Ctx& ctx, const UtsNode& node, bool valid) {
+    int mine = valid ? node.numChildren : 0;
+    int most = ctx.warp_max(mine);
+    for (int i = 0; i < most; ++i) {
+      bool make = i < mine;
+      UtsNode child{};
+      if (make) child = make_child(node, i);
+      ctx.spawn(child, make);                    // every lane reaches this call
+    }
+  }
+};
 
-That structure survives the move to GPU completely, and it survives it *well*,
-because the tradeoff it makes — spend arithmetic to avoid communication — is
-more favorable on a GPU than on a cluster. ALU is nearly free; global atomics
-serialize under contention.
-
-NVSHMEM is what makes the port short. `nvshmem_uint64_atomic_fetch_add` and
-`nvshmemx_getmem_nbi_warp` are callable from inside a running kernel, so the
-protocol moves into device code nearly verbatim with a *block* substituted for
-a PE.
-
-## File map
-
-| This library | libtc equivalent | Contents |
-|---|---|---|
-| `gputc_types.cuh` | `saws_shrb.h`, `tc.h` | steal-word layout, queue and epoch structs |
-| `gpu_shrb.cuh` | `saws_shrb.c` | the steal protocol, all `__device__` inline |
-| `gpu_task.cuh` | `task.c` | class registry, device-side spawn and dispatch |
-| `gpu_termination.cuh` | `termination.h` | two-scope termination detection |
-| `collection.cu` | `collection-saws.c` | persistent kernel, host process loop |
-| `gputc_host.cu` | `init.c`, `handle.c` | lifecycle, seeding, statistics |
-| `gputc.h` | `tc.h` | public host API |
-
-## The three changes that matter
-
-### 1. The steal schedule is flat, not geometric
-
-This is the change that took the most iteration, and the reasoning is worth
-recording because the obvious port is wrong in a way that is easy to miss.
-
-Geometric halving bounds the thief count at about `log2(N)` — which is why
-`SAWS_MAX_STEALS_PER_EPOCH` is 22. With 132 SMs and several resident warps
-each, thousands of claimants compete for those 22 slots. That much is
-predictable from the analysis.
-
-The subtler problem is that halving **front-loads enormous shares**: the first
-thief is offered half the epoch. A CPU thief accepts that into a `malloc`'d
-buffer. A GPU thief cannot — a warp has a fixed staging buffer and executes 32
-tasks at a time. So it must either truncate its claim or loop. Truncating is
-silently wrong: later tickets compute their offsets from the *schedule*, not
-from what any thief actually transferred, so the untaken remainder of an
-over-large claim is orphaned and never executed by anyone.
-
-An intermediate design — halve until the share drops below a warp, then issue
-fixed chunks — fixes the claimant count but not the front-loading, and its
-first ticket still claims 131072 tasks out of a 256K epoch.
-
-So the schedule is flat. The epoch divides into fixed `GPUTC_STEAL_CHUNK`
-(one warp) chunks, and a thief claims as many *consecutive* chunks as it can
-hold by adding that many to the claim counter in its single atomic:
-
-```
-offset(k) = k * CHUNK
-share(k)  = min(nchunks * CHUNK, itasks - offset(k))
+gputc::Stats s = gputc::run<UtsTask>(root);                    // DefaultConfig
+gputc::Stats s = gputc::run<UtsTask, MyConfig>(root, policy);
 ```
 
-| Epoch size | geometric tickets | flat tickets |
-|---:|---:|---:|
-| 64 | 2 | 2 |
-| 1 024 | 6 | 32 |
-| 16 384 | 10 | 512 |
-| 262 144 | 14 | 8 192 |
+`execute` runs on all 32 lanes of a warp. Lanes past the end of a partial
+chunk get `valid == false` so that warp collectives stay uniform.
 
-What is given up is steal-half adaptivity, which mattered on the CPU because a
-steal cost a network round trip and a worker wanted as much as possible from
-it. The equivalent lever here is `nchunks`, chosen per tier from known latency
-rather than derived from queue occupancy — a remote steal should claim several
-chunks, a local one just enough. Both are currently 1 because the staging
-buffer is one chunk; raising `GPUTC_REMOTE_CHUNKS` costs shared memory and
-therefore occupancy, which is a real tuning decision that wants measurement.
+`Ctx` offers `lane()`, `warp()`, `warp_max(int)` and `spawn(body, pred)`.
+`spawn` and `warp_max` are **warp-collective**: every lane must make the same
+sequence of calls, passing `pred = false` when it has nothing to spawn. One
+`spawn` call costs one ballot, one cursor update, and one coalesced store for
+up to 32 new tasks.
 
-The invariant that matters — shares for tickets `0..max_tickets-1` tile the
-epoch exactly, with no gap and no overlap, and any later ticket gets zero — was
-checked exhaustively over 5 295 epoch sizes. The geometric variants failed it
-for every odd size, because `share(k) = N >> (k+1)` does not telescope under
-integer truncation; it has to be `(N>>k) - (N>>(k+1))`. That bug would have
-manifested as a handful of tasks silently never executing, on odd epoch sizes
-only, which is close to the worst possible failure mode to debug on a GPU.
+`Stats` reports `executed`, `spawned`, steals from siblings and from the global
+ring, `steal_misses` (a probe looked stealable but the claim came back empty),
+`releases`, `reacquires`, `promotes`, and wall time in `seconds`.
 
-### 2. Completion tracking is counters, not an array
+### Configuration
 
-`completed[epoch].status[22]` assumes few, individually identifiable thieves,
-and reclamation scans it for the longest completed prefix. At GPU scale that is
-the wrong shape.
+Compile-time layout (`config.hpp`), overridden by deriving from `DefaultConfig`:
 
-Each epoch instead carries `retired` (tickets finished) and `taken` (tasks
-removed). The owner closes an epoch with a `fetch_or` that writes
-`GPUTC_EPOCH_CLOSED` into the epoch field and returns the pre-or word, whose
-claim count is exactly the number of tickets issued before the close.
-Reclamation is then `retired == ntickets` — one comparison instead of a scan,
-and 24 bytes of state instead of ~100.
+| Constant        | Default | Meaning                                     |
+|-----------------|---------|---------------------------------------------|
+| `warps`         | 8       | warps in the block, at most 32              |
+| `chunk`         | 32      | tasks per steal, must equal the warp size   |
+| `epochs`        | 16      | epoch slots per ring (4 steal-word bits)    |
+| `warp_chunks`   | 8       | warp deque capacity in chunks, power of two |
+| `global_chunks` | 4096    | global ring capacity in chunks, power of two|
 
-The close is race-free because the close and every claim are atomics on the
-same word and therefore linearize: a thief either lands before the `fetch_or`
-and is counted, or sees `CLOSED` and bails without ever retiring. There is no
-window in which a thief proceeds uncounted.
+Warp deques take `warps * warp_chunks * 32 * sizeof(Body)` bytes of dynamic
+shared memory (64 KB for the defaults with a 32-byte body).
 
-*Cost:* we lose the CPU version's ability to reclaim a partial prefix of a
-still-open epoch.
+`Policy` holds the runtime knobs and is passed to the kernel by value:
+`release_min_chunks` (private chunks a warp holds before it publishes half),
+`probe_retries`, and the idle backoff bounds.
 
-### 3. Local operations are no longer free
+## How it works
 
-On the CPU one worker owns the head and touches it with no synchronization at
-all. On the GPU the owner is an entire block, so its warps contend. Because
-exactly one block owns each queue, this can be a **block-scoped** atomic
-(`atomicCAS_block`) that stays in L1 and never generates cross-SM traffic —
-cheap, but not free, and that changes the accounting for very fine tasks.
+### The steal word
 
-The steal path stays entirely lock-free. This matters more than it does on a
-CPU: a lock spanning blocks can deadlock whenever co-residency is not
-guaranteed, which is also why `gputc_default_nblocks()` refuses to launch more
-blocks than can be simultaneously resident.
-
-## The tier hierarchy
-
-The cost of finding work varies by four orders of magnitude, so the kernel
-tries tiers in order and lets the cheap ones absorb most of the imbalance:
-
-| Tier | Source | Mechanism | Cost |
-|---|---|---|---|
-| 0 | own deque, preferred class | block-scoped atomic | ~L1 |
-| 1 | own deque, any class | block-scoped atomic | ~L1, costs coherence |
-| 2 | another block, this device | global atomic + copy | ~L2 |
-| 3 | another PE | NVSHMEM atomic + RDMA get | ~µs |
-| 4 | nowhere | host-side termination vote | ~kernel relaunch |
-
-Tiers 2 and 3 run *identical code*. `gputc_warp_steal()` picks between a plain
-`atomicAdd` and `nvshmem_uint64_atomic_fetch_add` based on whether the victim is
-peer-visible. That is the clearest evidence that the protocol is the right
-abstraction: the same eight lines serve both scopes.
-
-## Coherence-aware stealing
-
-This is the part that is genuinely new, and the reason the queue array is
-two-dimensional.
-
-On a CPU, work stealing optimizes one objective: load. On a GPU it must jointly
-optimize load **and SIMD coherence**. A warp holding a mixed bag of task classes
-diverges on dispatch and loses most of its throughput. It is entirely possible
-to balance the load perfectly and still lose.
-
-So the queue is not a deque of tasks; it is a set of per-class bins. Each block
-owns one deque per class, a warp adopts a preferred class and asks for it first
-when stealing, and the indirect call in `gputc_dev_execute()` is uniform across
-the warp by construction.
-
-The tension is real and unresolved: the most *available* work is frequently the
-wrong *kind* of work. Tier 1 above will abandon a warp's class preference
-rather than go off-SM looking for a match, which is a guess, not a result. The
-right policy is an open question and is the most interesting thing in this
-directory.
-
-`collection-laws.c` already contains the machinery for a steal policy driven by
-something other than raw availability — locality there, class coherence here.
-It is the same structural change against a different metric.
-
-## Termination
-
-Two scopes, two mechanisms.
-
-**Within a device**, blocks share coherent memory, so no token is needed: a
-single counter of non-idle blocks is exact and cheap.
-
-**Across devices**, the existing tree token from `termination.c` applies with
-its correctness argument unchanged — the spawned/completed pair still bounds
-the in-flight count, and a task spawned on one PE may legitimately execute on
-another.
-
-This prototype drives the global vote from the **host**, between kernel
-launches. The kernel exits once it is locally quiescent and has failed enough
-remote probes; the host votes and relaunches if the vote fails. That costs one
-relaunch (~5–10 µs) per failed round, which is irrelevant next to the
-microsecond steals it arbitrates, and it keeps the hardest-to-debug component
-in host code. Moving it on-device is an optimization, not a design change.
-
-The vote itself is currently an allreduce over the counters, which is O(log P)
-latency but synchronizes everyone every round. Swapping in the tree token is a
-drop-in replacement and is what a real implementation should do.
-
-## Known gaps
-
-Things a reader should not assume work:
-
-- **Never compiled.** Expect syntax errors and NVSHMEM signature mismatches.
-- **Queue-full is a dead end.** `gputc_dev_add()` returns false and the task
-  is dropped. A real version needs an overflow path — spill to a global list,
-  or execute the child inline and recurse.
-- **`gputc_dev_add()` stages through a fixed 256-byte buffer.** Larger task
-  bodies silently overflow. Should be sized from `elem_size`.
-- **Only `GputcQueueSAWS` exists.** `SDC` and `LAWS` are named in the enum so
-  the comparison points are explicit, and fall back with a warning.
-- **No CPU/GPU hybrid.** Tasks that should run on the host have no path.
-- **`nvshmemx_quiet_warp()`** is used on the assumption it exists in the target
-  NVSHMEM version; check before relying on it.
-- **Statistics undercount remote steals.** `nsteals` is incremented on the
-  thief's side only for local steals, since the remote path would need another
-  round trip to attribute it.
-
-## Building
-
-```bash
-make NVSHMEM_HOME=/opt/nvshmem CUDA_HOME=/usr/local/cuda
+```
+ 63          32   31     30  27  26     14  13     0
++--------------+--------+-------+---------+--------+
+|   claimed    | closed | epoch |  avail  |  base  |
++--------------+--------+-------+---------+--------+
 ```
 
-Then see `../gpubpc` for a worked example.
+All counts are in chunks. A thief probes the word, then issues
+`fetch_add(n << 32)`; the returned word says which chunks it owns (ticket `k`
+owns chunk `k`), and `interpret()` turns it into a `Ticket`. Keeping `claimed`
+in the high half means overclaims only carry out of bit 63. The owner closes an
+epoch with `fetch_or(CLOSED_BIT)`; `taken(pre_close) = min(claimed, avail)` is
+exactly the number of chunks that went to valid tickets.
+
+### `SawsRing<Body, Scope, Cfg>`
+
+One queue template serves the warp deques (`BlockScope`), the global ring
+(`DeviceScope`) and the host tests (`HostScope`). Positions are free-running
+task counters:
+
+```
+tail ..closed epochs.. pub_base ..open epoch.. split ..private.. head
+```
+
+- `release(k)` closes the open epoch, then publishes one new epoch covering
+  its unclaimed remainder plus the `k` oldest private chunks. They are
+  adjacent, so nothing is copied.
+- `reacquire()` closes the open epoch and moves the unclaimed remainder back
+  to the private end.
+- Thieves `retire` into their epoch's counter once the copy-out is done.
+  `reclaim()` frees whole epochs, oldest first, once `retired == taken`.
+- When a push does not fit, the owner rolls the open epoch (closes it and
+  republishes the remainder) so its claimed chunks become reclaimable.
+
+Methods are scalar protocol steps. On the device, lane 0 runs them and all
+lanes move the bodies between steps, with `__syncwarp()` ordering the two.
+
+### Scheduling
+
+Per warp: pop a chunk from the private end; else reacquire the public end;
+else probe all sibling steal words in one load (lane `i` reads warp `i`),
+ballot, pick a random stealable victim, and claim one chunk; else claim from
+the global ring; else idle.
+
+After each chunk, a warp whose public end is exhausted and that holds at least
+`release_min_chunks` private chunks releases half of them. When a spawn does
+not fit, the warp takes the global ring's lock, moves the top half of its
+private chunks into the ring, and publishes them.
+
+### Termination
+
+Each warp's lane 0 counts its own `spawned` and `executed`. An idle warp sums
+every `executed` counter, then every `spawned` counter. A task's spawn happens
+before its execution, which happens before its executed increment, so the
+executed tasks it sees are a subset of the spawned tasks it reads afterwards.
+Equal sums mean no task is pending anywhere, and the warp sets `done`.
+
+## Layout
+
+```
+StealWord.hpp     steal-word encoding, interpret, taken
+common.hpp        GPUTC_HD, small helpers
+ring.hpp          RingView: power-of-two index math, span splitting
+epoch.hpp         EpochFifo: closed epochs awaiting reclamation
+atomics.hpp       BlockScope / DeviceScope (cuda::atomic_ref), HostScope
+saws_ring.hpp     SawsRing: the queue
+config.hpp        DefaultConfig, Policy
+stats.hpp         Counters, Stats
+warp.cuh          lane helpers, broadcast, victim pick
+context.cuh       Ctx: the device API tasks see
+termination.cuh   counters and the done flag
+scheduler.cuh     Worker: search, steal, release, spawn, promote, idle
+kernel.cuh        persistent_kernel, shared-memory carve-up
+run.cuh           host entry point
+gputc.cuh         umbrella include
+tests/            host-only protocol tests
+```
+
+## Building and testing
+
+Host tests need only a C++17 compiler; they are written against `HostScope`
+and run owner and thieves on `std::thread`s:
+
+```sh
+make test     # steal-word tiling and close races, ring spans, SawsRing torture
+make tsan     # the same under ThreadSanitizer
+```
+
+The device code needs CUDA 12 (`cuda::atomic_ref`) and sm_80 or newer
+(`__reduce_max_sync`, `__nanosleep`). See `examples/gpu-uts`:
+
+```sh
+cd ../examples/gpu-uts
+make test-uts-dev && ./test-uts-dev $T1     # host check of the ported tree code
+make && source ../uts/sample_trees.sh && ./gpu-uts $T1
+```
+
+`gpu-uts` prints UTS's usual `Tree size = ...` line, to compare against
+`sample_trees.sh`, and checks `spawned == executed`.
+
+## V1 limits
+
+- One block. Termination counters live in shared memory and the kernel is
+  launched with `gridDim.x == 1`.
+- One task class per run.
+- A global ring that stays full traps with a message
+  (`raise Cfg::global_chunks`) instead of running tasks inline.
+- Steals are one chunk (`n = 1`); the steal word and `SawsRing` already
+  support wider claims.
+- Plain CUDA device memory for the global ring; no NVSHMEM.
