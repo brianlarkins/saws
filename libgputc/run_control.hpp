@@ -8,6 +8,7 @@ enum ErrorCode : int {
   ERR_NONE = 0,
   ERR_QUEUE_CAPACITY = 1,
   ERR_STEAL_COUNTER_GUARD = 2,
+  ERR_COUNTER_OVERFLOW = 3,
 };
 
 // Device-visible run state. The first failure is recorded; all workers poll

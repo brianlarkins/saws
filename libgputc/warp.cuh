@@ -68,6 +68,13 @@ __device__ __forceinline__ auto lead(F&& f) {
   return bcast(r);
 }
 
+// Lane 0 runs f (e.g. error recording); all lanes join before continuing.
+template<class F>
+__device__ __forceinline__ void lead_void(F&& f) {
+  if (leader()) f();
+  __syncwarp();
+}
+
 // A uniformly random set bit of a nonzero mask.
 __device__ __forceinline__ int pick_random(unsigned mask, uint32_t r) {
   for (uint32_t k = r % __popc(mask); k > 0; --k) mask &= mask - 1;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <cstdio>
 #include <vector>
 
@@ -62,6 +63,8 @@ struct Stats {
   double   seconds;
   int      error_code;
   int      error_worker;
+  uint32_t error_want;
+  uint32_t error_avail;
   unsigned long long global_spawned;
   unsigned long long global_executed;
   unsigned int max_blocks;
@@ -136,9 +139,10 @@ struct Stats {
 
   void print_kv(std::FILE* f = stdout) const {
     std::fprintf(f,
-      "gputc_kv seconds=%.6f tasks_per_s=%.0f blocks=%d warps=%d workers=%d deque_chunks=%d deque_bytes=%zu error=%d",
-      seconds, tasks_per_second(), shape.blocks, shape.warps_per_block, shape.workers, shape.deque_chunks,
-      shape.deque_bytes, error_code);
+      "gputc_kv seconds=%.6f tasks_per_s=%.0f lane_fill=%.6f blocks=%d warps=%d workers=%d "
+      "deque_chunks=%d deque_bytes=%zu error=%d error_worker=%d error_want=%u error_avail=%u",
+      seconds, tasks_per_second(), lane_fill(), shape.blocks, shape.warps_per_block, shape.workers,
+      shape.deque_chunks, shape.deque_bytes, error_code, error_worker, error_want, error_avail);
 #define GPUTC_PRINT(name, reduce) std::fprintf(f, " " #name "=%llu", total.name);
     GPUTC_COUNTERS(GPUTC_PRINT)
 #undef GPUTC_PRINT

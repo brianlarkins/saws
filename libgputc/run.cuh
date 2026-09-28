@@ -68,6 +68,11 @@ Stats run(const typename Task::Body& root, const Policy& policy = Policy{},
     std::abort();
   }
 
+  if (launch.blocks < 0) {
+    std::fprintf(stderr, "gputc: block count must be nonnegative (got %d)\n", launch.blocks);
+    std::abort();
+  }
+
   int blocks = launch.blocks > 0 ? launch.blocks : max_grid;
   if (launch.blocks > 0 && blocks > max_grid) {
     std::fprintf(stderr,
@@ -143,6 +148,8 @@ Stats run(const typename Task::Body& root, const Policy& policy = Policy{},
   GPUTC_CUDA_CHECK(cudaMemcpy(&h_final, d_run, sizeof(RunControl), cudaMemcpyDeviceToHost));
   stats.error_code = h_final.error_code;
   stats.error_worker = h_final.error_worker;
+  stats.error_want = h_final.error_want;
+  stats.error_avail = h_final.error_avail;
 
   std::vector<unsigned long long> h_spawned(workers), h_executed(workers);
   GPUTC_CUDA_CHECK(cudaMemcpy(h_spawned.data(), d_spawned, size_t(workers) * sizeof(unsigned long long),
@@ -158,7 +165,7 @@ Stats run(const typename Task::Body& root, const Policy& policy = Policy{},
   if (cudaFuncGetAttributes(&attr, kernel) == cudaSuccess) {
     stats.registers = unsigned(attr.numRegs);
     stats.static_smem = unsigned(attr.sharedSizeBytes);
-    stats.dynamic_smem = unsigned(attr.sharedSizeBytes);
+    stats.dynamic_smem = 0;
   }
 
   stats.reduce();

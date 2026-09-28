@@ -49,7 +49,13 @@ enum class ReserveStatus : uint8_t {
   Full,    // owned work + reservation exceeds capacity
 };
 
-template<class Body, uint32_t Chunk, uint32_t CapChunks, int Epochs>
+enum class AcquireStatus : uint8_t {
+  HasPrivate,  // private tasks available (including after a successful pull)
+  NoPublic,    // no published work to pull
+  Retry,       // epoch bookkeeping temporarily blocked
+};
+
+template<class Body, class Scope, uint32_t Chunk, uint32_t CapChunks, int Epochs>
 struct SawsRing {
   using State = RingState<Epochs>;
   static constexpr uint32_t chunk      = Chunk;
@@ -71,7 +77,7 @@ struct SawsRing {
 
   GPUTC_HD uint32_t unclaimed_public_chunks() const {
     if (!st->published) return 0;
-    uint64_t w = DeviceScope::load_relaxed(&st->steal_word);
+    uint64_t w = Scope::load_relaxed(&st->steal_word);
     return half_remaining(initial_of(w), attempts_of(w));
   }
 
@@ -82,8 +88,8 @@ struct SawsRing {
   // ---- owner: private end ----
 
   GPUTC_HD ReserveStatus push_reserve(uint32_t want, uint32_t min, Range* out) {
-    roll();
     reclaim();
+    if (used() + min > capacity) roll();
     if (owned_tasks() + min > capacity) return ReserveStatus::Full;
     if (used() + min > capacity) return ReserveStatus::Retry;
     uint32_t n = min_u32(want, capacity - used());
@@ -101,9 +107,9 @@ struct SawsRing {
 
   // Space for an incoming steal of up to max_steal_chunks (conservative bound).
   GPUTC_HD ReserveStatus incoming_reserve(uint32_t steal_chunks, Range* dest) {
-    roll();
     reclaim();
     const uint32_t need = steal_chunks * chunk;
+    if (used() + need > capacity) roll();
     if (owned_tasks() + need > capacity) return ReserveStatus::Full;
     if (used() + need > capacity) return ReserveStatus::Retry;
     *dest = Range{st->head, need};
@@ -114,34 +120,34 @@ struct SawsRing {
   // ---- owner: half release / acquire ----
 
   // Publish ~half of the oldest private chunks when the current epoch is exhausted.
-  GPUTC_HD bool release_half() {
+  // Chunks published (0 if nothing changed).
+  GPUTC_HD uint32_t release_half() {
     const uint32_t full = private_size() / chunk;
-    if (full == 0) return false;
-    if (st->published && unclaimed_public_chunks() > 0) return false;
-    if (!can_release()) return false;
+    if (full == 0) return 0;
+    if (st->published && unclaimed_public_chunks() > 0) return 0;
+    if (!can_release()) return 0;
     if (st->published) close();
     const uint32_t k = ceil_div_u32(full, 2);
     st->split += k * chunk;
     publish();
-    return true;
+    return k;
   }
 
-  // Pull half of unclaimed public work when private is empty.
-  GPUTC_HD bool acquire_half() {
-    if (private_size() > 0) return true;
-    if (!st->published) return false;
+  GPUTC_HD AcquireStatus acquire_half_status() {
+    if (private_size() > 0) return AcquireStatus::HasPrivate;
+    if (!st->published) return AcquireStatus::NoPublic;
     if (!st->epochs.can_close_and_publish()) {
       reclaim();
-      if (!st->epochs.can_close_and_publish()) return false;
+      if (!st->epochs.can_close_and_publish()) return AcquireStatus::Retry;
     }
     close();
     const uint32_t R = public_chunks();
-    if (R == 0) return false;
+    if (R == 0) return AcquireStatus::NoPublic;
     const uint32_t reacq = ceil_div_u32(R, 2);
     const uint32_t pub   = R / 2;
     st->split -= reacq * chunk;
     if (pub > 0) publish(pub);
-    return true;
+    return reacq > 0 ? AcquireStatus::HasPrivate : AcquireStatus::NoPublic;
   }
 
   GPUTC_HD bool can_release() {
@@ -154,24 +160,21 @@ struct SawsRing {
     auto& f = st->epochs;
     while (!f.empty()) {
       EpochRec& r = f.oldest();
-      if (DeviceScope::load_acquire(&r.retired) != r.taken) break;
+      if (Scope::load_acquire(&r.retired) != r.taken) break;
       st->tail = r.end;
       ++f.head;
     }
     if (f.empty()) st->tail = st->pub_base;
   }
 
-  GPUTC_HD void progress() {
-    roll();
-    reclaim();
-  }
+  GPUTC_HD void progress() { reclaim(); }
 
   // ---- thief ----
 
-  GPUTC_HD uint64_t probe() const { return DeviceScope::load_relaxed(&st->steal_word); }
+  GPUTC_HD uint64_t probe() const { return Scope::load_relaxed(&st->steal_word); }
 
   GPUTC_HD Ticket claim(uint64_t* pre_increment = nullptr) {
-    uint64_t old = DeviceScope::fetch_add_acq_rel(&st->steal_word, claim_ticket_increment());
+    uint64_t old = Scope::fetch_add_acq_rel(&st->steal_word, claim_ticket_increment());
     if (pre_increment) *pre_increment = old;
     return interpret_claim(old);
   }
@@ -181,7 +184,7 @@ struct SawsRing {
   }
 
   GPUTC_HD void retire(const Ticket& t) {
-    DeviceScope::fetch_add_release(&st->epochs.rec[t.epoch].retired, t.n);
+    Scope::fetch_add_release(&st->epochs.rec[t.epoch].retired, t.n);
   }
 
 private:
@@ -193,7 +196,7 @@ private:
 
   GPUTC_HD void close() {
     if (!st->published) return;
-    uint64_t old = DeviceScope::fetch_or_acq_rel(&st->steal_word, CLOSED_BIT);
+    uint64_t old = Scope::fetch_or_acq_rel(&st->steal_word, CLOSED_BIT);
     st->published = false;
     const uint32_t t = taken_at_close(old);
     if (t == 0) return;
@@ -210,9 +213,9 @@ private:
   GPUTC_HD void publish(uint32_t avail) {
     if (avail == 0) return;
     auto& f = st->epochs;
-    DeviceScope::store_relaxed(&f.published().retired, 0u);
+    Scope::store_relaxed(&f.published().retired, 0u);
     uint64_t w = pack(Fields{0, false, EpochFifo<Epochs>::slot(f.next), avail, st->pub_base / chunk});
-    DeviceScope::store_release(&st->steal_word, w);
+    Scope::store_release(&st->steal_word, w);
     st->published = true;
   }
 };

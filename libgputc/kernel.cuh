@@ -2,24 +2,10 @@
 
 #include <type_traits>
 
+#include "kernel_args.cuh"
 #include "scheduler.cuh"
 
 namespace gputc {
-
-template<class Task, class Cfg>
-struct KernelArgs {
-  using Body = typename Task::Body;
-  using State = RingState<Cfg::epochs>;
-
-  RunControl*         run;
-  unsigned long long* spawned;
-  unsigned long long* executed;
-  State*              states;
-  Body*               bodies;
-  WarpCounters*       out;
-  int                 worker_count;
-  Policy              policy;
-};
 
 template<class Task, class Cfg>
 __global__ void init_queues(KernelArgs<Task, Cfg> args, typename Task::Body root) {
@@ -31,11 +17,9 @@ __global__ void init_queues(KernelArgs<Task, Cfg> args, typename Task::Body root
     args.executed[w] = 0;
   }
   if (w == 0 && warp::leader()) {
-    constexpr uint32_t cap = Cfg::deque_chunks * Cfg::chunk;
     args.bodies[0] = root;
     args.states[0].head = 1;
     args.spawned[0] = 1;
-    (void)cap;
   }
 }
 

@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 # Benchmark gpu-uts V2: records shape, capacity, timing, and correctness in LOG.
-#
-#   ./bench.sh
-#   TREES="T1 T3" WARPS="8" BLOCKS="0 1 2" REPS=3 ./bench.sh
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -16,7 +13,7 @@ WARMUP=${WARMUP:-1}
 SEQ=${SEQ:-1}
 LOG=${LOG:-bench.log}
 
-printf "%-5s %-10s %11s %9s %6s %6s err cons\n" tree run tasks Mtasks/s lanes% error ok
+printf "%-5s %-10s %11s %9s %6s %6s %s\n" tree run tasks Mtasks/s lanes% error ok
 for t in $TREES; do
   args=${!t}
   if [ "$SEQ" != 0 ]; then
@@ -28,11 +25,19 @@ for t in $TREES; do
   for w in $WARPS; do
     for b in $BLOCKS; do
       for ((r = 0; r < WARMUP + REPS; ++r)); do
-        out=$(./gpu-uts $args -W "$w" -B "$b")
+        set +e
+        out=$(./gpu-uts $args -W "$w" -B "$b" 2>&1)
+        status=$?
+        set -e
         kv=$(echo "$out" | grep '^gputc_kv' || true)
-        [ -n "$kv" ] || { echo "bench: missing gputc_kv for $t W=$w B=$b" >&2; exit 1; }
+        if [ "$status" -ne 0 ] || [ -z "$kv" ]; then
+          echo "bench: FAIL tree=$t W=$w B=$b exit=$status" >> "$LOG"
+          echo "$out" >> "$LOG"
+          printf "%-5s %-10s %11s %9s %6s %6s %s\n" "$t" "W=${w}B=${b}" "-" "-" "-" "$status" "FAIL"
+          continue
+        fi
         if [ "$r" -ge "$WARMUP" ]; then
-          echo "tree=$t $kv" >> "$LOG"
+          echo "tree=$t exit=0 $kv" >> "$LOG"
           echo "$kv" | awk -v t="$t" -v tag="W=${w}B=${b}" '{
             for (i = 2; i <= NF; ++i) { split($i, p, "="); v[p[1]] = p[2] }
             cons = (v["error"] == 0 && v["spawned"] == v["tasks"]) ? "ok" : "FAIL"

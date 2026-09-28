@@ -4,7 +4,7 @@ Header-only CUDA work stealing for irregular task pools (Scioto-style tasks, one
 V2 is a **flat** runtime: one global-memory deque per worker warp, geometric half-stealing,
 and cooperative multi-block launch.
 
-**Build with nvcc only** — protocol headers use `#error` if included from a host C++ compiler.
+Host C++ builds use `HostScope` atomics for protocol tests; CUDA runtime code requires nvcc.
 
 ## Model
 
@@ -40,10 +40,13 @@ s.print();
 ## Tests
 
 ```bash
-cd libgputc && make test    # half-steal checks + device ring smoke (needs GPU)
-cd ../examples/gpu-uts && make
+cd libgputc && make test-host   # g++ half-steal + ring sequence + nvcc compile check
+make test-gpu                   # device ring smoke (needs GPU)
+cd ../examples/gpu-uts && make test-uts-dev && make uts-seq
 source ../uts/sample_trees.sh && ./gpu-uts $T1
 ```
+
+`QUEUE_CHUNKS` is supported in `examples/gpu-uts/Makefile` (`GPUTC_DEQUE_CHUNKS`).
 
 ## Layout
 

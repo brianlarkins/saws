@@ -2,6 +2,7 @@
 
 #include "config.hpp"
 #include "stats.hpp"
+#include "kernel_args.cuh"
 #include "saws_ring.hpp"
 #include "warp.cuh"
 #include "context.cuh"
@@ -13,7 +14,12 @@ template<class Task, class Cfg>
 struct Worker {
   using Body = typename Task::Body;
   static constexpr uint32_t C = Cfg::chunk;
-  using Ring = SawsRing<Body, C, Cfg::deque_chunks, Cfg::epochs>;
+  using Ring = SawsRing<Body, DeviceScope, C, Cfg::deque_chunks, Cfg::epochs>;
+
+  struct ReserveOut {
+    ReserveStatus st;
+    Range         r;
+  };
 
   KernelArgs<Task, Cfg> args;
   TerminationView       term;
@@ -24,7 +30,7 @@ struct Worker {
   Policy                policy;
   uint32_t              rng;
   int                   backoff_ns;
-  int                   sched_iter;
+  unsigned              sched_iter;
   int                   phase;
   long long             phase_t0;
   long long             start;
@@ -55,6 +61,28 @@ struct Worker {
     return rng;
   }
 
+  __device__ bool warp_halt() {
+    return warp::lead([&] { return term.done() || term.aborted(); });
+  }
+
+  __device__ bool warp_termination_due() {
+    return warp::lead([&] {
+      if (worker != 0) return false;
+      if ((sched_iter & (TERMINATION_CHECK_INTERVAL - 1)) != 0) return false;
+      return term.try_finish();
+    });
+  }
+
+  __device__ void count_release(uint32_t chunks) {
+    if (chunks == 0) return;
+    counters->releases++;
+    counters->released_chunks += chunks;
+  }
+
+  __device__ void note_deque_peak() {
+    if (mine.used() > counters->deque_peak) counters->deque_peak = mine.used();
+  }
+
   __device__ int enter(int p) {
     int prev = phase;
     if constexpr (Cfg::timing) {
@@ -76,9 +104,9 @@ struct Worker {
   };
 
   __device__ void run() {
-    while (!term.done() && !term.aborted()) {
+    while (!warp_halt()) {
       ++sched_iter;
-      if (term.check_due(worker, sched_iter)) return;
+      if (warp_termination_due()) return;
       if (warp::leader()) mine.progress();
 
       Body     body{};
@@ -114,9 +142,13 @@ struct Worker {
     Timed t(*this, PHASE_POP);
     Range r = warp::lead([&] {
       Range got = mine.pop(C);
-      if (got.n == 0 && mine.acquire_half()) {
+      if (got.n > 0) return got;
+      AcquireStatus st = mine.acquire_half_status();
+      if (st == AcquireStatus::HasPrivate) {
         counters->acquires++;
         got = mine.pop(C);
+      } else if (st == AcquireStatus::Retry) {
+        mine.progress();
       }
       if (got.n > 0) counters->pops++;
       return got;
@@ -131,32 +163,36 @@ struct Worker {
   __device__ void release_after_work() {
     Timed t(*this, PHASE_QUEUE);
     if (!warp::leader()) return;
-    if (mine.release_half()) {
-      counters->releases++;
-      counters->released_chunks += 1;  // event count; chunk count varies
-    }
+    count_release(mine.release_half());
   }
 
-  __device__ int pick_victim() const {
+  __device__ int pick_victim() {
     const uint32_t r = next_random();
     int v = int(r % uint32_t(workers - 1));
     if (v >= worker) ++v;
     return v;
   }
 
+  __device__ void drain_local_before_steal() {
+    for (int i = 0; i < 8; ++i) {
+      AcquireStatus st = warp::lead([&] { return mine.acquire_half_status(); });
+      if (st != AcquireStatus::Retry) return;
+      warp::lead([&] { mine.progress(); });
+      if (warp_halt()) return;
+    }
+  }
+
   __device__ bool try_steal() {
     if (workers <= 1) return false;
     Timed t(*this, PHASE_STEAL_CLAIM);
 
-    const int victim = warp::lead([&] {
-      mine.acquire_half();
-      return pick_victim();
-    });
+    drain_local_before_steal();
+    if (warp_halt()) return false;
+
+    const int victim = warp::lead([&] { return pick_victim(); });
 
     const bool can_steal = warp::lead([&] {
       mine.progress();
-      Ring vr = ring_of(victim);
-      if (!stealable(vr.probe())) return false;
       if (mine.owned_tasks() + Ring::max_steal_chunks * C > Ring::capacity) return false;
       if (mine.used() + Ring::max_steal_chunks * C > Ring::capacity) return false;
       return true;
@@ -186,7 +222,8 @@ struct Worker {
       return out;
     });
 
-    if (cr.guard || !cr.ticket.valid) return false;
+    if (cr.guard) return false;
+    if (!cr.ticket.valid) return false;
 
     Timed tcopy(*this, PHASE_STEAL_COPY);
     const Ticket ticket = cr.ticket;
@@ -197,6 +234,7 @@ struct Worker {
       if (rs == ReserveStatus::Full)
         term.record_error(worker, ERR_QUEUE_CAPACITY, ticket.n * C, Ring::capacity - mine.owned_tasks());
       GPUTC_CHECK(rs == ReserveStatus::Ok, "incoming reservation after claim");
+      note_deque_peak();
       return d;
     });
 
@@ -212,7 +250,7 @@ struct Worker {
       counters->steal_success++;
       counters->stolen_chunks += ticket.n;
       counters->stolen_tasks += ticket.n * C;
-      mine.release_half();
+      count_release(mine.release_half());
     }
     return true;
   }
@@ -222,12 +260,12 @@ struct Worker {
     if (!mask) return;
     Timed t(*this, PHASE_SPAWN);
     uint32_t count = __popc(mask);
-    Range r = reserve(count, count);
-    if (r.n == 0) return;
-    if (pred) warp::store_body(&mine[r.pos + __popc(mask & warp::lanemask_lt())], body);
+    ReserveOut ro = reserve_out(count, count);
+    if (ro.st != ReserveStatus::Ok || ro.r.n == 0) return;
+    if (pred) warp::store_body(&mine[ro.r.pos + __popc(mask & warp::lanemask_lt())], body);
     __syncwarp();
-    count_spawned(r.n, 1);
-    if (warp::leader()) mine.release_half();
+    count_spawned(ro.r.n, 1);
+    if (warp::leader()) count_release(mine.release_half());
   }
 
   template<class Parent, class Make>
@@ -236,26 +274,26 @@ struct Worker {
     const uint32_t first = inclusive - count;
     const uint32_t total = __shfl_sync(warp::FULL, inclusive, warp::SIZE - 1);
     for (uint32_t done = 0; done < total;) {
-      Range r;
+      ReserveOut ro;
       {
         Timed t(*this, PHASE_SPAWN);
-        r = reserve(total - done, min_u32(total - done, C));
+        ro = reserve_out(total - done, min_u32(total - done, C));
       }
-      if (r.n == 0) return;
+      if (ro.st != ReserveStatus::Ok || ro.r.n == 0) return;
       uint32_t rounds = 0;
-      for (uint32_t base = 0; base < r.n; base += warp::SIZE, ++rounds) {
+      for (uint32_t base = 0; base < ro.r.n; base += warp::SIZE, ++rounds) {
         const uint32_t slot = base + warp::lane();
-        const uint32_t g = done + min_u32(slot, r.n - 1);
+        const uint32_t g = done + min_u32(slot, ro.r.n - 1);
         const int owner = warp::owner_of(inclusive, g);
         const Parent p = warp::shfl(parent, owner);
         const uint32_t i = g - __shfl_sync(warp::FULL, first, owner);
-        if (slot < r.n) warp::store_body(&mine[r.pos + slot], make(p, int(i)));
+        if (slot < ro.r.n) warp::store_body(&mine[ro.r.pos + slot], make(p, int(i)));
       }
       __syncwarp();
-      count_spawned(r.n, rounds);
-      done += r.n;
+      count_spawned(ro.r.n, rounds);
+      done += ro.r.n;
     }
-    if (warp::leader()) mine.release_half();
+    if (warp::leader()) count_release(mine.release_half());
   }
 
   __device__ void count_spawned(uint32_t n, uint32_t rounds) {
@@ -265,37 +303,42 @@ struct Worker {
     }
   }
 
-  __device__ Range reserve(uint32_t want, uint32_t min) {
+  __device__ ReserveOut reserve_out(uint32_t want, uint32_t min) {
     for (;;) {
-      if (term.aborted()) return Range{0, 0};
-      ReserveStatus st = ReserveStatus::Retry;
-      Range         r{0, 0};
-      st = warp::lead([&] {
-        ReserveStatus rs = mine.push_reserve(want, min, &r);
-        if (rs == ReserveStatus::Ok && mine.used() > counters->deque_peak)
-          counters->deque_peak = mine.used();
-        return rs;
+      if (warp_halt()) return ReserveOut{ReserveStatus::Full, Range{0, 0}};
+      ReserveOut out = warp::lead([&] {
+        ReserveOut p{};
+        p.st = mine.push_reserve(want, min, &p.r);
+        if (p.st == ReserveStatus::Ok) note_deque_peak();
+        return p;
       });
-      if (st == ReserveStatus::Ok) return r;
-      if (st == ReserveStatus::Full) {
-        warp::lead([&] {
+      if (out.st == ReserveStatus::Ok) return out;
+      if (out.st == ReserveStatus::Full) {
+        warp::lead_void([&] {
           term.record_error(worker, ERR_QUEUE_CAPACITY, min, Ring::capacity - mine.owned_tasks());
         });
-        return Range{0, 0};
+        return ReserveOut{ReserveStatus::Full, Range{0, 0}};
       }
-      if (warp::leader()) mine.progress();
+      warp::lead([&] { mine.progress(); });
       __nanosleep(policy.pinned_wait_ns);
     }
   }
 
   __device__ bool idle() {
     Timed t(*this, PHASE_IDLE);
-    if (term.done() || term.aborted()) return true;
-    if (warp::leader()) counters->idle_rounds++;
+    const bool stop_now = warp::lead([&] {
+      if (term.done() || term.aborted()) return true;
+      if (warp::leader()) counters->idle_rounds++;
+      return false;
+    });
+    if (stop_now) return true;
     __nanosleep(backoff_ns);
-    backoff_ns = backoff_ns < policy.backoff_max_ns ? min(backoff_ns * 2, policy.backoff_max_ns) : policy.backoff_max_ns;
-    if (warp::leader() && worker == 0) term.try_finish();
-    return term.done();
+    backoff_ns = backoff_ns < policy.backoff_max_ns ? min(backoff_ns * 2, policy.backoff_max_ns)
+                                                    : policy.backoff_max_ns;
+    return warp::lead([&] {
+      if (worker == 0) term.try_finish();
+      return term.done() || term.aborted();
+    });
   }
 
   __device__ void finish() {
