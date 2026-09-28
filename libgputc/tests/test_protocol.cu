@@ -1,5 +1,5 @@
 // Protocol tests for libgputc (nvcc). Half-steal arithmetic runs on the host;
-// ring smoke test runs on the device.
+// ring smoke test runs on the device (global memory — same as the runtime).
 
 #include <atomic>
 #include <cstdio>
@@ -99,32 +99,52 @@ struct Body {
   uint32_t pad[3];
 };
 
-__global__ void test_ring_smoke(int* failures) {
+struct RingSmokeDev {
+  RingState<8> state;
+  Body         slots[16 * 8];
+};
+
+// failure_code: 1=push, 2=release, 3=claim, 4=acquire, 5=final state
+__global__ void test_ring_smoke(RingSmokeDev* dev, int* failure_code) {
   constexpr uint32_t C = 8;
   constexpr uint32_t Cap = 16;
   constexpr int E = 8;
   using Ring = SawsRing<Body, C, Cap, E>;
 
-  __shared__ RingState<E> state;
-  __shared__ Body storage[Ring::capacity];
-  if (threadIdx.x == 0) state.init(0);
+  if (threadIdx.x == 0) dev->state.init(0);
   __syncthreads();
   if (threadIdx.x != 0) return;
 
-  Ring ring(&state, storage);
-  int local_fail = 0;
+  Ring ring(&dev->state, dev->slots);
 
+  // Two private chunks: release publishes one; claim+retire empties the public
+  // epoch; one chunk stays private so acquire_half() succeeds (private non-empty).
   Range r{};
-  if (ring.push_reserve(C, C, &r) != ReserveStatus::Ok || r.n != C) local_fail = 1;
-  for (uint32_t i = 0; i < C; ++i) ring[r.pos + i].id = i;
-  if (!ring.release_half()) local_fail = 1;
+  if (ring.push_reserve(2 * C, 2 * C, &r) != ReserveStatus::Ok || r.n != 2 * C) {
+    *failure_code = 1;
+    return;
+  }
+  for (uint32_t i = 0; i < 2 * C; ++i) ring[r.pos + i].id = i;
+  if (!ring.release_half()) {
+    *failure_code = 2;
+    return;
+  }
   uint64_t pre = 0;
   Ticket t = ring.claim(&pre);
-  if (!t.valid || t.n == 0) local_fail = 1;
+  if (!t.valid || t.n == 0) {
+    *failure_code = 3;
+    return;
+  }
   ring.retire(t);
-  if (!ring.acquire_half()) local_fail = 1;
+  if (!ring.acquire_half()) {
+    *failure_code = 4;
+    return;
+  }
   ring.reclaim();
-  if (local_fail) atomicAdd(failures, 1);
+  if (ring.used() != 2 * C || ring.private_size() != C) {
+    *failure_code = 5;
+    return;
+  }
 }
 
 int main() {
@@ -132,13 +152,20 @@ int main() {
   test_tiling();
   test_close_race();
 
+  RingSmokeDev* d_buf = nullptr;
   int* d_fail = nullptr;
   int h_fail = 0;
+  cudaMalloc(&d_buf, sizeof(RingSmokeDev));
   cudaMalloc(&d_fail, sizeof(int));
   cudaMemset(d_fail, 0, sizeof(int));
-  test_ring_smoke<<<1, 32>>>(d_fail);
+  test_ring_smoke<<<1, 32>>>(d_buf, d_fail);
+  cudaDeviceSynchronize();
   cudaMemcpy(&h_fail, d_fail, sizeof(int), cudaMemcpyDeviceToHost);
+  if (h_fail != 0)
+    std::fprintf(stderr, "test_ring_smoke failed with code %d "
+                 "(1=push 2=release 3=claim 4=acquire 5=final state)\n", h_fail);
   cudaFree(d_fail);
+  cudaFree(d_buf);
   CHECK(h_fail == 0);
 
   std::printf("test_protocol: ok\n");
