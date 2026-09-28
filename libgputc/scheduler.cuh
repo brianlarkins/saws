@@ -1,24 +1,7 @@
 #pragma once
 
-// The per-warp worker. Protocol steps on a ring run on lane 0 (warp::lead);
-// every lane then moves one task body. A warp looks for work in cost order:
-//
-//   own private end -> reacquire own public -> sibling public ends
-//     -> the block's global ring -> idle (termination check, backoff)
-//
-// Spawns go to the warp's private end. When a spawn does not fit, the warp
-// spills the oldest half of its chunks onto the global ring, and warps that
-// run dry take the newest chunk back off it. The global ring thus extends the
-// bottom of the warps' stacks, and the block's traversal stays depth-first,
-// which is what bounds its memory. (Taking the oldest, as a thief does, makes
-// the ring a FIFO whose frontier grows breadth-first.)
-//
-// In V1 the global ring's steal word is never published: with one block there
-// are no thieves outside the block. Its public end is for other blocks.
-
 #include "config.hpp"
 #include "stats.hpp"
-#include "atomics.hpp"
 #include "saws_ring.hpp"
 #include "warp.cuh"
 #include "context.cuh"
@@ -26,65 +9,44 @@
 
 namespace gputc {
 
-// Block-shared scheduler state, a static __shared__ object.
-template<class Cfg>
-struct Shared {
-  RingState<Cfg::warp_epochs> warp_state[Cfg::warps];
-  Termination<Cfg::warps>     term;
-  WarpCounters                counters[Cfg::warps];
-};
-
-// The global ring's control block, in device memory.
-template<class Cfg>
-struct GlobalControl {
-  RingState<Cfg::global_epochs> ring;
-  uint32_t lock;    // serializes the owner end between warps
-  uint32_t chunks;  // chunks held, written under the lock, probed without it
-  uint32_t peak;    // most tasks held, updated under the lock
-};
-
-template<class Task, class Cfg>
-struct KernelArgs {
-  using Body = typename Task::Body;
-  GlobalControl<Cfg>* global;
-  Body*               global_slots;
-  WarpCounters*       out;  // one per warp
-  Policy              policy;
-  Body                root;
-};
-
 template<class Task, class Cfg>
 struct Worker {
   using Body = typename Task::Body;
   static constexpr uint32_t C = Cfg::chunk;
-  using WarpRing   = SawsRing<Body, BlockScope, C, Cfg::warp_chunks, Cfg::warp_epochs>;
-  using GlobalRing = SawsRing<Body, DeviceScope, C, Cfg::global_chunks, Cfg::global_epochs>;
+  using Ring = SawsRing<Body, C, Cfg::deque_chunks, Cfg::epochs>;
 
-  Shared<Cfg>&        sh;
-  Body*               deques;    // WarpRing::capacity bodies per warp, dynamic shared memory
-  WarpRing            mine;
-  GlobalRing          global;
-  GlobalControl<Cfg>* gctl;
-  Policy              policy;
-  int                 me;
-  uint32_t            rng;       // warp-uniform
-  int                 backoff_ns;
-  int                 phase;     // Phase being charged
-  long long           phase_t0;  // lane 0: clock at the last phase change
-  long long           start;
+  KernelArgs<Task, Cfg> args;
+  TerminationView       term;
+  Ring                  mine;
+  int                   worker;
+  int                   workers;
+  WarpCounters*         counters;
+  Policy                policy;
+  uint32_t              rng;
+  int                   backoff_ns;
+  int                   sched_iter;
+  int                   phase;
+  long long             phase_t0;
+  long long             start;
 
-  __device__ Worker(Shared<Cfg>& s, Body* d, const KernelArgs<Task, Cfg>& a)
-      : sh(s), deques(d), mine(ring_of(s, d, warp::id())),
-        global(&a.global->ring, a.global_slots), gctl(a.global),
-        policy(a.policy), me(warp::id()),
-        rng(0x9E3779B9u * (warp::id() + 1)), backoff_ns(a.policy.backoff_min_ns),
-        phase(PHASE_IDLE), phase_t0(warp::clock()), start(phase_t0) {}
+  __device__ Worker(KernelArgs<Task, Cfg> a, int w)
+      : args(a),
+        term{a.spawned, a.executed, a.run, a.worker_count},
+        mine(&a.states[w], a.bodies + size_t(w) * Ring::capacity),
+        worker(w),
+        workers(a.worker_count),
+        counters(&a.out[w]),
+        policy(a.policy),
+        rng(0x9E3779B9u * (w + 1)),
+        backoff_ns(a.policy.backoff_min_ns),
+        sched_iter(0),
+        phase(PHASE_IDLE),
+        phase_t0(warp::clock()),
+        start(phase_t0) {}
 
-  static __device__ WarpRing ring_of(Shared<Cfg>& s, Body* d, int w) {
-    return WarpRing(&s.warp_state[w], d + w * WarpRing::capacity);
+  __device__ Ring ring_of(int victim) const {
+    return Ring(&args.states[victim], args.bodies + size_t(victim) * Ring::capacity);
   }
-
-  __device__ WarpCounters& stats() { return sh.counters[me]; }
 
   __device__ uint32_t next_random() {
     rng ^= rng << 13;
@@ -93,16 +55,12 @@ struct Worker {
     return rng;
   }
 
-  // ---- time accounting ----
-
-  // Charge the cycles since the last change to the current phase and switch
-  // to p, returning the phase it replaced. Only lane 0's clock is recorded.
   __device__ int enter(int p) {
     int prev = phase;
     if constexpr (Cfg::timing) {
       if (warp::leader()) {
         long long now = warp::clock();
-        stats().cycles[phase] += now - phase_t0;
+        counters->cycles[phase] += now - phase_t0;
         phase_t0 = now;
       }
     }
@@ -110,7 +68,6 @@ struct Worker {
     return prev;
   }
 
-  // Charges a scope to a phase, then returns to the enclosing one.
   struct Timed {
     Worker& w;
     int     prev;
@@ -118,19 +75,27 @@ struct Worker {
     __device__ ~Timed() { w.enter(prev); }
   };
 
-  // ---- main loop ----
-
   __device__ void run() {
-    for (;;) {
-      Body body{};
+    while (!term.done() && !term.aborted()) {
+      ++sched_iter;
+      if (term.check_due(worker, sched_iter)) return;
+      if (warp::leader()) mine.progress();
+
+      Body     body{};
       uint32_t n = 0;
-      if (pop_own(body, n) || steal_sibling(body, n) || pop_global(body, n)) {
+      if (pop_batch(body, n)) {
         execute(body, n);
-        maybe_release();
+        release_after_work();
         backoff_ns = policy.backoff_min_ns;
-      } else if (idle()) {
-        return;
+        continue;
       }
+
+      if (try_steal()) {
+        backoff_ns = policy.backoff_min_ns;
+        continue;
+      }
+
+      if (idle()) return;
     }
   }
 
@@ -138,100 +103,119 @@ struct Worker {
     Timed t(*this, PHASE_TASK);
     Ctx<Worker> ctx{*this};
     Task::execute(ctx, body, uint32_t(warp::lane()) < n);
+    __syncwarp();
     if (warp::leader()) {
-      sh.term.add_executed(me, n);
-      stats().chunks++;
+      term.add_executed(worker, n);
+      counters->chunks++;
     }
   }
 
-  // ---- finding work ----
-
-  __device__ bool pop_own(Body& body, uint32_t& n) {
+  __device__ bool pop_batch(Body& body, uint32_t& n) {
     Timed t(*this, PHASE_POP);
     Range r = warp::lead([&] {
       Range got = mine.pop(C);
-      if (got.n == 0 && mine.reacquire() > 0) {
-        stats().reacquires++;
+      if (got.n == 0 && mine.acquire_half()) {
+        counters->acquires++;
         got = mine.pop(C);
       }
-      if (got.n > 0) stats().pops++;
+      if (got.n > 0) counters->pops++;
       return got;
     });
     if (r.n == 0) return false;
     if (uint32_t(warp::lane()) < r.n) body = warp::load_body(&mine[r.pos + warp::lane()]);
-    __syncwarp();  // all reads land before any lane's spawn reuses the slots
+    __syncwarp();
     n = r.n;
     return true;
   }
 
-  __device__ bool steal_sibling(Body& body, uint32_t& n) {
-    Timed t(*this, PHASE_STEAL_SIBLING);
-    for (int attempt = 0; attempt < policy.probe_retries; ++attempt) {
-      int l = warp::lane();
-      bool ok = l < Cfg::warps && l != me
-             && stealable(BlockScope::load_relaxed(&sh.warp_state[l].steal_word));
-      unsigned mask = __ballot_sync(warp::FULL, ok);
-      if (warp::leader()) stats().sibling_probes++;
-      if (!mask) return false;
-      WarpRing victim = ring_of(sh, deques, warp::pick_random(mask, next_random()));
-      if (warp::leader()) stats().sibling_claims++;
-      if (take(victim, body)) {
-        if (warp::leader()) stats().sibling_steals++;
-        n = C;
-        return true;
-      }
-    }
-    return false;
-  }
-
-  // Claim one chunk from a ring and copy it lane-per-task into registers.
-  template<class Ring>
-  __device__ bool take(Ring& ring, Body& body) {
-    Ticket t = warp::lead([&] { return ring.claim(1); });
-    if (!t.valid) return false;
-    body = warp::load_body(&ring[ring.chunk_pos(t, 0) + warp::lane()]);
-    __syncwarp();  // every lane's read lands before the slots are handed back
-    if (warp::leader()) ring.retire(t);
-    return true;
-  }
-
-  // Take the newest chunk of the global ring.
-  __device__ bool pop_global(Body& body, uint32_t& n) {
-    Timed t(*this, PHASE_GLOBAL);
-    Range r = warp::lead([&] {
-      stats().global_probes++;
-      if (DeviceScope::load_relaxed(&gctl->chunks) == 0) return Range{0, 0};
-      lock_global();
-      Range got = global.pop(C);
-      if (got.n == 0) unlock_global();
-      return got;
-    });
-    if (r.n == 0) return false;
-    if (uint32_t(warp::lane()) < r.n) body = warp::load_body(&global[r.pos + warp::lane()]);
-    __syncwarp();  // every lane's read lands before the lock lets the slots be reused
-    if (warp::leader()) {
-      unlock_global();
-      stats().global_pops++;
-    }
-    n = r.n;
-    return true;
-  }
-
-  // ---- publishing work ----
-
-  __device__ void maybe_release() {
-    Timed t(*this, PHASE_RELEASE);
+  __device__ void release_after_work() {
+    Timed t(*this, PHASE_QUEUE);
     if (!warp::leader()) return;
-    uint32_t full = mine.private_size() / C;
-    if (int(full) < policy.release_min_chunks || stealable(mine.probe())) return;
-    uint32_t k = full > 1 ? full / 2 : 1;
-    if (mine.release(k)) {
-      stats().releases++;
-      stats().released_chunks += k;
+    if (mine.release_half()) {
+      counters->releases++;
+      counters->released_chunks += 1;  // event count; chunk count varies
     }
   }
 
-  // ---- spawning ----
+  __device__ int pick_victim() const {
+    const uint32_t r = next_random();
+    int v = int(r % uint32_t(workers - 1));
+    if (v >= worker) ++v;
+    return v;
+  }
+
+  __device__ bool try_steal() {
+    if (workers <= 1) return false;
+    Timed t(*this, PHASE_STEAL_CLAIM);
+
+    const int victim = warp::lead([&] {
+      mine.acquire_half();
+      return pick_victim();
+    });
+
+    const bool can_steal = warp::lead([&] {
+      mine.progress();
+      Ring vr = ring_of(victim);
+      if (!stealable(vr.probe())) return false;
+      if (mine.owned_tasks() + Ring::max_steal_chunks * C > Ring::capacity) return false;
+      if (mine.used() + Ring::max_steal_chunks * C > Ring::capacity) return false;
+      return true;
+    });
+    if (!can_steal) {
+      if (warp::leader() && mine.used() + Ring::max_steal_chunks * C > Ring::capacity)
+        counters->pinned_waits++;
+      return false;
+    }
+
+    struct ClaimResult {
+      Ticket ticket;
+      bool   guard;
+    };
+
+    ClaimResult cr = warp::lead([&] {
+      ClaimResult out{{}, false};
+      counters->steal_attempts++;
+      Ring vr = ring_of(victim);
+      uint64_t pre = 0;
+      out.ticket = vr.claim(&pre);
+      if (steal_guard_tripped(pre)) {
+        out.guard = true;
+        term.record_error(worker, ERR_STEAL_COUNTER_GUARD);
+        out.ticket.valid = false;
+      }
+      return out;
+    });
+
+    if (cr.guard || !cr.ticket.valid) return false;
+
+    Timed tcopy(*this, PHASE_STEAL_COPY);
+    const Ticket ticket = cr.ticket;
+
+    Range dest = warp::lead([&] {
+      Range d{};
+      ReserveStatus rs = mine.incoming_reserve(ticket.n, &d);
+      if (rs == ReserveStatus::Full)
+        term.record_error(worker, ERR_QUEUE_CAPACITY, ticket.n * C, Ring::capacity - mine.owned_tasks());
+      GPUTC_CHECK(rs == ReserveStatus::Ok, "incoming reservation after claim");
+      return d;
+    });
+
+    Ring vr = ring_of(victim);
+    for (uint32_t j = 0; j < ticket.n; ++j) {
+      const uint32_t spos = vr.chunk_pos(ticket, j);
+      warp::copy_bodies<C>(&mine[dest.pos + j * C], &vr[spos]);
+    }
+    __syncwarp();
+
+    if (warp::leader()) {
+      vr.retire(ticket);
+      counters->steal_success++;
+      counters->stolen_chunks += ticket.n;
+      counters->stolen_tasks += ticket.n * C;
+      mine.release_half();
+    }
+    return true;
+  }
 
   __device__ void spawn(const Body& body, bool pred) {
     unsigned mask = __ballot_sync(warp::FULL, pred);
@@ -239,14 +223,13 @@ struct Worker {
     Timed t(*this, PHASE_SPAWN);
     uint32_t count = __popc(mask);
     Range r = reserve(count, count);
+    if (r.n == 0) return;
     if (pred) warp::store_body(&mine[r.pos + __popc(mask & warp::lanemask_lt())], body);
     __syncwarp();
     count_spawned(r.n, 1);
+    if (warp::leader()) mine.release_half();
   }
 
-  // Lane l spawns make(parent_l, 0..count_l-1). The warp's children are
-  // numbered lane-major, and each round every lane builds the next one,
-  // reading its parent from the owning lane.
   template<class Parent, class Make>
   __device__ void spawn_n(uint32_t count, const Parent& parent, Make& make) {
     const uint32_t inclusive = warp::inclusive_sum(count);
@@ -258,6 +241,7 @@ struct Worker {
         Timed t(*this, PHASE_SPAWN);
         r = reserve(total - done, min_u32(total - done, C));
       }
+      if (r.n == 0) return;
       uint32_t rounds = 0;
       for (uint32_t base = 0; base < r.n; base += warp::SIZE, ++rounds) {
         const uint32_t slot = base + warp::lane();
@@ -271,105 +255,55 @@ struct Worker {
       count_spawned(r.n, rounds);
       done += r.n;
     }
+    if (warp::leader()) mine.release_half();
   }
 
-  // Counted after the bodies are written and before any other warp can see
-  // them, which the termination check relies on.
   __device__ void count_spawned(uint32_t n, uint32_t rounds) {
     if (warp::leader()) {
-      sh.term.add_spawned(me, n);
-      stats().spawn_rounds += rounds;
+      term.add_spawned(worker, n);
+      counters->spawn_rounds += rounds;
     }
   }
 
-  // Reserve at least min and up to want deque slots, making room as needed.
   __device__ Range reserve(uint32_t want, uint32_t min) {
     for (;;) {
-      Range r = warp::lead([&] {
-        Range got = mine.push_reserve(want, min);
-        if (got.n > 0 && mine.used() > stats().deque_peak) stats().deque_peak = mine.used();
-        return got;
+      if (term.aborted()) return Range{0, 0};
+      ReserveStatus st = ReserveStatus::Retry;
+      Range         r{0, 0};
+      st = warp::lead([&] {
+        ReserveStatus rs = mine.push_reserve(want, min, &r);
+        if (rs == ReserveStatus::Ok && mine.used() > counters->deque_peak)
+          counters->deque_peak = mine.used();
+        return rs;
       });
-      if (r.n > 0) return r;
-      make_room();
-    }
-  }
-
-  // The deque is full. Spill the oldest half of the chunks this warp still
-  // holds; if it holds none, the space is pinned by siblings mid-copy, so wait.
-  __device__ void make_room() {
-    Timed t(*this, PHASE_SPILL);
-    uint32_t full = warp::lead([&] {
-      if (mine.reacquire() > 0) stats().reacquires++;
-      return mine.private_size() / C;
-    });
-    if (full == 0) {
-      if (warp::leader()) stats().pinned_waits++;
+      if (st == ReserveStatus::Ok) return r;
+      if (st == ReserveStatus::Full) {
+        warp::lead([&] {
+          term.record_error(worker, ERR_QUEUE_CAPACITY, min, Ring::capacity - mine.owned_tasks());
+        });
+        return Range{0, 0};
+      }
+      if (warp::leader()) mine.progress();
       __nanosleep(policy.pinned_wait_ns);
-      return;
-    }
-    spill(full > 1 ? full / 2 : 1);
-  }
-
-  // Move this warp's k oldest chunks to the top of the global ring.
-  __device__ void spill(uint32_t k) {
-    const uint32_t n = k * C;
-    uint32_t gpos = warp::lead([&] {
-      lock_global();
-      Range got = global.push_reserve(n, n);
-      GPUTC_CHECK(got.n == n, "global ring full; raise Cfg::global_chunks");
-      return got.pos;
-    });
-    Range r = warp::lead([&] { return mine.take_oldest(k); });
-    for (uint32_t j = 0; j < k; ++j) warp::copy_bodies<C>(&global[gpos + j * C], &mine[r.pos + j * C]);
-    __syncwarp();
-    if (warp::leader()) {
-      GPUTC_CHECK(r.n == n, "spill found fewer chunks than it reserved");
-      gctl->peak = max_u32(gctl->peak, global.used());
-      unlock_global();
-      stats().spills++;
-      stats().spilled_chunks += k;
     }
   }
-
-  // Lane 0 only. The lock orders every owner-side access to the global ring.
-  __device__ void lock_global() {
-    long long t0 = warp::clock();
-    while (!DeviceScope::cas_acquire(&gctl->lock, 0u, 1u)) __nanosleep(policy.lock_backoff_ns);
-    stats().lock_cycles += warp::clock() - t0;
-  }
-
-  __device__ void unlock_global() {
-    DeviceScope::store_relaxed(&gctl->chunks, global.used() / C);
-    DeviceScope::store_release(&gctl->lock, 0u);
-  }
-
-  // ---- idling ----
 
   __device__ bool idle() {
     Timed t(*this, PHASE_IDLE);
-    bool done = warp::lead([&] {
-      stats().idle_rounds++;
-      return sh.term.finished();
-    });
-    if (done) return true;
+    if (term.done() || term.aborted()) return true;
+    if (warp::leader()) counters->idle_rounds++;
     __nanosleep(backoff_ns);
-    backoff_ns = min(backoff_ns * 2, policy.backoff_max_ns);
-    return false;
+    backoff_ns = backoff_ns < policy.backoff_max_ns ? min(backoff_ns * 2, policy.backoff_max_ns) : policy.backoff_max_ns;
+    if (warp::leader() && worker == 0) term.try_finish();
+    return term.done();
   }
 
-  // ---- lifecycle ----
-
-  __device__ void seed(const Body& root) { spawn(root, warp::leader()); }
-
-  __device__ void finish(WarpCounters* out) {
-    enter(PHASE_IDLE);  // charge the phase still open
+  __device__ void finish() {
+    enter(PHASE_IDLE);
     if (!warp::leader()) return;
-    WarpCounters& c = stats();
-    c.tasks = sh.term.executed[me];
-    c.spawned = sh.term.spawned[me];
-    c.total_cycles = (Cfg::timing ? phase_t0 : warp::clock()) - start;
-    out[me] = c;
+    counters->spawned = DeviceScope::load_relaxed(&args.spawned[worker]);
+    counters->tasks   = DeviceScope::load_relaxed(&args.executed[worker]);
+    counters->total_cycles = (Cfg::timing ? phase_t0 : warp::clock()) - start;
   }
 };
 

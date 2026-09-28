@@ -1,4 +1,4 @@
-# UTS on GPU SAWS (libgputc V1).
+# UTS on GPU SAWS V2 (libgputc).
 #
 #   make                 build gpu-uts (needs nvcc, sm_80+) and uts-seq
 #   make test-uts-dev    host-only check of the ported tree code (no CUDA)
@@ -17,8 +17,9 @@ UTS   = ../uts
 
 DEFS      = -DBRG_RNG
 INCLUDES  = -I$(GPUTC) -I$(UTS)
+QUEUE_CHUNKS ?= 256
 NVCCFLAGS ?= -O3 -lineinfo
-NVCCFLAGS += -std=c++17 $(GENCODE) $(INCLUDES) $(DEFS)
+NVCCFLAGS += -std=c++17 $(GENCODE) $(INCLUDES) $(DEFS) -DGPUTC_DEQUE_CHUNKS=$(QUEUE_CHUNKS)
 CFLAGS    ?= -O3
 CFLAGS    += $(INCLUDES) $(DEFS)
 CXXFLAGS  ?= -O3

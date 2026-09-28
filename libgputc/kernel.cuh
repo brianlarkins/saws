@@ -1,8 +1,5 @@
 #pragma once
 
-// The persistent kernel. It is a template so it is instantiated in the
-// application's translation unit, where Task::execute can be inlined.
-
 #include <type_traits>
 
 #include "scheduler.cuh"
@@ -10,38 +7,53 @@
 namespace gputc {
 
 template<class Task, class Cfg>
-constexpr size_t deque_shared_bytes() {
-  return size_t(Cfg::warps) * Cfg::warp_chunks * Cfg::chunk * sizeof(typename Task::Body);
+struct KernelArgs {
+  using Body = typename Task::Body;
+  using State = RingState<Cfg::epochs>;
+
+  RunControl*         run;
+  unsigned long long* spawned;
+  unsigned long long* executed;
+  State*              states;
+  Body*               bodies;
+  WarpCounters*       out;
+  int                 worker_count;
+  Policy              policy;
+};
+
+template<class Task, class Cfg>
+__global__ void init_queues(KernelArgs<Task, Cfg> args, typename Task::Body root) {
+  const int w = blockIdx.x * (blockDim.x / warp::SIZE) + warp::id();
+  if (w >= args.worker_count) return;
+  if (warp::leader()) {
+    args.states[w].init(0);
+    args.spawned[w] = 0;
+    args.executed[w] = 0;
+  }
+  if (w == 0 && warp::leader()) {
+    constexpr uint32_t cap = Cfg::deque_chunks * Cfg::chunk;
+    args.bodies[0] = root;
+    args.states[0].head = 1;
+    args.spawned[0] = 1;
+    (void)cap;
+  }
 }
 
 template<class Task, class Cfg>
-__global__ void __launch_bounds__(Cfg::warps * warp::SIZE, 1)
+__global__ void __launch_bounds__(Cfg::warps_per_block * warp::SIZE)
 persistent_kernel(KernelArgs<Task, Cfg> args) {
   using Body = typename Task::Body;
-  static_assert(std::is_trivially_copyable<Body>::value, "task bodies are moved as raw memory");
-  static_assert(alignof(Body) <= 16, "task body alignment exceeds the shared-memory carve-up");
-  static_assert(Cfg::chunk == warp::SIZE, "lane-width tasks: one chunk is one task per lane");
-  static_assert(Cfg::warps >= 1 && Cfg::warps <= warp::SIZE, "a probe covers at most 32 sibling warps");
+  static_assert(std::is_trivially_copyable<Body>::value, "task bodies are trivially copyable");
+  static_assert(alignof(Body) <= 16, "task body alignment exceeds 16 bytes");
+  static_assert(Cfg::chunk == warp::SIZE, "one chunk is one task per lane");
+  static_assert(Cfg::warps_per_block >= 1, "at least one warp per block");
 
-  extern __shared__ __align__(16) unsigned char gputc_dynamic_smem[];
-  __shared__ Shared<Cfg> sh;
-  Body* deques = reinterpret_cast<Body*>(gputc_dynamic_smem);
+  const int w = blockIdx.x * (blockDim.x / warp::SIZE) + warp::id();
+  if (w >= args.worker_count) return;
 
-  const int me = warp::id();
-  if (warp::leader()) {
-    sh.warp_state[me].init();
-    sh.term.init(me);
-    sh.counters[me] = WarpCounters{};
-  }
-  if (threadIdx.x == 0) sh.term.done = 0;
-  __syncthreads();
-
-  Worker<Task, Cfg> worker(sh, deques, args);
-  if (me == 0) worker.seed(args.root);
-  __syncthreads();
-
+  Worker<Task, Cfg> worker(args, w);
   worker.run();
-  worker.finish(args.out);
+  worker.finish();
 }
 
 } // namespace gputc

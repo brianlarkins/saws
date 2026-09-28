@@ -4,15 +4,13 @@
 #include <cstdio>
 #include <cstdlib>
 
-#if defined(__CUDACC__)
-#define GPUTC_HD __host__ __device__ __forceinline__
-#define GPUTC_UNROLL _Pragma("unroll")
-#else
-#define GPUTC_HD inline
-#define GPUTC_UNROLL
+#ifndef __CUDACC__
+#error "gputc headers must be built with nvcc (include from a .cu file)"
 #endif
 
-// Always-on invariant check: traps on the device, aborts on the host.
+#define GPUTC_HD __host__ __device__ __forceinline__
+#define GPUTC_UNROLL _Pragma("unroll")
+
 #if defined(__CUDA_ARCH__)
 #define GPUTC_CHECK(cond, msg)                                                   \
   do {                                                                           \
@@ -37,5 +35,11 @@ GPUTC_HD constexpr bool is_pow2(uint32_t x) { return x != 0 && (x & (x - 1)) == 
 
 GPUTC_HD constexpr uint32_t min_u32(uint32_t a, uint32_t b) { return a < b ? a : b; }
 GPUTC_HD constexpr uint32_t max_u32(uint32_t a, uint32_t b) { return a > b ? a : b; }
+
+GPUTC_HD constexpr uint32_t bit_width(uint32_t x) {
+  return x == 0 ? 0u : 32u - __builtin_clz(x);
+}
+
+GPUTC_HD constexpr uint32_t ceil_div_u32(uint32_t a, uint32_t b) { return b ? (a + b - 1) / b : 0; }
 
 } // namespace gputc

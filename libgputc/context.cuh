@@ -15,7 +15,8 @@ struct Ctx {
   Worker& worker;
 
   __device__ int lane() const { return gputc::warp::lane(); }
-  __device__ int warp() const { return gputc::warp::id(); }
+  // Global worker id (not the block-local warp index).
+  __device__ int warp() const { return worker.worker; }
   __device__ int warp_max(int v) const { return gputc::warp::reduce_max(v); }
 
   // Spawn one task per lane where pred holds.

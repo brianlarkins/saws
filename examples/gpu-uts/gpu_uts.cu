@@ -1,11 +1,11 @@
-// UTS on GPU SAWS (libgputc V1): one persistent block, warp deques in shared
-// memory, one global ring. Takes the same arguments as the CPU UTS drivers:
+// UTS on GPU SAWS V2 (libgputc): cooperative multi-block grid, global deques.
 //
 //   source ../uts/sample_trees.sh && ./gpu-uts $T1
 //
 // Extra flags:
-//   -S 1       print a per-warp breakdown after the summary
-//   -W warps   warps in the block: 8 (default), 16 or 32
+//   -S 1       per-worker statistics table
+//   -W warps   warps per block (default 8)
+//   -B blocks  block count (0 = occupancy auto, default 0)
 
 #include <cstdio>
 #include <cstdlib>
@@ -15,10 +15,11 @@
 #include "uts_params.h"
 
 static int stats_per_warp = 0;
-static int block_warps = 8;
+static int block_warps    = 8;
+static int grid_blocks    = 0;
 
 extern "C" {
-char* impl_getName() { return (char*)"GPU SAWS (libgputc, single block)"; }
+char* impl_getName() { return (char*)"GPU SAWS V2 (libgputc, global deques)"; }
 int   impl_paramsToStr(char* buf, int ind) {
   return ind + std::sprintf(buf + ind, "Execution strategy:  %s\n", impl_getName());
 }
@@ -31,11 +32,16 @@ int   impl_parseParam(char* param, char* value) {
     block_warps = std::atoi(value);
     return 0;
   }
+  if (std::strcmp(param, "-B") == 0) {
+    grid_blocks = std::atoi(value);
+    return 0;
+  }
   return 1;
 }
 void  impl_helpMessage() {
-  std::printf("   -S  int   nonzero to print per-warp statistics\n");
-  std::printf("   -W  int   warps in the block: 8, 16 or 32\n");
+  std::printf("   -S  int   nonzero to print per-worker statistics\n");
+  std::printf("   -W  int   warps per block (e.g. 1, 4, 8, 16, 32)\n");
+  std::printf("   -B  int   blocks (0 = automatic cooperative grid)\n");
 }
 void  impl_abort(int err) { std::exit(err); }
 }
@@ -61,22 +67,30 @@ struct UtsTask {
   }
 };
 
-// Warp deques share about 96 KB of shared memory (sm_86 allows 99 KB per
-// block), so more warps means shallower deques.
-template<int Warps, int DequeChunks>
+#ifndef GPUTC_DEQUE_CHUNKS
+#define GPUTC_DEQUE_CHUNKS 256
+#endif
+
+template<int Warps>
 struct UtsConfig : gputc::DefaultConfig {
-  static constexpr int warps       = Warps;
-  static constexpr int warp_chunks = DequeChunks;
-  static constexpr int warp_epochs = DequeChunks < 8 ? 4 : 8;
+  static constexpr int warps_per_block = Warps;
+  static constexpr int deque_chunks    = GPUTC_DEQUE_CHUNKS;
+  static constexpr int epochs          = 8;
+  static constexpr bool timing         = false;
 };
 
 static gputc::Stats run_tree(const UtsNode& root) {
+  gputc::LaunchOptions launch{};
+  launch.blocks = grid_blocks;
+  gputc::Policy policy{};
   switch (block_warps) {
-    case 8:  return gputc::run<UtsTask, UtsConfig<8, 8>>(root);
-    case 16: return gputc::run<UtsTask, UtsConfig<16, 4>>(root);
-    case 32: return gputc::run<UtsTask, UtsConfig<32, 2>>(root);
+    case 1:  return gputc::run<UtsTask, UtsConfig<1>>(root, policy, launch);
+    case 4:  return gputc::run<UtsTask, UtsConfig<4>>(root, policy, launch);
+    case 8:  return gputc::run<UtsTask, UtsConfig<8>>(root, policy, launch);
+    case 16: return gputc::run<UtsTask, UtsConfig<16>>(root, policy, launch);
+    case 32: return gputc::run<UtsTask, UtsConfig<32>>(root, policy, launch);
   }
-  std::fprintf(stderr, "gpu-uts: -W must be 8, 16 or 32\n");
+  std::fprintf(stderr, "gpu-uts: -W must be 1, 4, 8, 16 or 32\n");
   std::exit(4);
 }
 

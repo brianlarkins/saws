@@ -1,22 +1,13 @@
 #pragma once
 
-// SawsRing: the one SAWS queue, used for per-warp deques in shared memory, the
-// block's global ring, and host tests. It is a non-owning view over a
-// RingState and slot storage placed wherever the caller chose.
-//
-// Layout, in free-running task positions (oldest to newest):
+// SawsRing: one SAWS deque per worker in global memory (V2). Non-owning view over
+// a RingState and a slice of a body slab.
 //
 //   tail ...closed epochs... pub_base ...published epoch... split ...private... head
 //
-// [tail, pub_base) is claimed work that thieves may still be copying out.
-// [pub_base, split) is the published epoch described by the steal word, in
-// whole chunks. [split, head) is private to the owner.
-//
-// Every method is a protocol step performed by a single agent. Owner methods
-// require exclusive ownership (one warp's lane 0, or whoever holds a lock);
-// thief methods are lock-free. Moving task bodies is left to the caller, so a
-// warp can copy them with all lanes between the protocol steps.
+// Owner methods run on lane 0; thief claim/retire are lock-free.
 
+#include "atomics.hpp"
 #include "common.hpp"
 #include "steal_word.hpp"
 #include "epoch.hpp"
@@ -33,7 +24,6 @@ struct RingState {
   bool     published;
   EpochFifo<Epochs> epochs;
 
-  // start is the first task position, a multiple of the chunk size.
   GPUTC_HD void init(uint32_t start = 0) {
     steal_word = closed_word();
     tail = pub_base = split = head = start;
@@ -44,10 +34,8 @@ struct RingState {
   }
 };
 
-// Capacities are powers of two so positions can wrap freely, small enough that
-// avail fits its field, and dividing the steal word's base span.
 GPUTC_HD constexpr bool valid_capacity(uint32_t cap_chunks) {
-  return is_pow2(cap_chunks) && cap_chunks <= MAX_AVAIL && cap_chunks <= BASE_SPAN;
+  return is_pow2(cap_chunks) && cap_chunks <= MAX_INITIAL && cap_chunks <= BASE_SPAN;
 }
 
 struct Range {
@@ -55,13 +43,20 @@ struct Range {
   uint32_t n;
 };
 
-template<class Body, class Scope, uint32_t Chunk, uint32_t CapChunks, int Epochs>
+enum class ReserveStatus : uint8_t {
+  Ok,
+  Retry,   // pinned copies may free space
+  Full,    // owned work + reservation exceeds capacity
+};
+
+template<class Body, uint32_t Chunk, uint32_t CapChunks, int Epochs>
 struct SawsRing {
   using State = RingState<Epochs>;
-  static constexpr uint32_t chunk    = Chunk;
-  static constexpr uint32_t capacity = CapChunks * Chunk;  // in tasks
+  static constexpr uint32_t chunk      = Chunk;
+  static constexpr uint32_t capacity   = CapChunks * Chunk;
+  static constexpr uint32_t max_steal_chunks = max_u32(1u, CapChunks / 2);
   static_assert(is_pow2(Chunk), "chunk must be a power of two");
-  static_assert(valid_capacity(CapChunks), "ring capacity must be a power of two that fits the steal word");
+  static_assert(valid_capacity(CapChunks), "ring capacity must fit the steal word");
 
   State* st;
   Body*  slots;
@@ -70,123 +65,138 @@ struct SawsRing {
 
   GPUTC_HD Body& operator[](uint32_t pos) const { return slots[pos & (capacity - 1)]; }
 
-  // ---- owner-side queries ----
-
   GPUTC_HD uint32_t used() const { return st->head - st->tail; }
   GPUTC_HD uint32_t private_size() const { return st->head - st->split; }
   GPUTC_HD uint32_t public_chunks() const { return (st->split - st->pub_base) / chunk; }
 
-  // ---- owner: private end ----
-
-  // Reserve up to `want` slots at the head, but only if at least `min` fit
-  // after reclaiming what it can. The caller writes [pos, pos + n); n == 0
-  // means fewer than `min` slots were free.
-  GPUTC_HD Range push_reserve(uint32_t want, uint32_t min) {
-    if (used() + want > capacity) {
-      roll();
-      reclaim();
-    }
-    uint32_t n = min_u32(want, capacity - used());
-    if (n == 0 || n < min) return Range{st->head, 0};
-    Range r{st->head, n};
-    st->head += n;
-    return r;
+  GPUTC_HD uint32_t unclaimed_public_chunks() const {
+    if (!st->published) return 0;
+    uint64_t w = DeviceScope::load_relaxed(&st->steal_word);
+    return half_remaining(initial_of(w), attempts_of(w));
   }
 
-  // Remove up to max tasks from the head; the caller reads [pos, pos + n).
+  GPUTC_HD uint32_t owned_tasks() const {
+    return private_size() + unclaimed_public_chunks() * chunk;
+  }
+
+  // ---- owner: private end ----
+
+  GPUTC_HD ReserveStatus push_reserve(uint32_t want, uint32_t min, Range* out) {
+    roll();
+    reclaim();
+    if (owned_tasks() + min > capacity) return ReserveStatus::Full;
+    if (used() + min > capacity) return ReserveStatus::Retry;
+    uint32_t n = min_u32(want, capacity - used());
+    if (n < min) return ReserveStatus::Retry;
+    *out = Range{st->head, n};
+    st->head += n;
+    return ReserveStatus::Ok;
+  }
+
   GPUTC_HD Range pop(uint32_t max) {
     uint32_t n = min_u32(max, private_size());
     st->head -= n;
     return Range{st->head, n};
   }
 
-  // Remove the k oldest chunks the owner holds so the caller can move them
-  // elsewhere. Unclaimed public chunks come back first. The caller reads
-  // [pos, pos + n) before its next push; n == 0 unless k chunks were held.
-  GPUTC_HD Range take_oldest(uint32_t k) {
-    reacquire();
-    const uint32_t n = k * chunk;
-    if (n == 0 || private_size() < n) return Range{st->split, 0};
-    Range r{st->split, n};
-    st->pub_base = st->split = st->split + n;
+  // Space for an incoming steal of up to max_steal_chunks (conservative bound).
+  GPUTC_HD ReserveStatus incoming_reserve(uint32_t steal_chunks, Range* dest) {
+    roll();
     reclaim();
-    return r;
+    const uint32_t need = steal_chunks * chunk;
+    if (owned_tasks() + need > capacity) return ReserveStatus::Full;
+    if (used() + need > capacity) return ReserveStatus::Retry;
+    *dest = Range{st->head, need};
+    st->head += need;
+    return ReserveStatus::Ok;
   }
 
-  // ---- owner: epochs ----
+  // ---- owner: half release / acquire ----
 
-  // Publish the k oldest private chunks. The unclaimed rest of the published
-  // epoch is adjacent, so it is republished in the same new epoch without a copy.
-  GPUTC_HD bool release(uint32_t k) {
-    if (k == 0 || private_size() < k * chunk) return false;
+  // Publish ~half of the oldest private chunks when the current epoch is exhausted.
+  GPUTC_HD bool release_half() {
+    const uint32_t full = private_size() / chunk;
+    if (full == 0) return false;
+    if (st->published && unclaimed_public_chunks() > 0) return false;
     if (!can_release()) return false;
-    close();
+    if (st->published) close();
+    const uint32_t k = ceil_div_u32(full, 2);
     st->split += k * chunk;
     publish();
     return true;
   }
 
-  // Pull every unclaimed public chunk back to the private end.
-  GPUTC_HD uint32_t reacquire() {
+  // Pull half of unclaimed public work when private is empty.
+  GPUTC_HD bool acquire_half() {
+    if (private_size() > 0) return true;
+    if (!st->published) return false;
+    if (!st->epochs.can_close_and_publish()) {
+      reclaim();
+      if (!st->epochs.can_close_and_publish()) return false;
+    }
     close();
-    uint32_t n = public_chunks();
-    st->split = st->pub_base;
-    return n;
+    const uint32_t R = public_chunks();
+    if (R == 0) return false;
+    const uint32_t reacq = ceil_div_u32(R, 2);
+    const uint32_t pub   = R / 2;
+    st->split -= reacq * chunk;
+    if (pub > 0) publish(pub);
+    return true;
   }
 
-  // An epoch slot is free for the next release (reclaiming if needed).
   GPUTC_HD bool can_release() {
     if (st->epochs.can_close_and_publish()) return true;
     reclaim();
     return st->epochs.can_close_and_publish();
   }
 
-  // Free the space of closed epochs whose chunks have all been copied out.
   GPUTC_HD void reclaim() {
     auto& f = st->epochs;
     while (!f.empty()) {
       EpochRec& r = f.oldest();
-      if (Scope::load_acquire(&r.retired) != r.taken) break;
+      if (DeviceScope::load_acquire(&r.retired) != r.taken) break;
       st->tail = r.end;
       ++f.head;
     }
     if (f.empty()) st->tail = st->pub_base;
   }
 
-  // ---- thief ----
-
-  GPUTC_HD uint64_t probe() const { return Scope::load_relaxed(&st->steal_word); }
-
-  GPUTC_HD Ticket claim(uint32_t n) {
-    uint64_t old = Scope::fetch_add_acq_rel(&st->steal_word, claim_increment(n));
-    return interpret(old, n);
+  GPUTC_HD void progress() {
+    roll();
+    reclaim();
   }
 
-  // Task position of the first task of chunk j of a ticket.
+  // ---- thief ----
+
+  GPUTC_HD uint64_t probe() const { return DeviceScope::load_relaxed(&st->steal_word); }
+
+  GPUTC_HD Ticket claim(uint64_t* pre_increment = nullptr) {
+    uint64_t old = DeviceScope::fetch_add_acq_rel(&st->steal_word, claim_ticket_increment());
+    if (pre_increment) *pre_increment = old;
+    return interpret_claim(old);
+  }
+
   GPUTC_HD uint32_t chunk_pos(const Ticket& t, uint32_t j) const {
     return ((t.base + t.first + j) & (BASE_SPAN - 1)) * chunk;
   }
 
-  // Report the copy-out complete; the owner may then reuse those slots.
   GPUTC_HD void retire(const Ticket& t) {
-    Scope::fetch_add_release(&st->epochs.rec[t.epoch].retired, t.n);
+    DeviceScope::fetch_add_release(&st->epochs.rec[t.epoch].retired, t.n);
   }
 
 private:
-  // Claimed chunks of the published epoch can only be reclaimed once it
-  // closes, so a full ring closes it and republishes the unclaimed remainder.
   GPUTC_HD void roll() {
     if (!st->published || !st->epochs.can_close_and_publish()) return;
     close();
-    publish();
+    if (public_chunks() > 0) publish();
   }
 
   GPUTC_HD void close() {
     if (!st->published) return;
-    uint64_t old = Scope::fetch_or_acq_rel(&st->steal_word, CLOSED_BIT);
+    uint64_t old = DeviceScope::fetch_or_acq_rel(&st->steal_word, CLOSED_BIT);
     st->published = false;
-    uint32_t t = taken(old);
-    if (t == 0) return;  // no ticket landed, the slot is reused as is
+    const uint32_t t = taken_at_close(old);
+    if (t == 0) return;
     auto& f = st->epochs;
     EpochRec& r = f.published();
     r.taken = t;
@@ -195,13 +205,14 @@ private:
     ++f.next;
   }
 
-  GPUTC_HD void publish() {
-    uint32_t avail = public_chunks();
+  GPUTC_HD void publish() { publish(public_chunks()); }
+
+  GPUTC_HD void publish(uint32_t avail) {
     if (avail == 0) return;
     auto& f = st->epochs;
-    Scope::store_relaxed(&f.published().retired, 0u);
+    DeviceScope::store_relaxed(&f.published().retired, 0u);
     uint64_t w = pack(Fields{0, false, EpochFifo<Epochs>::slot(f.next), avail, st->pub_base / chunk});
-    Scope::store_release(&st->steal_word, w);
+    DeviceScope::store_release(&st->steal_word, w);
     st->published = true;
   }
 };

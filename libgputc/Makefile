@@ -1,39 +1,27 @@
-# Host-only tests for the queue protocol. No CUDA required.
+# libgputc tests (requires nvcc and a CUDA device for the ring smoke test).
 #
-#   make test        optimized build, run all tests
-#   make tsan        ThreadSanitizer build, run all tests
+#   make test
 
-CXX      ?= c++
-CXXFLAGS ?= -O2 -g
-CXXFLAGS += -std=c++17 -Wall -Wextra -I. -pthread
+CUDA_HOME ?= /usr/local/cuda
+NVCC      ?= $(or $(shell command -v nvcc 2>/dev/null),$(CUDA_HOME)/bin/nvcc)
+GENCODE   ?= -arch=native
 
-TESTS = test_steal_word test_saws_ring
+NVCCFLAGS ?= -O2 -g
+NVCCFLAGS += -std=c++17 -I. $(GENCODE)
+
 HEADERS = $(wildcard *.hpp) tests/check.hpp
+BUILD   = build
 
-BUILD = build
-TSAN  = build/tsan
+.PHONY: all test clean
 
-all: $(TESTS:%=$(BUILD)/%)
+all: test
 
-$(BUILD)/%: tests/%.cpp $(HEADERS)
+$(BUILD)/test_protocol: tests/test_protocol.cu $(HEADERS)
 	@mkdir -p $(BUILD)
-	$(CXX) $(CXXFLAGS) $< -o $@
+	$(NVCC) $(NVCCFLAGS) tests/test_protocol.cu -o $@
 
-$(TSAN)/%: tests/%.cpp $(HEADERS)
-	@mkdir -p $(TSAN)
-	$(CXX) $(CXXFLAGS) -O1 -fsanitize=thread $< -o $@
-
-test: $(TESTS:%=$(BUILD)/%)
-	@for t in $^; do $$t || exit 1; done
-
-# Linux kernels with high mmap randomization break TSan's memory layout
-# ("unexpected memory mapping"); running without ASLR avoids it.
-TSAN_RUN ?= $(if $(filter Linux,$(shell uname -s)),setarch $(shell uname -m) -R)
-
-tsan: $(TESTS:%=$(TSAN)/%)
-	@for t in $^; do $(TSAN_RUN) $$t || exit 1; done
+test: $(BUILD)/test_protocol
+	$(BUILD)/test_protocol
 
 clean:
 	rm -rf $(BUILD)
-
-.PHONY: all test tsan clean
