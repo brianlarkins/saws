@@ -107,7 +107,7 @@ char *gtc_queue_name_saws() {
 void gtc_progress_saws(gtc_t gtc) {
   GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
-  static int cc = 0;
+  saws_shrb_t *rb = (saws_shrb_t *)tc->shared_rb;
   TC_START_TIMER(tc,progress);
 
 #if 0 /* no task pushing */
@@ -132,9 +132,9 @@ void gtc_progress_saws(gtc_t gtc) {
     saws_shrb_release(tc->shared_rb);
 
   // Attempt to reclaim space
-  if ((cc++ % ((saws_shrb_t *)tc->shared_rb)->reclaimfreq) == 0)
+  if ((rb->progresscc++ % rb->reclaimfreq) == 0)
     saws_shrb_reclaim_space(tc->shared_rb);
-  ((saws_shrb_t *)tc->shared_rb)->nprogress++;
+  rb->nprogress++;
   TC_STOP_TIMER(tc,progress);
   GTC_EXIT();
 }
@@ -407,7 +407,7 @@ void gtc_print_stats_saws(gtc_t gtc) {
     perensure    = rb->nensure       != 0 ? TC_READ_TIMER(tc,ensure)    / rb->nensure       : 0;
     perrelease   = rb->nrelease      != 0 ? TC_READ_TIMER(tc,release)   / rb->nrelease      : 0;
     perreacquire = rb->nreacquire    != 0 ? TC_READ_TIMER(tc,reacquire) / rb->nreacquire    : 0;
-    perpoptail   = rb->ngets         != 0 ? TC_READ_TIMER(tc,poptail)   / rb->ngets         : 0;
+    perpoptail   = rb->nsteals       != 0 ? TC_READ_TIMER(tc,poptail)   / rb->nsteals       : 0;
 
     printf(" %4d - saws-Q: nrelease %6lu, nreacquire %6lu, nreclaimed %6lu, nwaited %2lu, nprogress %6lu\n"
            " %4d -    failed w/lock: %6lu, failed w/o lock: %6lu, aborted steals: %6lu\n"
@@ -475,7 +475,7 @@ void gtc_print_gstats_saws(gtc_t gtc) {
   times[SAWSEnsureTime]         = TC_READ_TIMER_USEC(tc,ensure);
   times[SAWSReacquireTime]      = TC_READ_TIMER_MSEC(tc,reacquire);
   times[SAWSReleaseTime]        = TC_READ_TIMER_USEC(tc,release);
-  times[SAWSPerPopTailTime]     = rb->ngets         != 0 ? TC_READ_TIMER_MSEC(tc,poptail)   / rb->ngets         : 0.0;
+  times[SAWSPerPopTailTime]     = rb->nsteals       != 0 ? TC_READ_TIMER_MSEC(tc,poptail)   / rb->nsteals       : 0.0;
   times[SAWSPerGetMetaTime]     = rb->nmeta         != 0 ? TC_READ_TIMER_MSEC(tc,getmeta)   / rb->nmeta         : 0.0;
   times[SAWSPerProgressTime]    = rb->nprogress     != 0 ? TC_READ_TIMER_USEC(tc,progress)  / rb->nprogress     : 0.0;
   times[SAWSPerReclaimTime]     = rb->nreccalls     != 0 ? TC_READ_TIMER_USEC(tc,reclaim)   / rb->nreccalls     : 0.0;

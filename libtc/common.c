@@ -195,6 +195,8 @@ void gtc_reset(gtc_t gtc) {
   tc->ct.tasks_spawned   = 0;
   tc->ct.tasks_stolen    = 0;
   tc->ct.num_steals      = 0;
+  tc->ct.steal_ops_ok    = 0;
+  tc->ct.steal_ops_failed= 0;
   tc->ct.passive_count   = 0;
   tc->ct.failed_steals_locked   = 0;
   tc->ct.failed_steals_unlocked = 0;
@@ -440,10 +442,13 @@ int gtc_steal_tail(gtc_t gtc, int target) {
   TC_STOP_ATIMER(temp);
 
   // account into success or failed steal timers
-  if (stealsize > 0)
+  if (stealsize > 0) {
     TC_ADD_TIMER(tc, getsteal, temp);
-  else
+    tc->ct.steal_ops_ok++;
+  } else {
     TC_ADD_TIMER(tc, getfail, temp);
+    tc->ct.steal_ops_failed++;
+  }
 
   if (stealsize > 0) {
     gtc_lprintf(DBGGET, "\tthread %d: steal try: %d got: %d tasks from thread %d\n", _c->rank, req_stealsize, stealsize, target);
@@ -481,6 +486,10 @@ int gtc_try_steal_tail(gtc_t gtc, int target) {
 
   gtc_lprintf(DBGGET, "attempting to steal from %d\n", target);
 
+  tc_timer_t temp;
+  TC_INIT_ATIMER(temp);
+  TC_START_ATIMER(temp);
+
 #ifdef QUEUE_TRY_POP_N_TAIL
   if (tc->qtype == GtcQueueSAWS)
     stealsize = tc->cb.try_pop_n_tail(tc->shrb, target, req_stealsize, tc->steal_buf, tc->ldbal_cfg.      steal_method);
@@ -492,6 +501,14 @@ int gtc_try_steal_tail(gtc_t gtc, int target) {
   stealsize = tc->rcb.pop_n_tail(tc->shared_rb, target, req_stealsize, tc->steal_buf, tc->ldbal_cfg.         steal_method);
 #endif
 
+  TC_STOP_ATIMER(temp);
+  if (stealsize > 0) {
+    TC_ADD_TIMER(tc, getsteal, temp);
+    tc->ct.steal_ops_ok++;
+  } else {
+    TC_ADD_TIMER(tc, getfail, temp);
+    tc->ct.steal_ops_failed++;
+  }
 
   if (stealsize > 0) {
     gtc_lprintf(DBGGET, "stole %d tasks from %d\n", stealsize, target);
@@ -634,7 +651,9 @@ typedef enum {
   SearchTime,
   AcquireTime,
   DispersionTime,
-  ImbalanceTime
+  ImbalanceTime,
+  StealOkTime,
+  StealFailTime
 } gtc_gtimestats_e;
 
 
@@ -642,7 +661,9 @@ typedef enum {
   TasksCompleted,
   TasksStolen,
   NumSteals,
-  DispersionAttempts
+  DispersionAttempts,
+  StealOkOps,
+  StealFailOps
 } gtc_gcountstats_e;
 
 
@@ -680,13 +701,13 @@ void gtc_print_gstats(gtc_t gtc) {
   fflush(NULL);
   shmem_barrier_all();
 
-  int ntimes = 7;
+  int ntimes = 8;
   times     = gtc_shmem_calloc(ntimes, sizeof(double));
   mintimes  = gtc_shmem_calloc(ntimes, sizeof(double));
   maxtimes  = gtc_shmem_calloc(ntimes, sizeof(double));
   sumtimes  = gtc_shmem_calloc(ntimes, sizeof(double));
 
-  int ncounts = 4;
+  int ncounts = 6;
   counts     = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
   mincounts  = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
   maxcounts  = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
@@ -790,13 +811,13 @@ void gtc_print_stats(gtc_t gtc) {
   fflush(NULL);
   shmem_barrier_all();
 
-  int ntimes = 7;
+  int ntimes = 8;
   times     = gtc_shmem_calloc(ntimes, sizeof(double));
   mintimes  = gtc_shmem_calloc(ntimes, sizeof(double));
   maxtimes  = gtc_shmem_calloc(ntimes, sizeof(double));
   sumtimes  = gtc_shmem_calloc(ntimes, sizeof(double));
 
-  int ncounts = 4;
+  int ncounts = 6;
   counts     = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
   mincounts  = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
   maxcounts  = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
@@ -820,6 +841,10 @@ void gtc_print_stats(gtc_t gtc) {
   counts[TasksStolen]        = tc->ct.tasks_stolen;
   counts[NumSteals]          = tc->ct.num_steals;
   counts[DispersionAttempts] = tc->ct.dispersion_attempts_locked + tc->ct.dispersion_attempts_unlocked;
+  counts[StealOkOps]         = tc->ct.steal_ops_ok;
+  counts[StealFailOps]       = tc->ct.steal_ops_failed;
+  times[StealOkTime]         = TC_READ_TIMER_USEC(tc,getsteal);
+  times[StealFailTime]       = TC_READ_TIMER_USEC(tc,getfail);
 
   shmem_min_reduce(SHMEM_TEAM_WORLD, mintimes, times, ntimes);
   shmem_max_reduce(SHMEM_TEAM_WORLD, maxtimes, times, ntimes);
@@ -849,6 +874,13 @@ void gtc_print_stats(gtc_t gtc) {
 
   eprintf("        : imbalance  %6.2fms/%6.2fms/%6.2fms  termination attempts: %d\n",
       sumtimes[ImbalanceTime]/_c->size, mintimes[ImbalanceTime], maxtimes[ImbalanceTime], tc->td->num_attempts);
+
+  // per-operation cost of the queue's steal call (gtc_steal_tail / gtc_try_steal_tail), all PEs
+  eprintf("        : steal ops  ok %lu avg %.3f us, failed %lu avg %.3f us\n",
+      sumcounts[StealOkOps],
+      sumcounts[StealOkOps]   ? sumtimes[StealOkTime]/sumcounts[StealOkOps]     : 0.0,
+      sumcounts[StealFailOps],
+      sumcounts[StealFailOps] ? sumtimes[StealFailTime]/sumcounts[StealFailOps] : 0.0);
 
   tc->cb.print_gstats(gtc);
 

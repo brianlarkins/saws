@@ -266,6 +266,8 @@ struct tc_counters_s {
   tc_counter_t         dispersion_attempts_unlocked; // failed_steals_unlocked during dispersion
   tc_counter_t         getcalls;                  // # of calls to get_buf
   tc_counter_t         getlocal;                  // # of calls resulting in local work found
+  tc_counter_t         steal_ops_ok;              // # timed steal operations that returned work (getsteal timer)
+  tc_counter_t         steal_ops_failed;          // # timed steal operations that returned none (getfail timer)
 };
 typedef struct tc_counters_s tc_counters_t;
 

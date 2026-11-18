@@ -274,15 +274,16 @@ void sdc_shrb_release(sdc_shrb_t *rb) {
   GTC_ENTRY();
   // Favor placing work in the shared portion -- if there is only one task
   // available this scheme will put it in the shared portion.
-  TC_START_TIMER(rb->tc, release);
+  // time only actual releases, so per-release averages are meaningful
   if (sdc_shrb_local_size(rb) > 0 && sdc_shrb_shared_size(rb) == 0) {
+    TC_START_TIMER(rb->tc, release);
     int amount  = sdc_shrb_local_size(rb)/2 + sdc_shrb_local_size(rb) % 2;
     rb->nlocal -= amount;
     rb->split   = (rb->split + amount) % rb->max_size;
     rb->nrelease++;
     gtc_lprintf(DBGSHRB, "release: local size: %d shared size: %d\n", sdc_shrb_local_size(rb), sdc_shrb_shared_size(rb));
+    TC_STOP_TIMER(rb->tc, release);
   }
-  TC_STOP_TIMER(rb->tc, release);
   GTC_EXIT();
 }
 

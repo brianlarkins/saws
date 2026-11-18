@@ -119,6 +119,15 @@ void saws_shrb_reset(saws_shrb_t *rb) {
   rb->nreacquire = 0;
   rb->nwaited    = 0;
   rb->nreclaimed = 0;
+  rb->nreccalls  = 0;
+  rb->nprogress  = 0;
+  rb->ngets      = 0;
+  rb->nensure    = 0;
+  rb->nxfer      = 0;
+  rb->nsteals    = 0;
+  rb->nmeta      = 0;
+  rb->pushcc     = 0;
+  rb->progresscc = 0;
   uint64_t sv = 3;
   rb->steal_val |= sv << 38;
   //rb->steal_val = sv;
@@ -208,6 +217,13 @@ static inline uint64_t saws_get_stealval(uint64_t steal_val, uint64_t *asteals, 
 static inline uint64_t saws_disable_steals(saws_shrb_t *rb) {
   static uint64_t val = SAWS_MAX_EPOCHS << 38;
   return shmem_atomic_fetch_or(&rb->steal_val, val, rb->procid);
+}
+
+/* Completion status entries are written by thieves with remote atomics while the
+ * owner polls them.  Load them atomically so the compiler cannot hoist the reads
+ * out of a polling loop. */
+static inline int saws_status(saws_shrb_t *rb, int epoch, int i) {
+  return __atomic_load_n(&rb->completed[epoch].status[i], __ATOMIC_ACQUIRE);
 }
 
 static inline int saws_max_steals(uint64_t itasks) {
@@ -301,8 +317,9 @@ int saws_shrb_reclaim_space(saws_shrb_t *rb) {
   TC_START_TIMER(rb->tc, reclaim);
   if (!rb->completed[rb->last].done) {
     for (int i = 0; i < rb->completed[rb->last].maxsteals; i++){
-      if (rb->completed[rb->last].status[i] == 0) { TC_STOP_TIMER(rb->tc, reclaim); GTC_EXIT(0);}
-      sum += rb->completed[rb->last].status[i];
+      int st = saws_status(rb, rb->last, i);
+      if (st == 0) { TC_STOP_TIMER(rb->tc, reclaim); GTC_EXIT(0);}
+      sum += st;
     }
     // if so, update tail index accordingly.
     if (sum == rb->completed[rb->last].itasks) {
@@ -313,9 +330,10 @@ int saws_shrb_reclaim_space(saws_shrb_t *rb) {
   // find longest sequence of completed steals in current epoch
   sum = 0;
   for (int i = 0; i < rb->completed[rb->cur].maxsteals; i++) {
-    if (rb->completed[rb->cur].status[i] == 0)
+    int st = saws_status(rb, rb->cur, i);
+    if (st == 0)
       break;
-    sum += rb->completed[rb->cur].status[i];
+    sum += st;
   }
   if (sum == rb->completed[rb->cur].itasks) {
     rb->completed[rb->cur].done = 1;
@@ -339,6 +357,7 @@ void saws_shrb_ensure_space(saws_shrb_t *rb, int n) {
   // Ensure that there is enough free space in the queue.  If there isn't
   // wait until others finish their deferred copies so we can reclaim space.
   TC_START_TIMER(rb->tc, ensure);
+  rb->nensure++;
   if (rb->max_size - (saws_shrb_local_size(rb) + saws_shrb_public_size(rb)) < n) {
     saws_shrb_reclaim_space(rb);
     if (rb->max_size - saws_shrb_size(rb) < n) {
@@ -360,9 +379,9 @@ void saws_shrb_release(saws_shrb_t *rb) {
   uint64_t  steal_val;
   uint64_t nshared;
 
-  TC_START_TIMER(rb->tc, release);
-
+  // time only actual releases, so per-release averages are meaningful
   if (saws_shrb_local_size(rb) > 0 && (saws_shrb_shared_size(rb) == 0)) {
+    TC_START_TIMER(rb->tc, release);
     nshared  = rb->nlocal / 2 + rb->nlocal % 2;
     rb->nlocal  -= nshared;
     rb->split    = (rb->split + nshared) % rb->max_size;
@@ -379,9 +398,9 @@ void saws_shrb_release(saws_shrb_t *rb) {
     steal_val = saws_set_stealval(rb->cur, nshared, rb->tail);
     shmem_atomic_set(&rb->steal_val, steal_val, rb->procid);
     rb->nrelease++;
+    TC_STOP_TIMER(rb->tc, release);
   }
   assert (rb->tail >= 0 && rb->tail < rb->max_size);
-  TC_STOP_TIMER(rb->tc, release);
   GTC_EXIT();
 }
 
@@ -411,6 +430,7 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
     return;
 
   TC_START_TIMER(rb->tc, reacquire);
+  rb->nreacquire++;
 
   // disable steals and determine shared queue state
   steal_val = saws_disable_steals(rb);
@@ -418,18 +438,19 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
   gtc_lprintf(DBGSHRB, "steals disabled : tail %d split: %d itasks: %d asteals: %d : shared size: %d nlocal: %d\n",
       rb->tail, rb->split, itasks, asteals, saws_shrb_shared_size(rb), rb->nlocal);
 
-  // assert that all steals from the last epoch have completed.
+  // wait for all steals from the last epoch to complete before reusing it.
   if (!rb->completed[rb->last].done) {
-retry:
-    sum = 0;
-    for (int i = 0; i < rb->completed[rb->last].maxsteals; i++) {
-      sum += rb->completed[rb->last].status[i];
+    int waited = 0;
+    for (;;) {
+      sum = 0;
+      for (int i = 0; i < rb->completed[rb->last].maxsteals; i++)
+        sum += saws_status(rb, rb->last, i);
+      if (sum == rb->completed[rb->last].itasks)
+        break;
+      waited = 1;
     }
-    if (sum != rb->completed[rb->last].itasks) {
-      goto retry;
-      gtc_dprintf("incomplete tasks over multiple epochs -- dying now\n");
-      exit(1);
-    }
+    if (waited)
+      rb->nwaited++;
   }
 
   // determine the number of unclaimed tasks available in queue
@@ -464,10 +485,10 @@ retry:
     // update tail wrt completed steals
     completedindex = rb->completed[rb->last].vtail;
     for (int i = 0; i < rb->completed[rb->last].maxsteals; i++) {
-      //gtc_lprintf(DBGSHRB, "c[%d] = %d ", i, rb->completed[rb->last].status[i]);
-      if (rb->completed[rb->last].status[i] == 0)
+      int st = saws_status(rb, rb->last, i);
+      if (st == 0)
         break;
-      completedindex += rb->completed[rb->last].status[i];
+      completedindex += st;
     }
     if (completedindex > rb->tail)
       rb->tail = completedindex % rb->max_size;
@@ -536,12 +557,11 @@ static inline void saws_shrb_push_n_head_impl(saws_shrb_t *rb, int proc, void *e
 void saws_shrb_push_head(saws_shrb_t *rb, int proc, void *e, int size) {
   GTC_ENTRY();
   int old_head;
-  static int cc = 0; // may want to damp ensure calls
 
   assert(size <= rb->elem_size);
   assert(proc == rb->procid);
 
-  if ((cc++ % rb->reclaimfreq) == 0)
+  if ((rb->pushcc++ % rb->reclaimfreq) == 0)   // damp ensure calls
     saws_shrb_ensure_space(rb, 1);
 
   old_head    = saws_shrb_head(rb);
@@ -626,6 +646,7 @@ static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, 
   int64_t  rtail;
   void *rptr = NULL;
   increment = 1L << 40;
+  myrb->ngets++;
   tc_timer_t gotwork;
   TC_INIT_ATIMER(gotwork);
   TC_START_ATIMER(gotwork);
@@ -716,6 +737,8 @@ static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, 
   gtc_lprintf(DBGSHRB, "sending completion to epoch %d index %d\n", valid, index);
   shmem_quiet(); // this is required to wait for the non-blocking shmem_getmem_nbi's
   shmem_atomic_add(&myrb->completed[valid].status[index], ntasks, proc);
+  myrb->nsteals++;
+  myrb->nxfer += ntasks * myrb->elem_size;
 
   TC_STOP_ATIMER(gotwork);
   TC_ADD_TIMER(myrb->tc, poptail, gotwork);
