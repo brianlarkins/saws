@@ -42,6 +42,18 @@ libtc.a: headers $(OBJS)
 
 $(OBJS): $(HDRS)
 
+# Build provenance: libtc revision and the OpenSHMEM install behind $(CC).
+# Regenerated on every build but only rewritten when it changes.
+.PHONY: FORCE
+buildinfo.h: FORCE
+	@printf '#define GTC_BUILD_REV   "%s"\n#define GTC_BUILD_SHMEM "%s"\n' \
+	  "$$(git -C .. describe --always --dirty --abbrev=10 2>/dev/null || echo unknown)" \
+	  "$$(dirname $$(dirname $$(command -v $(CC) 2>/dev/null || echo ./unknown/x)))" > buildinfo.h.tmp
+	@cmp -s buildinfo.h.tmp buildinfo.h || mv buildinfo.h.tmp buildinfo.h
+	@rm -f buildinfo.h.tmp
+
+init.o: buildinfo.h
+
 .PHONY: headers
 headers:
 	mkdir -p ../include
@@ -49,4 +61,4 @@ headers:
 
 .PHONY: clean
 clean:
-	rm -f *~ *.o ../include/tc.h ../lib/libtc.a
+	rm -f *~ *.o buildinfo.h ../include/tc.h ../lib/libtc.a

@@ -7,6 +7,8 @@
 
 #define _GNU_SOURCE 1
 #include <assert.h>
+#include <dlfcn.h>
+#include <link.h>
 #include <execinfo.h>
 #include <fcntl.h>
 #include <sched.h>
@@ -16,10 +18,13 @@
 #include <ucontext.h>
 
 #include <tc.h>
+#include "buildinfo.h"
 
 int __gtc_marker[5] = { 0, 0, 0, 0, 0};
 
 static void gtc_exit_handler(void);
+static void gtc_print_build_info(void);
+static int  gtc_find_libsma(struct dl_phdr_info *info, size_t size, void *data);
 
 gtc_context_t *_c;
 int gtc_is_initialized = 0;
@@ -46,6 +51,9 @@ gtc_context_t *gtc_init(void) {
 
   _c->rank = shmem_my_pe();
   _c->size = shmem_n_pes();
+
+  if (_c->rank == 0)
+    gtc_print_build_info();
 
 #ifdef SCIOTO_TRACING
   if (_c->rank == 0)
@@ -93,6 +101,60 @@ void gtc_fini(void) {
   shmem_finalize();
   free(_c);
   _c = NULL;
+}
+
+
+
+/**
+ * gtc_print_build_info - record which libtc and OpenSHMEM a run used.
+ *
+ * Printed once by rank 0 so that every output file identifies its build:
+ * libtc revision, the OpenSHMEM install the library was compiled against,
+ * the OpenSHMEM and UCX libraries actually loaded at run time, and whether
+ * on-node shared memory (SHMEM_TEAM_SHARED / shmem_ptr) is available.
+ */
+static void gtc_print_build_info(void) {
+  char name[SHMEM_MAX_NAME_LEN] = "unknown";
+  int  major = 0, minor = 0;
+  const char *ucx = "n/a";
+  const char *(*ucx_version)(void);
+  const char *sma_path = "static or unknown";
+  int nshared, ptr_ok = 0;
+  char *tls = getenv("UCX_TLS");
+  char *amode = getenv("UCX_ATOMIC_MODE");
+
+  shmem_info_get_name(name);
+  shmem_info_get_version(&major, &minor);
+
+  // UCX is a dependency of SOS, not of libtc, so look it up at run time
+  ucx_version = (const char *(*)(void))dlsym(RTLD_DEFAULT, "ucp_get_version_string");
+  if (ucx_version)
+    ucx = ucx_version();
+
+  dl_iterate_phdr(gtc_find_libsma, &sma_path);
+
+  nshared = shmem_team_n_pes(SHMEM_TEAM_SHARED);
+  if (nshared > 1) {
+    int peer = shmem_team_translate_pe(SHMEM_TEAM_SHARED, 1, SHMEM_TEAM_WORLD);
+    ptr_ok = (peer >= 0) && (shmem_ptr(&_c->rank, peer) != NULL);
+  }
+
+  printf("SCIOTO build : libtc %s, compiled against %s\n", GTC_BUILD_REV, GTC_BUILD_SHMEM);
+  printf("SCIOTO shmem : %s (spec %d.%d), libsma %s, UCX %s\n", name, major, minor, sma_path, ucx);
+  printf("SCIOTO onnode: SHMEM_TEAM_SHARED %d PEs, shmem_ptr %s, UCX_TLS=%s UCX_ATOMIC_MODE=%s\n",
+         nshared, ptr_ok ? "yes" : "no", tls ? tls : "(default)", amode ? amode : "(default)");
+}
+
+
+
+/* dl_iterate_phdr callback: report the path of the loaded libsma */
+static int gtc_find_libsma(struct dl_phdr_info *info, size_t size, void *data) {
+  UNUSED(size);
+  if (info->dlpi_name && strstr(info->dlpi_name, "libsma")) {
+    *(const char **)data = info->dlpi_name;
+    return 1;
+  }
+  return 0;
 }
 
 
