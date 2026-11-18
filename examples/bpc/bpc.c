@@ -33,7 +33,7 @@ static const double work_time = 0.001;   //  1 ms
 //static const int    busy_val    =  400000; // ~1ms on senna gcc compiler with -O3
 //static const int    busy_val    = 109000; // ~1ms on comet with -O3
 
-static double consumer_work_units = 10;
+static double consumer_work_units = 5;   // 5 ms: matches the sleep these tasks always used
 static double producer_work_units = 1;
 
 static int initial_producers = 1;
@@ -43,8 +43,16 @@ static int bouncing  = 0;
 static int verbose   = 0;
 static gtc_qtype_t qtype = GtcQueueSAWS;
 
-static struct timespec psleep = { 0, 1000000L };      // 1  ms
-static struct timespec csleep = { 0, 5 * 1000000L }; // 10 ms
+// Task durations.  These used to be hard-coded (1 ms producer, 5 ms consumer) and
+// -p/-c only changed the printed ideal walltime; they are now set from the work units.
+static struct timespec psleep = { 0, 1000000L };      // 1 ms (default)
+static struct timespec csleep = { 0, 5 * 1000000L };  // 5 ms (default)
+
+static void set_sleep(struct timespec *ts, double units) {
+  double sec = units * work_time;
+  ts->tv_sec  = (time_t)sec;
+  ts->tv_nsec = (long)((sec - (double)ts->tv_sec) * 1e9);
+}
 
 typedef struct {
   int        parent_id;
@@ -263,6 +271,8 @@ int main(int argc, char **argv) {
   nproc = _c->size;
 
   process_args(argc, argv);
+  set_sleep(&psleep, producer_work_units);
+  set_sleep(&csleep, consumer_work_units);
 
   expected_nproducers = initial_producers*(maxdepth + 1);
   expected_nconsumers = initial_producers*(maxdepth*nchildren);
