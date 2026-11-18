@@ -71,7 +71,7 @@ func_t *init_function(int k, double thresh, int initial_level, double (* analyti
   func_t *fun;
   int     i;
 
-  fun = malloc(sizeof(func_t));
+  fun = calloc(1, sizeof(func_t));   // zero-filled: s[]/s0[] are never set
   fun->k         = k;
   fun->npt       = k;
   fun->thresh    = thresh;
