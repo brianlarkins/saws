@@ -10,6 +10,9 @@ on top of SAWS, developed on the **`laws`** branch (created from `master` on
 The design lives in `~/research/docs/laws-design` (see its `CLAUDE.md`, and
 `laws-directions.pdf` for the full plan). This file tracks code and progress.
 Keep both current; either folder should be a valid starting point.
+Since draft v0.7 the design doc has numbered definitions, each followed by its motivation, for every
+term, symbol, and policy name used here (occupancy, ρ, peeks, lp<p>, laws<p>, the pk and e suffixes, …),
+and a notation table after its contents. Use those names, and add a definition there for any new policy variant.
 
 Related: `~/research/docs/saws` (ICPP'21 paper), `~/research/saws-gpu` (GPU SAWS;
 Thrust B there is the GPU counterpart of LAWS).
