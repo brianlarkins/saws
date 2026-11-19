@@ -18,10 +18,23 @@
 #   e1    : 2 reps, the accepted LAWS reference set (UTS T3XXL, T3WL, BPC fine;
 #           controls UTS T1WL, BPC d500) under target policies: SAWS with random,
 #           local-prob 50% and 90%, and local-sweep; SDC with random.  XPMEM build.
+#   e2    : 2 reps, the reference set with SAWS: random, lp50 (E1's best), lp50+peeks,
+#           laws M1 (node bitmap + peeks, blind off-node), laws (bitmap + peeks +
+#           remote bitmaps, E2b), and laws without peeks.  XPMEM build.
+#   e2c   : 2 reps, 4-40 nodes, the reference set with SAWS: lp50pk (the bar), and laws
+#           (bitmap + peeks + remote bitmaps) x {strict local-first, 90% and 50% of
+#           steps via the node bitmap} x {lazy, eager bit clear}.  E2 found strict
+#           laws recirculates work inside a node on binomial UTS (like E1's sweep).
 #
 # Target policies (set through the environment; see gtc_ldbal_cfg_env):
 #   random  GTC_TARGET=random          lpNN     GTC_TARGET=local-prob GTC_LOCAL_PCT=NN
 #   sweep   GTC_TARGET=local-sweep     sweepNN  ... with GTC_SWEEP_FAR=NN
+#   lpNNpk  local-prob NN with GTC_NEAR_PEEK=1
+#   laws    GTC_TARGET=laws GTC_NEAR_PEEK=1 GTC_FAR_DIR=1   (bitmap + peeks + remote bitmaps)
+#   lawsm1  GTC_TARGET=laws GTC_NEAR_PEEK=1 GTC_FAR_DIR=0   (bitmap + peeks, blind off-node: M1)
+#   lawsnp  GTC_TARGET=laws GTC_NEAR_PEEK=0 GTC_FAR_DIR=1   (bitmap + remote bitmaps, no peeks)
+#   laws[NN][e]  laws with GTC_LAWS_NEAR_PCT=NN (default 100) and, with "e", GTC_LAWS_EAGER=1
+#                (e.g. laws50, laws90e, lawse)
 #
 # Every run gets a per-step time limit (srun --time, minutes; E0_STEP_MIN,
 # default 15) so one runaway input cannot consume the rest of the job.
@@ -32,7 +45,7 @@
 # Output: $E0_ROOT/results/<suite>/<input>.<variant>.<queue>.<npes>.<rep>.out
 set -euo pipefail
 
-suite=${1:?usage: gen.sh <smoke|small|scale|e0b|e1> [nodes ...]}; shift
+suite=${1:?usage: gen.sh <smoke|small|scale|e0b|e1|e2|e2c> [nodes ...]}; shift
 E0_ROOT=${E0_ROOT:-$HOME/laws}
 here=$(cd "$(dirname "$0")" && pwd)
 ppn=48
@@ -54,6 +67,8 @@ case $suite in
   scale) reps=3; default_nodes="1 2 4 8 16 32" ;;
   e0b)   reps=2; default_nodes="1 4 16 32" ;;
   e1)    reps=2; default_nodes="1 4 16 32 40" ;;
+  e2)    reps=2; default_nodes="1 4 16 32 40" ;;
+  e2c)   reps=2; default_nodes="4 16 32 40" ;;
   *) echo "unknown suite $suite" >&2; exit 1 ;;
 esac
 nodes=${*:-$default_nodes}
@@ -90,7 +105,7 @@ inputs() {
       echo "bpc-fine|examples/bpc/bpc|-d 2000 -n 1024 -p 0.1 -c 0.5 -b"
       if (( n <= 16 )); then echo "bpc-c01|examples/bpc/bpc|-d 500 -n 8192 -p 0.1 -c 0.1 -b"; fi
       ;;
-    e1)
+    e1|e2|e2c)
       echo "uts-T3XXL|examples/uts/uts-scioto|$T3XXL"
       if (( n >= 16 )); then echo "uts-T3WL|examples/uts/uts-scioto|$T3WL"; fi
       echo "bpc-fine|examples/bpc/bpc|-d 2000 -n 1024 -p 0.1 -c 0.5 -b"
@@ -105,6 +120,10 @@ combos() {
   case $1 in
     e1) echo "xpmem H random"; echo "xpmem H lp50"; echo "xpmem H lp90"
         echo "xpmem H sweep";  echo "xpmem B random" ;;
+    e2) echo "xpmem H random"; echo "xpmem H lp50"; echo "xpmem H lp50pk"
+        echo "xpmem H lawsm1"; echo "xpmem H laws";  echo "xpmem H lawsnp" ;;
+    e2c) echo "xpmem H lp50pk"
+         for pol in laws lawse laws90 laws90e laws50 laws50e; do echo "xpmem H $pol"; done ;;
     *)  for v in $variants; do for q in $queues; do echo "$v $q random"; done; done ;;
   esac
 }
@@ -119,6 +138,8 @@ walltime() {
                       8) echo "02:30:00";; 16) echo "01:30:00";; *) echo "01:00:00";; esac ;;
     e0b)   case $n in 1) echo "01:30:00";; 4) echo "01:00:00";; *) echo "01:00:00";; esac ;;
     e1)    case $n in 1) echo "00:45:00";; 4) echo "01:15:00";; 16) echo "01:30:00";; *) echo "01:00:00";; esac ;;
+    e2)    case $n in 1) echo "00:45:00";; 4) echo "01:30:00";; 16) echo "01:45:00";; *) echo "01:15:00";; esac ;;
+    e2c)   case $n in 4) echo "01:30:00";; 16) echo "01:45:00";; *) echo "01:45:00";; esac ;;
   esac
 }
 
@@ -148,7 +169,16 @@ for n in $nodes; do
     echo "  local f=\$out/\$label.\$v.\$pol.\$q.$pnp.\$rep.out envs"
     echo "  case \$pol in"
     echo "    random)  envs=\"GTC_TARGET=random\" ;;"
+    echo "    lp*pk)   envs=\"GTC_TARGET=local-prob GTC_NEAR_PEEK=1 GTC_LOCAL_PCT=\$(echo \${pol#lp} | sed s/pk//)\" ;;"
     echo "    lp*)     envs=\"GTC_TARGET=local-prob GTC_LOCAL_PCT=\${pol#lp}\" ;;"
+    echo "    laws)    envs=\"GTC_TARGET=laws GTC_NEAR_PEEK=1 GTC_FAR_DIR=1\" ;;"
+    echo "    lawsm1)  envs=\"GTC_TARGET=laws GTC_NEAR_PEEK=1 GTC_FAR_DIR=0\" ;;"
+    echo "    lawsnp)  envs=\"GTC_TARGET=laws GTC_NEAR_PEEK=0 GTC_FAR_DIR=1\" ;;"
+    echo "    laws*)   # laws[NN][e]: NN = GTC_LAWS_NEAR_PCT (default 100), e = GTC_LAWS_EAGER=1"
+    echo "             local x=\${pol#laws} e=0"
+    echo "             if [[ \$x == *e ]]; then e=1; x=\${x%e}; fi"
+    echo "             if [[ -n \$x && ! \$x =~ ^[0-9]+\$ ]]; then echo \"unknown policy \$pol\" >&2; return 1; fi"
+    echo "             envs=\"GTC_TARGET=laws GTC_NEAR_PEEK=1 GTC_FAR_DIR=1 GTC_LAWS_NEAR_PCT=\${x:-100} GTC_LAWS_EAGER=\$e\" ;;"
     echo "    sweep)   envs=\"GTC_TARGET=local-sweep\" ;;"
     echo "    sweep*)  envs=\"GTC_TARGET=local-sweep GTC_SWEEP_FAR=\${pol#sweep}\" ;;"
     echo "    *)       echo \"unknown policy \$pol\" >&2; return 1 ;;"
@@ -158,9 +188,23 @@ for n in $nodes; do
     echo "    echo \"# job \$SLURM_JOB_ID nodelist \$SLURM_JOB_NODELIST start \$(date -Is)\""
     echo "    echo \"# env \$envs\""
     echo "    echo \"# cmd \$E0_BUILD/\$bin \$*\"; } > \$f"
-    echo "  local t0=\$(date +%s.%N)"
-    echo "  env \$envs srun --mpi=pmix --cpu-bind=cores --time=${E0_STEP_MIN:-15} \$E0_BUILD/\$bin \"\$@\" >> \$f 2>&1"
-    echo "  local rc=\$?"
+    echo "  local t0=\$(date +%s.%N) rc try"
+    echo "  for try in 1 2; do"
+    echo "    # SOS occasionally hangs in start-up before gtc_init prints (rare with block placement):"
+    echo "    # if no SCIOTO build line appears within E0_HANG_SEC (90) s, kill the step and retry once."
+    echo "    env \$envs srun --mpi=pmix --cpu-bind=cores --time=${E0_STEP_MIN:-15} \$E0_BUILD/\$bin \"\$@\" > \$f.run 2>&1 &"
+    echo "    local pid=\$! waited=0 hung=0 checked=0"
+    echo "    while kill -0 \$pid 2>/dev/null; do"
+    echo "      sleep 2; waited=\$((waited+2))"
+    echo "      if (( !checked && waited >= ${E0_HANG_SEC:-90} )); then"
+    echo "        checked=1; if ! grep -q 'SCIOTO build' \$f.run; then hung=1; kill \$pid; fi"
+    echo "      fi"
+    echo "    done"
+    echo "    wait \$pid; rc=\$?"
+    echo "    cat \$f.run >> \$f; rm -f \$f.run"
+    echo "    if (( hung )); then echo \"# start-up hang on try \$try; retrying\" >> \$f; sleep 5; continue; fi"
+    echo "    break"
+    echo "  done"
     echo "  echo \"# exit \$rc wall \$(echo \"\$(date +%s.%N) - \$t0\" | bc)\" >> \$f"
     echo "}"
     echo
