@@ -283,9 +283,17 @@ hot-spotting at node leaders is suspected, back off to the original M1 (on-node 
   on d500; strict laws +1.0–2.7%.
 - Limit: lp50pk on BPC fine at 32–40 nodes was 9–12% slower in E2c than in E2 (allocation-sensitive), so compare within a suite.
 
-Next: the PI picks the E3 baseline (laws50e or laws90e; design doc question 6) and whether E4 shrinks to near-share tuning.
-Then M2/E3 (two-door queue): near steals still cost 40–55 µs at 1536–1920 PEs under laws50e. Small follow-ups: a sparser
-lazy poll with eager clearing (T1WL +0.5%), the bitmap over SDC as an ablation, and a calibrated busy-wait for sub-ms BPC tasks.
+**Paused 2026-11-19 for PI review of the E2/E2c data** (design doc §7.5–7.6; CSVs come from `parse.py --csv` on
+`lotus:~/laws/results/{e2,e2c}/`). Two decisions are **open, and the PI makes them only after that review**. Do not
+pick either one or start E3/E4 work before then:
+1. **E3 baseline:** laws50e (best on UTS and the controls) or laws90e (best on BPC fine at 32–40 nodes). They are within
+   5 points of each other everywhere (design doc table 12, question 6).
+2. **E4 scope:** a fixed policy now matches or beats lp50pk everywhere, and near shares differ by ≤ 5 points. Should E4 shrink to
+   near-share tuning, or come off the critical path in favor of E3?
+
+After those: M2/E3 (two-door queue), since near steals still cost 40–55 µs at 1536–1920 PEs under laws50e. Small follow-ups:
+a sparser lazy poll with eager clearing (T1WL +0.5%), the bitmap over SDC as an ablation, and a calibrated busy-wait for
+sub-ms BPC tasks.
 
 ## Conventions
 - Add experimental results to the design doc
