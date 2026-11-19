@@ -60,6 +60,7 @@ struct saws_shrb_s {
   int64_t           vtail;     // Index of public tail element
   uint64_t          steal_val; // Concatenation of tail, isteals, and asteals
   uint32_t         *targets;   // Holds the last known queue state for all other nodes 
+  void            **near_rb;   // shmem_ptr to each node-mate's queue (indexed like _c->loc.node_pes; NULL if unreachable)
   int64_t           split;     // index of split between local-only and local-shared elements
   int               nlocal;    // Number of elements in the local portion of the queue
   int               nshared;

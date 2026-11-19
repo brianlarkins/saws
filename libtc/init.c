@@ -52,8 +52,19 @@ gtc_context_t *gtc_init(void) {
   _c->rank = shmem_my_pe();
   _c->size = shmem_n_pes();
 
-  if (_c->rank == 0)
+  // per-task-path timers are off unless asked for (they cost ~7% on UTS)
+  char *ft = getenv("GTC_FULL_TIMING");
+  _c->full_timing = (ft && atoi(ft) != 0);
+
+  // node membership for locality-aware stealing (collective)
+  gtc_locality_init();
+
+  if (_c->rank == 0) {
     gtc_print_build_info();
+    gtc_locality_print();
+    printf("SCIOTO timing: per-task-path timers %s\n",
+           _c->full_timing ? "on (GTC_FULL_TIMING)" : "off (set GTC_FULL_TIMING=1 to enable)");
+  }
 
 #ifdef SCIOTO_TRACING
   if (_c->rank == 0)
@@ -98,6 +109,7 @@ gtc_context_t *gtc_init(void) {
  */
 void gtc_fini(void) {
   shmem_barrier_all();
+  gtc_locality_fini();
   shmem_finalize();
   free(_c);
   _c = NULL;
@@ -216,13 +228,14 @@ void gtc_bthandler(int sig, siginfo_t *si, void *vctx) {
 void gtc_ldbal_cfg_set(gtc_t gtc, gtc_ldbal_cfg_t *cfg) {
   tc_t *tc = gtc_lookup(gtc);
 
-  assert(cfg->target_selection == TARGET_RANDOM || cfg->target_selection == TARGET_ROUND_ROBIN);
+  assert(cfg->target_selection >= 0 && cfg->target_selection < GTC_NUM_TARGET_METHODS);
   assert(cfg->steal_method == STEAL_HALF || cfg->steal_method == STEAL_ALL || cfg->steal_method == STEAL_CHUNK);
   assert(cfg->max_steal_retries >= 0);
   assert(cfg->max_steal_attempts_local >= 0);
   assert(cfg->max_steal_attempts_remote >= 0);
   assert(cfg->chunk_size >= 1);
   assert(cfg->local_search_factor >= 0 && cfg->local_search_factor <= 100);
+  assert(cfg->local_sweep_far >= 1);
 
   tc->ldbal_cfg = *cfg;
 }
@@ -251,4 +264,46 @@ void gtc_ldbal_cfg_init(gtc_ldbal_cfg_t *cfg) {
   cfg->max_steal_attempts_remote= 10;
   cfg->chunk_size          = 1;
   cfg->local_search_factor = 75;
+  cfg->local_sweep_far     = 16;
+}
+
+
+
+/**
+ * Apply environment overrides to a load balancer configuration, so experiments
+ * can change the target policy without changing the applications:
+ *   GTC_TARGET     random | rr | local-prob | local-sweep
+ *   GTC_LOCAL_PCT  local-prob: percent of attempts aimed at node-mates (0..100)
+ *   GTC_SWEEP_FAR  local-sweep: off-node attempts between node sweeps (>= 1)
+ * Unknown or out-of-range values abort, so a typo cannot silently run the default.
+ */
+void gtc_ldbal_cfg_env(gtc_ldbal_cfg_t *cfg) {
+  char *t   = getenv("GTC_TARGET");
+  char *pct = getenv("GTC_LOCAL_PCT");
+  char *far = getenv("GTC_SWEEP_FAR");
+
+  if (t) {
+    if      (!strcmp(t, "random"))      cfg->target_selection = TARGET_RANDOM;
+    else if (!strcmp(t, "rr"))          cfg->target_selection = TARGET_ROUND_ROBIN;
+    else if (!strcmp(t, "local-prob"))  cfg->target_selection = TARGET_LOCAL_PROB;
+    else if (!strcmp(t, "local-sweep")) cfg->target_selection = TARGET_LOCAL_SWEEP;
+    else {
+      fprintf(stderr, "GTC_TARGET=%s: expected random, rr, local-prob, or local-sweep\n", t);
+      abort();
+    }
+  }
+  if (pct) {
+    cfg->local_search_factor = atoi(pct);
+    if (cfg->local_search_factor < 0 || cfg->local_search_factor > 100) {
+      fprintf(stderr, "GTC_LOCAL_PCT=%s: expected 0..100\n", pct);
+      abort();
+    }
+  }
+  if (far) {
+    cfg->local_sweep_far = atoi(far);
+    if (cfg->local_sweep_far < 1) {
+      fprintf(stderr, "GTC_SWEEP_FAR=%s: expected >= 1\n", far);
+      abort();
+    }
+  }
 }

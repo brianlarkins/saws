@@ -108,7 +108,7 @@ void gtc_progress_saws(gtc_t gtc) {
   GTC_ENTRY();
   tc_t *tc = gtc_lookup(gtc);
   saws_shrb_t *rb = (saws_shrb_t *)tc->shared_rb;
-  TC_START_TIMER(tc,progress);
+  TC_START_HTIMER(tc,progress);
 
 #if 0 /* no task pushing */
   // Check the inbox for new work
@@ -135,7 +135,7 @@ void gtc_progress_saws(gtc_t gtc) {
   if ((rb->progresscc++ % rb->reclaimfreq) == 0)
     saws_shrb_reclaim_space(tc->shared_rb);
   rb->nprogress++;
-  TC_STOP_TIMER(tc,progress);
+  TC_STOP_HTIMER(tc,progress);
   GTC_EXIT();
 }
 
@@ -187,10 +187,10 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
   int     v, steal_size;
   int     passive = 0;
   int     searching = 0;
-  gtc_vs_state_t vs_state = {0, 0, 0};
+  gtc_vs_state_t vs_state = {0};
 
   tc->ct.getcalls++;
-  TC_START_TIMER(tc, getbuf);
+  TC_START_HTIMER(tc,getbuf);
 
   // Invoke the progress engine
   gtc_progress(gtc);
@@ -241,6 +241,8 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
         // Steal failed: Got the lock, no longer any work on remote node
       } else {
         tc->ct.failed_steals_unlocked++;
+        if (gtc_is_near(v))
+          tc->ct.failed_steals_unlocked_near++;
       }
 
       // Invoke the progress engine
@@ -280,7 +282,7 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
 
   gtc_lprintf(DBGGET, " Thread %d: gtc_get() %s\n", _c->rank, got_task? "got work":"no work");
   if (got_task) tc->state = STATE_WORKING;
-  TC_STOP_TIMER(tc,getbuf);
+  TC_STOP_HTIMER(tc,getbuf);
   GTC_EXIT(got_task);
 }
 
@@ -307,7 +309,7 @@ int gtc_add_saws(gtc_t gtc, task_t *task, int proc) {
 
   assert(gtc_task_body_size(task) <= tc->max_body_size);
   assert(tc->state != STATE_TERMINATED);
-  TC_START_TIMER(tc,add);
+  TC_START_HTIMER(tc,add);
 
   task->created_by = _c->rank;
 
@@ -326,7 +328,7 @@ int gtc_add_saws(gtc_t gtc, task_t *task, int proc) {
 #endif /* no task pushing */
 
   ++tc->ct.tasks_spawned;
-  TC_STOP_TIMER(tc,add);
+  TC_STOP_HTIMER(tc,add);
   GTC_EXIT(0);
 }
 
@@ -345,7 +347,7 @@ task_t *gtc_task_inplace_create_and_add_saws(gtc_t gtc, task_class_t tclass) {
   GTC_ENTRY();
   tc_t   *tc = gtc_lookup(gtc);
   task_t *t;
-  TC_START_TIMER(tc,addinplace);
+  TC_START_HTIMER(tc,addinplace);
 
   //assert(gtc_group_steal_ismember(gtc)); // Only masters can do this
 
@@ -358,7 +360,7 @@ task_t *gtc_task_inplace_create_and_add_saws(gtc_t gtc, task_class_t tclass) {
 
   ++tc->ct.tasks_spawned;
 
-  TC_STOP_TIMER(tc,addinplace);
+  TC_STOP_HTIMER(tc,addinplace);
 
   GTC_EXIT(t);
 }
@@ -376,11 +378,11 @@ void gtc_task_inplace_create_and_add_finish_saws(gtc_t gtc, task_t *t) {
   tc_t *tc = gtc_lookup(gtc);
   // TODO: Maintain a counter of how many are outstanding to avoid corruption at the
   // head of the queue
-  TC_START_TIMER(tc,addfinish);
+  TC_START_HTIMER(tc,addfinish);
 
   // Can't release until the inplace op completes
   gtc_progress_saws(gtc);
-  TC_STOP_TIMER(tc,addfinish);
+  TC_STOP_HTIMER(tc,addfinish);
   GTC_EXIT();
 }
 

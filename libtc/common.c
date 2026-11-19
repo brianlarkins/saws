@@ -18,7 +18,7 @@ void gtc_print_my_stats(gtc_t gtc);
 
 enum target_types_e { FREE, LOCAL_SEARCH, RETRY };
 
-char *target_methods[2] = { "Random", "Round Robin" };
+char *target_methods[GTC_NUM_TARGET_METHODS] = { "Random", "Round Robin", "Local-first (probabilistic)", "Local-first (sweep)" };
 char *steal_methods[3]  = { "Half", "Greedy", "Chunk" };
 
 static int gtc_is_seeded = 0;
@@ -90,6 +90,8 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
   TC_INIT_TIMER(tc, poptail);
   TC_INIT_TIMER(tc, getsteal);
   TC_INIT_TIMER(tc, getfail);
+  TC_INIT_TIMER(tc, getsteal_near);
+  TC_INIT_TIMER(tc, getfail_near);
   TC_INIT_TIMER(tc, getmeta);
 
   if (!ldbal_cfg) {
@@ -127,6 +129,7 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
   tc->terminated    = 0;
 
   gtc_ldbal_cfg_set(gtc, ldbal_cfg);
+  gtc_ldbal_cfg_env(&tc->ldbal_cfg);   // GTC_TARGET etc. override the application's choice
 
   switch (tc->qtype) {
     case GtcQueueSDC:
@@ -197,6 +200,10 @@ void gtc_reset(gtc_t gtc) {
   tc->ct.num_steals      = 0;
   tc->ct.steal_ops_ok    = 0;
   tc->ct.steal_ops_failed= 0;
+  tc->ct.steal_ops_ok_near     = 0;
+  tc->ct.steal_ops_failed_near = 0;
+  tc->ct.tasks_stolen_near     = 0;
+  tc->ct.failed_steals_unlocked_near = 0;
   tc->ct.passive_count   = 0;
   tc->ct.failed_steals_locked   = 0;
   tc->ct.failed_steals_unlocked = 0;
@@ -258,8 +265,10 @@ void gtc_print_config(gtc_t gtc) {
     else
       idx += snprintf(msg+idx, size-idx, ", Steal method: %s", steal_methods[tc->ldbal_cfg.steal_method]);
 
-    if (tc->ldbal_cfg.local_search_factor > 0)
-      idx += snprintf(msg+idx, size-idx, ", Locality-aware stealing");
+    if (tc->ldbal_cfg.target_selection == TARGET_LOCAL_PROB)
+      idx += snprintf(msg+idx, size-idx, " (%d%% node-mates)", tc->ldbal_cfg.local_search_factor);
+    else if (tc->ldbal_cfg.target_selection == TARGET_LOCAL_SWEEP)
+      idx += snprintf(msg+idx, size-idx, " (%d off-node attempts per sweep)", tc->ldbal_cfg.local_sweep_far);
 
     if (tc->ldbal_cfg.steals_can_abort)
       idx += snprintf(msg+idx, size-idx, ", Aborting Steals");
@@ -417,6 +426,31 @@ int gtc_get_local_buf(gtc_t gtc, int priority, task_t *buf) {
   GTC_EXIT(tc->rcb.pop_head(tc->shared_rb, _c->rank, buf));
 }
 
+/* Account one steal operation into the success/failure timers and counters,
+ * and into the node-mate ("near") subset when the target shares my node. */
+static void gtc_account_steal(tc_t *tc, int target, int stealsize, tc_timer_t *temp) {
+  int near = gtc_is_near(target);
+
+  if (stealsize > 0) {
+    TC_ADD_TIMER(tc, getsteal, (*temp));
+    tc->ct.steal_ops_ok++;
+    if (near) {
+      TC_ADD_TIMER(tc, getsteal_near, (*temp));
+      tc->ct.steal_ops_ok_near++;
+      tc->ct.tasks_stolen_near += stealsize;
+    }
+  } else {
+    TC_ADD_TIMER(tc, getfail, (*temp));
+    tc->ct.steal_ops_failed++;
+    if (near) {
+      TC_ADD_TIMER(tc, getfail_near, (*temp));
+      tc->ct.steal_ops_failed_near++;
+    }
+  }
+}
+
+
+
 /**
  * gtc_steal_tail -- Attempt to steal a chunk of tasks from the given target's tail.
  *
@@ -441,14 +475,8 @@ int gtc_steal_tail(gtc_t gtc, int target) {
   stealsize = tc->rcb.pop_n_tail(tc->shared_rb, target, req_stealsize, tc->steal_buf, tc->ldbal_cfg.steal_method);
   TC_STOP_ATIMER(temp);
 
-  // account into success or failed steal timers
-  if (stealsize > 0) {
-    TC_ADD_TIMER(tc, getsteal, temp);
-    tc->ct.steal_ops_ok++;
-  } else {
-    TC_ADD_TIMER(tc, getfail, temp);
-    tc->ct.steal_ops_failed++;
-  }
+  // account into success or failed steal timers, overall and for node-mate targets
+  gtc_account_steal(tc, target, stealsize, &temp);
 
   if (stealsize > 0) {
     gtc_lprintf(DBGGET, "\tthread %d: steal try: %d got: %d tasks from thread %d\n", _c->rank, req_stealsize, stealsize, target);
@@ -502,13 +530,7 @@ int gtc_try_steal_tail(gtc_t gtc, int target) {
 #endif
 
   TC_STOP_ATIMER(temp);
-  if (stealsize > 0) {
-    TC_ADD_TIMER(tc, getsteal, temp);
-    tc->ct.steal_ops_ok++;
-  } else {
-    TC_ADD_TIMER(tc, getfail, temp);
-    tc->ct.steal_ops_failed++;
-  }
+  gtc_account_steal(tc, target, stealsize, &temp);
 
   if (stealsize > 0) {
     gtc_lprintf(DBGGET, "stole %d tasks from %d\n", stealsize, target);
@@ -571,6 +593,41 @@ int gtc_select_target(gtc_t gtc, gtc_vs_state_t *state) {
     // Round Robin: Next target is selected round-robin
     else if (tc->ldbal_cfg.target_selection == TARGET_ROUND_ROBIN) {
       v = (state->last_target + 1) % _c->size;
+    }
+
+    // Local-first, probabilistic: a node-mate with probability local_search_factor%
+    else if (tc->ldbal_cfg.target_selection == TARGET_LOCAL_PROB) {
+      gtc_locality_t *L = &_c->loc;
+      if (L->node_size > 1 && (L->far_count == 0 || rand() % 100 < tc->ldbal_cfg.local_search_factor))
+        v = gtc_random_near_peer();
+      else
+        v = gtc_random_far_peer();
+    }
+
+    // Local-first, sweep: every node-mate once (random start, in order), then
+    // local_sweep_far random off-node attempts, then sweep again.  The state lives
+    // for one search (get_buf), so each search starts with a fresh sweep.
+    else if (tc->ldbal_cfg.target_selection == TARGET_LOCAL_SWEEP) {
+      gtc_locality_t *L = &_c->loc;
+      if (L->node_size < 2) {
+        v = gtc_random_far_peer();
+      } else {
+        if (state->sweep_left == 0 && state->far_left == 0) {
+          state->sweep_left = L->node_size - 1;
+          state->sweep_pos  = rand() % L->node_size;
+        }
+        if (state->sweep_left > 0) {
+          do {
+            state->sweep_pos = (state->sweep_pos + 1) % L->node_size;
+          } while (state->sweep_pos == L->node_rank);
+          v = L->node_pes[state->sweep_pos];
+          if (--state->sweep_left == 0 && L->far_count > 0)
+            state->far_left = tc->ldbal_cfg.local_sweep_far;
+        } else {
+          v = gtc_random_far_peer();
+          state->far_left--;
+        }
+      }
     }
 
     else {
@@ -653,7 +710,9 @@ typedef enum {
   DispersionTime,
   ImbalanceTime,
   StealOkTime,
-  StealFailTime
+  StealFailTime,
+  StealOkNearTime,
+  StealFailNearTime
 } gtc_gtimestats_e;
 
 
@@ -663,7 +722,12 @@ typedef enum {
   NumSteals,
   DispersionAttempts,
   StealOkOps,
-  StealFailOps
+  StealFailOps,
+  StealOkNearOps,
+  StealFailNearOps,
+  TasksStolenNear,
+  ProbesFailed,
+  ProbesFailedNear
 } gtc_gcountstats_e;
 
 
@@ -701,13 +765,13 @@ void gtc_print_gstats(gtc_t gtc) {
   fflush(NULL);
   shmem_barrier_all();
 
-  int ntimes = 8;
+  int ntimes = 10;
   times     = gtc_shmem_calloc(ntimes, sizeof(double));
   mintimes  = gtc_shmem_calloc(ntimes, sizeof(double));
   maxtimes  = gtc_shmem_calloc(ntimes, sizeof(double));
   sumtimes  = gtc_shmem_calloc(ntimes, sizeof(double));
 
-  int ncounts = 6;
+  int ncounts = 11;
   counts     = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
   mincounts  = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
   maxcounts  = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
@@ -811,13 +875,13 @@ void gtc_print_stats(gtc_t gtc) {
   fflush(NULL);
   shmem_barrier_all();
 
-  int ntimes = 8;
+  int ntimes = 10;
   times     = gtc_shmem_calloc(ntimes, sizeof(double));
   mintimes  = gtc_shmem_calloc(ntimes, sizeof(double));
   maxtimes  = gtc_shmem_calloc(ntimes, sizeof(double));
   sumtimes  = gtc_shmem_calloc(ntimes, sizeof(double));
 
-  int ncounts = 6;
+  int ncounts = 11;
   counts     = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
   mincounts  = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
   maxcounts  = gtc_shmem_calloc(ncounts, sizeof(uint64_t));
@@ -845,6 +909,13 @@ void gtc_print_stats(gtc_t gtc) {
   counts[StealFailOps]       = tc->ct.steal_ops_failed;
   times[StealOkTime]         = TC_READ_TIMER_USEC(tc,getsteal);
   times[StealFailTime]       = TC_READ_TIMER_USEC(tc,getfail);
+  times[StealOkNearTime]     = TC_READ_TIMER_USEC(tc,getsteal_near);
+  times[StealFailNearTime]   = TC_READ_TIMER_USEC(tc,getfail_near);
+  counts[StealOkNearOps]     = tc->ct.steal_ops_ok_near;
+  counts[StealFailNearOps]   = tc->ct.steal_ops_failed_near;
+  counts[TasksStolenNear]    = tc->ct.tasks_stolen_near;
+  counts[ProbesFailed]       = tc->ct.failed_steals_unlocked;
+  counts[ProbesFailedNear]   = tc->ct.failed_steals_unlocked_near;
 
   shmem_min_reduce(SHMEM_TEAM_WORLD, mintimes, times, ntimes);
   shmem_max_reduce(SHMEM_TEAM_WORLD, maxtimes, times, ntimes);
@@ -881,6 +952,32 @@ void gtc_print_stats(gtc_t gtc) {
       sumcounts[StealOkOps]   ? sumtimes[StealOkTime]/sumcounts[StealOkOps]     : 0.0,
       sumcounts[StealFailOps],
       sumcounts[StealFailOps] ? sumtimes[StealFailTime]/sumcounts[StealFailOps] : 0.0);
+
+  // the same split by target scope: node-mates ("near") vs. other nodes ("far")
+  {
+    uint64_t okn = sumcounts[StealOkNearOps], fln = sumcounts[StealFailNearOps];
+    uint64_t okf = sumcounts[StealOkOps] - okn, flf = sumcounts[StealFailOps] - fln;
+    double   tokf = sumtimes[StealOkTime] - sumtimes[StealOkNearTime];
+    double   tflf = sumtimes[StealFailTime] - sumtimes[StealFailNearTime];
+    char     pol[64];
+
+    if (tc->ldbal_cfg.target_selection == TARGET_LOCAL_PROB)
+      snprintf(pol, sizeof(pol), "local-prob/%d", tc->ldbal_cfg.local_search_factor);
+    else if (tc->ldbal_cfg.target_selection == TARGET_LOCAL_SWEEP)
+      snprintf(pol, sizeof(pol), "local-sweep/%d", tc->ldbal_cfg.local_sweep_far);
+    else
+      snprintf(pol, sizeof(pol), "%s", tc->ldbal_cfg.target_selection == TARGET_RANDOM ? "random" : "rr");
+
+    eprintf("        : steal scope near ok %lu avg %.3f us fail %lu avg %.3f us tasks %lu probes %lu"
+            " | far ok %lu avg %.3f us fail %lu avg %.3f us tasks %lu probes %lu | target %s\n",
+        okn, okn ? sumtimes[StealOkNearTime]/okn : 0.0,
+        fln, fln ? sumtimes[StealFailNearTime]/fln : 0.0,
+        sumcounts[TasksStolenNear], sumcounts[ProbesFailedNear],
+        okf, okf ? tokf/okf : 0.0,
+        flf, flf ? tflf/flf : 0.0,
+        sumcounts[TasksStolen] - sumcounts[TasksStolenNear],
+        sumcounts[ProbesFailed] - sumcounts[ProbesFailedNear], pol);
+  }
 
   tc->cb.print_gstats(gtc);
 

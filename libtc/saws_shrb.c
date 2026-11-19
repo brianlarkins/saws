@@ -93,6 +93,7 @@ saws_shrb_t *saws_shrb_create(int elem_size, int max_size, tc_t *tc) {
 
   rb->targets     = targets;
   rb->tc          = tc;
+  rb->near_rb     = gtc_near_ptr_table(rb);   // direct access to node-mates' queues (used from E2 on)
 
   saws_shrb_reset(rb);
 
@@ -146,6 +147,7 @@ void saws_shrb_reset(saws_shrb_t *rb) {
 void saws_shrb_destroy(saws_shrb_t *rb) {
   GTC_ENTRY();
   free(rb->targets);
+  free(rb->near_rb);
   shmem_free(rb);
   GTC_EXIT();
 }
@@ -314,11 +316,11 @@ int saws_shrb_reclaim_space(saws_shrb_t *rb) {
   int reclaimed = 0;
   uint32_t sum = 0;
 
-  TC_START_TIMER(rb->tc, reclaim);
+  TC_START_HTIMER(rb->tc,reclaim);
   if (!rb->completed[rb->last].done) {
     for (int i = 0; i < rb->completed[rb->last].maxsteals; i++){
       int st = saws_status(rb, rb->last, i);
-      if (st == 0) { TC_STOP_TIMER(rb->tc, reclaim); GTC_EXIT(0);}
+      if (st == 0) { TC_STOP_HTIMER(rb->tc,reclaim); GTC_EXIT(0);}
       sum += st;
     }
     // if so, update tail index accordingly.
@@ -346,7 +348,7 @@ int saws_shrb_reclaim_space(saws_shrb_t *rb) {
 
   //assert(saws_shrb_shared_isempty(rb) || rb->completed[rb->cur].done != 1 || rb->completed[rb->last].done != 1);
   rb->nreccalls++;
-  TC_STOP_TIMER(rb->tc, reclaim);
+  TC_STOP_HTIMER(rb->tc,reclaim);
   GTC_EXIT(reclaimed);
 }
 
@@ -356,7 +358,7 @@ void saws_shrb_ensure_space(saws_shrb_t *rb, int n) {
   GTC_ENTRY();
   // Ensure that there is enough free space in the queue.  If there isn't
   // wait until others finish their deferred copies so we can reclaim space.
-  TC_START_TIMER(rb->tc, ensure);
+  TC_START_HTIMER(rb->tc,ensure);
   rb->nensure++;
   if (rb->max_size - (saws_shrb_local_size(rb) + saws_shrb_public_size(rb)) < n) {
     saws_shrb_reclaim_space(rb);
@@ -368,7 +370,7 @@ void saws_shrb_ensure_space(saws_shrb_t *rb, int n) {
       assert(0);
     }
   }
-  TC_STOP_TIMER(rb->tc, ensure);
+  TC_STOP_HTIMER(rb->tc,ensure);
   GTC_EXIT();
 }
 

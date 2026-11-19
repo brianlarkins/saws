@@ -30,6 +30,8 @@ extern "C" {
 
 #include <pthread.h>
 
+#include "locality.h"
+
 #ifndef NO_SEATBELTS
 #include <assert.h>
 #else
@@ -145,7 +147,12 @@ typedef unsigned long tc_counter_t;
 // the list of registered tasks
 #define AUTO_BODY_SIZE -1
 
-enum target_select_e { TARGET_RANDOM, TARGET_ROUND_ROBIN };
+// TARGET_LOCAL_PROB:  each attempt targets a random node-mate with probability
+//                     local_search_factor percent, else a random off-node PE.
+// TARGET_LOCAL_SWEEP: visit every node-mate (random start, then in order) before
+//                     going off-node; after local_sweep_far off-node attempts, sweep again.
+enum target_select_e { TARGET_RANDOM, TARGET_ROUND_ROBIN, TARGET_LOCAL_PROB, TARGET_LOCAL_SWEEP };
+#define GTC_NUM_TARGET_METHODS 4
 enum steal_method_e  { STEAL_HALF, STEAL_ALL, STEAL_CHUNK };
 enum tc_states { STATE_WORKING = 0, STATE_SEARCHING, STATE_STEALING, STATE_INACTIVE, STATE_TERMINATED };
 
@@ -158,7 +165,8 @@ typedef struct {
   int max_steal_attempts_local;  /* Max number of lock attempts before we "retry" a local target. */
   int max_steal_attempts_remote; /* Max number of lock attempts before we "retry" a remote target. */
   int chunk_size;                /* Size of a steal when using STEAL_CHUNK */
-  int local_search_factor;       /* Percent of steal attempts (0-100) that should target intra-node targets */
+  int local_search_factor;       /* TARGET_LOCAL_PROB: percent of steal attempts (0-100) aimed at node-mates */
+  int local_sweep_far;           /* TARGET_LOCAL_SWEEP: off-node attempts between node sweeps (>= 1) */
 } gtc_ldbal_cfg_t;
 
 
@@ -189,6 +197,9 @@ typedef struct {
   int target_retry;
   int num_retries;
   int last_target;
+  int sweep_pos;     // TARGET_LOCAL_SWEEP: current index into the node-mate list
+  int sweep_left;    // node-mates left to visit in this sweep
+  int far_left;      // off-node attempts left before the next sweep
 } gtc_vs_state_t;
 
 /** queue implementation type */
@@ -247,6 +258,8 @@ struct tc_timers_s {
   tc_timer_t poptail;
   tc_timer_t getsteal;
   tc_timer_t getfail;
+  tc_timer_t getsteal_near;  // getsteal/getfail restricted to node-mate targets
+  tc_timer_t getfail_near;
   tc_timer_t getmeta;
   tc_timer_t t[5]; // general purpose
 };
@@ -268,6 +281,10 @@ struct tc_counters_s {
   tc_counter_t         getlocal;                  // # of calls resulting in local work found
   tc_counter_t         steal_ops_ok;              // # timed steal operations that returned work (getsteal timer)
   tc_counter_t         steal_ops_failed;          // # timed steal operations that returned none (getfail timer)
+  tc_counter_t         steal_ops_ok_near;         // ... of which targeted a node-mate
+  tc_counter_t         steal_ops_failed_near;
+  tc_counter_t         tasks_stolen_near;         // tasks stolen from node-mates
+  tc_counter_t         failed_steals_unlocked_near; // failed_steals_unlocked against node-mates
 };
 typedef struct tc_counters_s tc_counters_t;
 
@@ -348,6 +365,8 @@ struct gtc_context_s {
   double              tsc_cpu_hz;                            // calibrated MHZ value for TSC timer conversion
   int                 dbglvl;
   int                 quiet;
+  int                 full_timing;                           // also time the per-task path (GTC_FULL_TIMING=1)
+  gtc_locality_t      loc;                                   // node membership (locality.c)
   int                 size;
   int                 rank;
   int                 allocsize;
@@ -369,7 +388,7 @@ typedef enum gtc_status_e gtc_status_t;
 // Global variables
 extern gtc_context_t *_c;
 extern int gtc_is_initialized;
-extern char *target_methods[2];
+extern char *target_methods[GTC_NUM_TARGET_METHODS];
 extern char *steal_methods[3];
 extern int __gtc_marker[5];
 
@@ -384,6 +403,7 @@ extern int __gtc_marker[5];
 void    gtc_ldbal_cfg_init(gtc_ldbal_cfg_t *cfg);
 void    gtc_ldbal_cfg_set(gtc_t gtc, gtc_ldbal_cfg_t *cfg);
 void    gtc_ldbal_cfg_get(gtc_t gtc, gtc_ldbal_cfg_t *cfg);
+void    gtc_ldbal_cfg_env(gtc_ldbal_cfg_t *cfg);
 
 gtc_context_t *gtc_init(void);
 void           gtc_fini(void);
@@ -640,6 +660,12 @@ static inline uint64_t gtc_get_tsctime() {
   #define TC_READ_TIMER_MSEC(TC,TMR) 0
   #define TC_READ_TIMER_SEC(TC,TMR)  0
 #endif // GTC_USE_INTERNAL_TIMERS
+
+/* Per-task-path timers (get_buf, progress, add, reclaim, ensure) run on every task.
+ * Two TSC reads per call cost ~7% on UTS, so they are off unless GTC_FULL_TIMING=1.
+ * Event timers (steals, release, reacquire, search, passive) are always on. */
+#define TC_START_HTIMER(TC,TMR) do { if (_c->full_timing) { TC_START_TIMER(TC,TMR); } } while (0)
+#define TC_STOP_HTIMER(TC,TMR)  do { if (_c->full_timing) { TC_STOP_TIMER(TC,TMR);  } } while (0)
 
 #ifdef __cplusplus
 }
