@@ -22,6 +22,8 @@ PATTERNS = {
     "dispersion":  r": dispersion +([\d.]+)ms/ *([\d.]+)ms/ *([\d.]+)ms",
     "imbalance":   r": imbalance +([\d.]+)ms/ *([\d.]+)ms/ *([\d.]+)ms +termination attempts: (\d+)",
     "stealops":    r": steal ops +ok (\d+) avg ([\d.]+) us, failed (\d+) avg ([\d.]+) us",
+    "scope":       (r": steal scope near ok (\d+) avg ([\d.]+) us fail (\d+) avg ([\d.]+) us tasks (\d+) probes (\d+)"
+                    r" \| far ok (\d+) avg ([\d.]+) us fail (\d+) avg ([\d.]+) us tasks (\d+) probes (\d+) \| target (\S+)"),
     # queue gstats (both queues print these lines)
     "release":     r": release +([\d.]+)/ *\d+/ *\d+ time .*? per +([\d.]+)us",
     "reacquire":   r": reacquire +([\d.]+)/ *\d+/ *\d+ time .*? per +([\d.]+)ms",
@@ -36,12 +38,15 @@ PATTERNS = {
     "bpc_ok":      r"Total tasks processed = +\d+, expected = +\d+: (\w+)",
 }
 
-FIELDS = ["file", "suite", "input", "variant", "queue", "npes", "nodes", "rep", "exit", "wall_s",
+FIELDS = ["file", "suite", "input", "variant", "policy", "queue", "npes", "nodes", "rep", "exit", "wall_s",
           "process_s", "passive_s", "passive_pct", "search_ms", "tasks", "tasks_per_s",
           "disp_avg_ms", "disp_max_ms", "imb_avg_ms", "imb_max_ms", "td_attempts",
           "steal_ok", "steal_ok_us", "steal_fail", "steal_fail_us",
           "release_calls", "release_us", "reacquire_calls", "reacquire_ms",
-          "fails_un", "fails_lock", "libtc_rev", "shmem_prefix", "shared_team", "shmem_ptr",
+          "fails_un", "fails_lock",
+          "near_ok", "near_ok_us", "near_fail", "near_fail_us", "near_tasks", "near_probes",
+          "far_ok", "far_ok_us", "far_fail", "far_fail_us", "far_tasks", "far_probes", "target",
+          "libtc_rev", "shmem_prefix", "shared_team", "shmem_ptr",
           "check"]
 
 
@@ -71,6 +76,11 @@ def parse_file(path):
         row["release_calls"], row["release_us"] = g["release"].groups()
     if g["reacquire"]:
         row["reacquire_calls"], row["reacquire_ms"] = g["reacquire"].groups()
+    if g["scope"]:
+        (row["near_ok"], row["near_ok_us"], row["near_fail"], row["near_fail_us"], row["near_tasks"],
+         row["near_probes"], row["far_ok"], row["far_ok_us"], row["far_fail"], row["far_fail_us"],
+         row["far_tasks"], row["far_probes"], row["target"]) = g["scope"].groups()
+    row.setdefault("policy", "random")   # runs before E1 had no policy dimension
     if g["fails_un"]:
         row["fails_un"] = g["fails_un"].group(1)
     if g["fails_lock"]:
@@ -115,12 +125,16 @@ def main():
            or r.get("check") == "FAILURE"]
     groups = defaultdict(list)
     for r in rows:
-        groups[(r["input"], int(r["npes"]), r["variant"], r["queue"])].append(r)
+        ok, nok = num(r.get("steal_ok")), num(r.get("near_ok"))
+        if ok and nok is not None:
+            r["near_pct"] = f"{100.0 * nok / ok:.1f}"
+        groups[(r["input"], int(r["npes"]), r["variant"], r["policy"], r["queue"])].append(r)
 
-    cols = [("process_s", "proc s"), ("passive_pct", "pass%"), ("steal_ok_us", "ok us"),
-            ("steal_fail_us", "fail us"), ("release_us", "rel us"), ("imb_max_ms", "imbmax ms"),
-            ("td_attempts", "td")]
-    hdr = f"{'input':<12} {'npes':>5} {'var':<5} {'q':<4} {'n':>2} " + " ".join(f"{c[1]:>9}" for c in cols)
+    cols = [("process_s", "proc s"), ("passive_pct", "pass%"), ("near_pct", "near%"),
+            ("near_ok_us", "nok us"), ("far_ok_us", "fok us"), ("steal_fail_us", "fail us"),
+            ("imb_max_ms", "imbmax ms"), ("td_attempts", "td")]
+    hdr = (f"{'input':<12} {'npes':>5} {'var':<5} {'policy':<7} {'q':<4} {'n':>2} "
+           + " ".join(f"{c[1]:>9}" for c in cols))
     print(hdr)
     print("-" * len(hdr))
     for key in sorted(groups):
@@ -129,8 +143,8 @@ def main():
         for c, _ in cols:
             vals = [v for r in rs if (v := num(r.get(c))) is not None]
             meds.append(f"{statistics.median(vals):9.3f}" if vals else f"{'-':>9}")
-        q = "SDC" if key[3] == "B" else "SAWS"
-        print(f"{key[0]:<12} {key[1]:>5} {key[2]:<5} {q:<4} {len(rs):>2} " + " ".join(meds))
+        q = "SDC" if key[4] == "B" else "SAWS"
+        print(f"{key[0]:<12} {key[1]:>5} {key[2]:<5} {key[3]:<7} {q:<4} {len(rs):>2} " + " ".join(meds))
     if bad:
         print("\nincomplete or failed runs:", *bad, sep="\n  ")
 

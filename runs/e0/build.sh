@@ -33,7 +33,7 @@ log=$E0_BUILD/build.log
   make -C examples/uts uts-scioto
   make -C examples/bpc bpc
   make -C examples/madness mad3d
-  make -C tests test-tasktree test-tasktree-twotc
+  make -C tests test-tasktree test-tasktree-twotc test-locality
 } > "$log" 2>&1 || { echo "build failed; see $log" >&2; tail -30 "$log" >&2; exit 1; }
 
 echo "built $variant in $E0_BUILD ($(cat libtc/buildinfo.h | tr '\n' ' '))"

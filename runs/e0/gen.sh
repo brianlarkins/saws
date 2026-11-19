@@ -15,6 +15,13 @@
 #           T3WL), UTS geometric trees strong-scaled to little work per PE
 #           (T1XL/T1XXL at >= 16 nodes), and fine-grained BPC (0.1 ms producers,
 #           0.5 or 0.1 ms consumers; needs the bpc.c -p/-c fix).
+#   e1    : 2 reps, the accepted LAWS reference set (UTS T3XXL, T3WL, BPC fine;
+#           controls UTS T1WL, BPC d500) under target policies: SAWS with random,
+#           local-prob 50% and 90%, and local-sweep; SDC with random.  XPMEM build.
+#
+# Target policies (set through the environment; see gtc_ldbal_cfg_env):
+#   random  GTC_TARGET=random          lpNN     GTC_TARGET=local-prob GTC_LOCAL_PCT=NN
+#   sweep   GTC_TARGET=local-sweep     sweepNN  ... with GTC_SWEEP_FAR=NN
 #
 # Every run gets a per-step time limit (srun --time, minutes; E0_STEP_MIN,
 # default 15) so one runaway input cannot consume the rest of the job.
@@ -25,7 +32,7 @@
 # Output: $E0_ROOT/results/<suite>/<input>.<variant>.<queue>.<npes>.<rep>.out
 set -euo pipefail
 
-suite=${1:?usage: gen.sh <smoke|small|scale|e0b> [nodes ...]}; shift
+suite=${1:?usage: gen.sh <smoke|small|scale|e0b|e1> [nodes ...]}; shift
 E0_ROOT=${E0_ROOT:-$HOME/laws}
 here=$(cd "$(dirname "$0")" && pwd)
 ppn=48
@@ -46,6 +53,7 @@ case $suite in
   small) reps=3; default_nodes="1 2 4" ;;
   scale) reps=3; default_nodes="1 2 4 8 16 32" ;;
   e0b)   reps=2; default_nodes="1 4 16 32" ;;
+  e1)    reps=2; default_nodes="1 4 16 32 40" ;;
   *) echo "unknown suite $suite" >&2; exit 1 ;;
 esac
 nodes=${*:-$default_nodes}
@@ -82,6 +90,22 @@ inputs() {
       echo "bpc-fine|examples/bpc/bpc|-d 2000 -n 1024 -p 0.1 -c 0.5 -b"
       if (( n <= 16 )); then echo "bpc-c01|examples/bpc/bpc|-d 500 -n 8192 -p 0.1 -c 0.1 -b"; fi
       ;;
+    e1)
+      echo "uts-T3XXL|examples/uts/uts-scioto|$T3XXL"
+      if (( n >= 16 )); then echo "uts-T3WL|examples/uts/uts-scioto|$T3WL"; fi
+      echo "bpc-fine|examples/bpc/bpc|-d 2000 -n 1024 -p 0.1 -c 0.5 -b"
+      if (( n >= 16 )); then echo "uts-T1WL|examples/uts/uts-scioto|$T1WL"; fi
+      if (( n >= 4 ));  then echo "bpc-d500|examples/bpc/bpc|-d 500 -n 8192 -b"; fi
+      ;;
+  esac
+}
+
+# (variant queue policy) combinations run for every input
+combos() {
+  case $1 in
+    e1) echo "xpmem H random"; echo "xpmem H lp50"; echo "xpmem H lp90"
+        echo "xpmem H sweep";  echo "xpmem B random" ;;
+    *)  for v in $variants; do for q in $queues; do echo "$v $q random"; done; done ;;
   esac
 }
 
@@ -94,6 +118,7 @@ walltime() {
     scale) case $n in 1) echo "04:00:00";; 2) echo "02:30:00";; 4) echo "02:00:00";;
                       8) echo "02:30:00";; 16) echo "01:30:00";; *) echo "01:00:00";; esac ;;
     e0b)   case $n in 1) echo "01:30:00";; 4) echo "01:00:00";; *) echo "01:00:00";; esac ;;
+    e1)    case $n in 1) echo "00:45:00";; 4) echo "01:15:00";; 16) echo "01:30:00";; *) echo "01:00:00";; esac ;;
   esac
 }
 
@@ -118,28 +143,34 @@ for n in $nodes; do
     echo "here=$here"
     echo "out=$outdir"
     echo
-    echo "run() {  # run <label> <variant> <queue> <rep> <binary> <args...>"
-    echo "  local label=\$1 v=\$2 q=\$3 rep=\$4 bin=\$5; shift 5"
-    echo "  local f=\$out/\$label.\$v.\$q.$pnp.\$rep.out"
+    echo "run() {  # run <label> <variant> <policy> <queue> <rep> <binary> <args...>"
+    echo "  local label=\$1 v=\$2 pol=\$3 q=\$4 rep=\$5 bin=\$6; shift 6"
+    echo "  local f=\$out/\$label.\$v.\$pol.\$q.$pnp.\$rep.out envs"
+    echo "  case \$pol in"
+    echo "    random)  envs=\"GTC_TARGET=random\" ;;"
+    echo "    lp*)     envs=\"GTC_TARGET=local-prob GTC_LOCAL_PCT=\${pol#lp}\" ;;"
+    echo "    sweep)   envs=\"GTC_TARGET=local-sweep\" ;;"
+    echo "    sweep*)  envs=\"GTC_TARGET=local-sweep GTC_SWEEP_FAR=\${pol#sweep}\" ;;"
+    echo "    *)       echo \"unknown policy \$pol\" >&2; return 1 ;;"
+    echo "  esac"
     echo "  source \$here/env.sh \$v || return"
-    echo "  { echo \"# e0 suite=$suite input=\$label variant=\$v queue=\$q npes=$np nodes=$n rep=\$rep\""
+    echo "  { echo \"# e0 suite=$suite input=\$label variant=\$v policy=\$pol queue=\$q npes=$np nodes=$n rep=\$rep\""
     echo "    echo \"# job \$SLURM_JOB_ID nodelist \$SLURM_JOB_NODELIST start \$(date -Is)\""
+    echo "    echo \"# env \$envs\""
     echo "    echo \"# cmd \$E0_BUILD/\$bin \$*\"; } > \$f"
     echo "  local t0=\$(date +%s.%N)"
-    echo "  srun --mpi=pmix --cpu-bind=cores --time=${E0_STEP_MIN:-15} \$E0_BUILD/\$bin \"\$@\" >> \$f 2>&1"
+    echo "  env \$envs srun --mpi=pmix --cpu-bind=cores --time=${E0_STEP_MIN:-15} \$E0_BUILD/\$bin \"\$@\" >> \$f 2>&1"
     echo "  local rc=\$?"
     echo "  echo \"# exit \$rc wall \$(echo \"\$(date +%s.%N) - \$t0\" | bc)\" >> \$f"
     echo "}"
     echo
     for rep in $(seq -w 1 $reps); do
       while IFS='|' read -r label bin args; do
-        for v in $variants; do
-          for q in $queues; do
-            # UTS selects the queue with "-Q B|H"; the others take "-B|-H"
-            if [[ $bin == */uts-scioto ]]; then qflag="-Q $q"; else qflag="-$q"; fi
-            echo "run $label $v $q $rep $bin $args $qflag"
-          done
-        done
+        while read -r v q pol; do
+          # UTS selects the queue with "-Q B|H"; the others take "-B|-H"
+          if [[ $bin == */uts-scioto ]]; then qflag="-Q $q"; else qflag="-$q"; fi
+          echo "run $label $v $pol $q $rep $bin $args $qflag"
+        done < <(combos $suite)
       done < <(inputs $suite $n)
     done
   } > "$f"
