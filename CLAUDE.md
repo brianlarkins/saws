@@ -29,8 +29,13 @@ Thrust B there is the GPU counterpart of LAWS).
 - `collection-saws.c` / `collection-sdc.c` — get_buf loops, progress, stats.
 - `common.c` — target selection (random / round robin), `gtc_steal_tail`,
   `gtc_try_steal_tail` (SDC's default path), stats (`gtc_print_stats`).
-- `init.c` — `gtc_init`. Rank 0 prints `SCIOTO build/shmem/onnode` provenance
-  lines (libtc rev, SOS install, libsma path, UCX version, shared-team size, shmem_ptr).
+- `init.c` — `gtc_init`. Rank 0 prints `SCIOTO build/shmem/onnode/nodes/timing` provenance
+  lines (libtc rev, SOS install, libsma path, UCX version, shared-team size, shmem_ptr,
+  node layout, timer mode). `gtc_ldbal_cfg_env` applies `GTC_TARGET` and related overrides.
+- `locality.{c,h}` (E1) — node membership from host-name hashes (works for any placement and
+  build; cross-checked against `SHMEM_TEAM_SHARED`), `_c->loc` (node id, node_pes, node_of[],
+  ptr_ok, node team when placement is block), `gtc_is_near(pe)`, random near/far peers, and
+  `gtc_near_ptr_table(symaddr)`. `GTC_DEBUG_LOCALITY=1` prints per-rank start-up stages.
 - Apps: `examples/uts` (`-Q B|H`), `examples/bpc` (`-B|-H`), `examples/madness`
   (`-B|-H`); tests `tests/test-tasktree{,-twotc}` (`-B|-H`). B = SDC, H = SAWS.
 
@@ -101,7 +106,9 @@ Status log:
     BPC d100, MADNESS 1e-6). Steals are too rare to matter: passive time is 0.04–0.24% for
     T1XL and 0.4–3% for BPC.
   - **SAWS beats SDC on UTS by about 9%** (T1XL: 10.91 vs. 11.97 s on 48 PEs, 2.73 vs. 3.00 s on
-    192), mostly from **local-path overhead, not steals**. Progress engine time is 1.33 s
+    192), mostly from **local-path overhead, not steals**. **Corrected by E1: this was timer
+    overhead** (SDC timed reclaim on every progress call). With per-task-path timers off, SDC is as
+    fast as SAWS on UTS or up to 2% faster. Progress engine time is 1.33 s
     vs. 2.12 s per PE, because SDC reclaims on every progress call and SAWS about every 20th.
     In UTS, the per-task path (progress, release check, reclaim) is about 12–18% of runtime.
   - In-app steal ops are much slower than the microbenchmark. SAWS: ok 16–26 µs, failed 17–23 µs.
@@ -120,7 +127,7 @@ Status log:
   - The reference inputs are **not steal-bound at ≤ 32 nodes**: strong-scaling efficiency is
     99–101%, idle time is ≤ 0.03% (UTS) and ≤ 4% (BPC at 1536 PEs), and there are 53–82 steals
     per PE per UTS run. H0 is not supported: XPMEM and main agree within 0.5%.
-  - SAWS beats SDC by 8.6–8.9% on UTS at every scale (local path) and ties on BPC.
+  - SAWS beats SDC by 8.6–8.9% on UTS at every scale and ties on BPC. **This was a timer artifact; see E1.**
   - In-app steal ops grow with scale: SAWS 16→104 µs and SDC 22→149 µs (48→1536 PEs).
     Dispersion max reaches 3.7 ms (UTS T1WL SAWS) vs. 15 ms (SDC), and 12–15 ms for BPC.
 - 2026-11-18: **release-timer fix** (SAWS and SDC time only actual releases; rebuilt). Check
@@ -152,9 +159,51 @@ Status log:
 - Cluster (PI, 2026-11-18): larger jobs on lotus preempt OSG jobs, so runs up to the full
   machine are fine. About 43 nodes are active (one is offline). Scaling runs may go to 40+ nodes.
 
-Next: E1 (`libtc/locality.{c,h}`: node team,
-`shmem_ptr` table, per-scope counters). Optional: a build switch that removes timers from the
-per-task path, and a calibrated busy-wait for sub-ms BPC tasks.
+## E1: locality discovery, local-first policies, per-scope stats (done)
+- Target policies (`gtc_ldbal_cfg_t.target_selection`; env `GTC_TARGET`):
+  - `random`, `rr`
+  - `local-prob`: a node-mate with probability `local_search_factor`% (`GTC_LOCAL_PCT`,
+    default 75); otherwise a random off-node PE
+  - `local-sweep`: every node-mate once (random start, in order), then `local_sweep_far`
+    off-node attempts (`GTC_SWEEP_FAR`, default 16), then sweep again. The state is per
+    `get_buf` search.
+
+  Environment values override the application's config at `gtc_create`. Bad values abort.
+- Per-scope stats: a new line `: steal scope near ok N avg X us fail M avg Y us tasks T probes P
+  | far ... | target <policy>` (before the queue's gstats). `parse.py` groups by policy and
+  reports near%, near-ok µs, and far-ok µs.
+- **Per-task-path timers are off by default** (getbuf, progress, add*, reclaim, ensure use
+  `TC_START/STOP_HTIMER`). `GTC_FULL_TIMING=1` turns them back on with no rebuild. Event timers are always on.
+- SAWS queues keep `rb->near_rb` (`shmem_ptr` to each node-mate's queue) for E2's peeks.
+- Tests: `tests/test-locality` checks host names vs. the node map, map agreement, the ptr table,
+  peer pickers, local-prob at 75%, and the exact sweep order. It passes on both builds, block and cyclic.
+  Validation job 28497: all tree tests pass under every policy and both queues; the timing switch
+  works; a bad `GTC_TARGET` aborts.
+- **Known SOS issue:** with `--distribution=cyclic`, start-up hangs intermittently inside
+  the first `shmem_malloc` after `shmem_init` (all ranks stuck before "malloc done"; about 3 of
+  50 cyclic runs on both builds; 0 of more than 24 block runs; jobs 28497 and 28501). It happens
+  before any libtc logic. Use block placement (the default).
+- E1 suite (`gen.sh e1`, jobs 28502–28506; 1/4/16/32/40 nodes, 2 reps, XPMEM): the reference set
+  × {SAWS random, lp50, lp90, sweep; SDC random}. Result files are named
+  `<input>.<variant>.<policy>.<queue>.<npes>.<rep>.out`.
+
+Results are in `lotus:~/laws/results/e1/` (parse with `runs/e0/parse.py`).
+The E1 code (locality, policies, scope stats, timers, test, gen/parse) is **not committed yet**.
+
+**E1 complete** (jobs 28502–28506, 200 runs, all exit 0; written up in design doc §7.4, draft v0.4):
+- **SDC ≈ SAWS on UTS with per-task timers off** (SDC is 2% faster on T1WL and within ±1% on T3XXL/T3WL).
+  E0's 9% SAWS lead was timer overhead. SAWS is 16–23% faster on BPC fine from 768 PEs.
+- **lp50 never hurts and wins on BPC fine:** −8.6%, −18%, and −25% at 768, 1536, and 1920 PEs (2.29 vs. 3.06 s at
+  1920). This comes from fewer and cheaper failed probes (25.8K vs. 36.5K per PE; near fail 6.4 vs. 9.7 µs),
+  and idle time falls by 31%. lp50 is the bar to beat for E2–E4.
+- **Sweep is harmful** on binomial UTS (+20–45%) and on BPC d500 (+2–6%). Per-probe success halves and the
+  number of probes triples. lp90 and sweep only help BPC fine at 32–40 nodes, so no fixed bias wins everywhere (E4).
+- **Distance does not set steal cost at scale; contention does.** Under random selection, near ok = far ok
+  (56.8 vs. 56.7 µs, BPC fine 1536). Even near steals cost 44–68 µs, 10–15× the uncontended 4.4 µs, because
+  they queue at the victim's HCA. This motivates M1 peeks and M2 CPU-side near claims.
+
+Next: E2 (node work bitmap, L1 shmem_ptr peeks). Compare against both SAWS random and SAWS lp50.
+Optional: a calibrated busy-wait for sub-ms BPC tasks.
 
 ## Conventions
 - Add experimental results to the design doc
