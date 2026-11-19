@@ -15,6 +15,7 @@ TARGETS=test-hello          \
 				test-termination    \
 				test-sdc-shrb		    \
 				test-saws-shrb		  \
+				test-locality       \
 				threadtest          \
 				shmem_latency	    \
 				# line eater
@@ -50,6 +51,9 @@ test-tasktree: tclibs test-tasktree.o
 
 test-tasktree-twotc: tclibs test-tasktree-twotc.o
 	$(CC) $(CFLAGS) -o $@ test-tasktree-twotc.o $(TC_LIBS)
+
+test-locality: tclibs test-locality.o
+	$(CC) $(CFLAGS) -o $@ test-locality.o $(TC_LIBS)
 
 test-termination: tclibs test-termination.o
 	$(CC) $(CFLAGS) -o $@ test-termination.o $(TC_LIBS)
