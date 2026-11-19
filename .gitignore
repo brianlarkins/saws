@@ -22,6 +22,7 @@ tests/test-tasktree
 tests/test-termination
 tests/test-timer
 tests/test-locality
+tests/test-laws
 include/
 runs/scripts
 libtc/buildinfo.h

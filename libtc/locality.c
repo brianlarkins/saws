@@ -90,6 +90,26 @@ void gtc_locality_init(void) {
   }
   L->far_count = npes - L->node_size;
 
+  // every node's membership, grouped by node (counting sort keeps ranks ascending)
+  L->node_start   = calloc(L->nnodes + 1, sizeof(int));
+  L->node_members = malloc(npes * sizeof(int));
+  L->node_rank_of = malloc(npes * sizeof(int));
+  assert(L->node_start && L->node_members && L->node_rank_of);
+  for (int p = 0; p < npes; p++)
+    L->node_start[L->node_of[p] + 1]++;
+  for (int n = 0; n < L->nnodes; n++)
+    L->node_start[n+1] += L->node_start[n];
+  {
+    int *fill = calloc(L->nnodes, sizeof(int));
+    assert(fill);
+    for (int p = 0; p < npes; p++) {
+      int n = L->node_of[p];
+      L->node_rank_of[p] = fill[n];
+      L->node_members[L->node_start[n] + fill[n]++] = p;
+    }
+    free(fill);
+  }
+
   // contiguous, equal-sized blocks?  (block placement: node n holds [n*ppn, (n+1)*ppn))
   L->contiguous = (npes % L->nnodes == 0);
   for (int p = 0; L->contiguous && p < npes; p++)
@@ -145,6 +165,9 @@ void gtc_locality_fini(void) {
     shmem_team_destroy(L->node_team);
   free(L->node_pes);
   free(L->node_of);
+  free(L->node_start);
+  free(L->node_members);
+  free(L->node_rank_of);
   memset(L, 0, sizeof(*L));
   L->node_team = SHMEM_TEAM_INVALID;
 }
@@ -172,6 +195,19 @@ int gtc_random_near_peer(void) {
   if (i >= L->node_rank)
     i++;
   return L->node_pes[i];
+}
+
+
+
+/** random node id other than mine, or -1 if there is only one node */
+int gtc_random_other_node(void) {
+  gtc_locality_t *L = &_c->loc;
+  int n;
+
+  if (L->nnodes < 2)
+    return -1;
+  n = rand() % (L->nnodes - 1);
+  return (n >= L->node) ? n + 1 : n;
 }
 
 

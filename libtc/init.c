@@ -236,6 +236,9 @@ void gtc_ldbal_cfg_set(gtc_t gtc, gtc_ldbal_cfg_t *cfg) {
   assert(cfg->chunk_size >= 1);
   assert(cfg->local_search_factor >= 0 && cfg->local_search_factor <= 100);
   assert(cfg->local_sweep_far >= 1);
+  assert(cfg->far_dir_tries >= 0);
+  assert(cfg->laws_poll >= 1);
+  assert(cfg->laws_near_pct >= 0 && cfg->laws_near_pct <= 100);
 
   tc->ldbal_cfg = *cfg;
 }
@@ -265,6 +268,12 @@ void gtc_ldbal_cfg_init(gtc_ldbal_cfg_t *cfg) {
   cfg->chunk_size          = 1;
   cfg->local_search_factor = 75;
   cfg->local_sweep_far     = 16;
+  cfg->near_peek           = 0;
+  cfg->far_dir             = 1;
+  cfg->far_dir_tries       = 2;
+  cfg->laws_poll           = 16;
+  cfg->laws_near_pct       = 100;
+  cfg->laws_eager          = 0;
 }
 
 
@@ -272,23 +281,38 @@ void gtc_ldbal_cfg_init(gtc_ldbal_cfg_t *cfg) {
 /**
  * Apply environment overrides to a load balancer configuration, so experiments
  * can change the target policy without changing the applications:
- *   GTC_TARGET     random | rr | local-prob | local-sweep
- *   GTC_LOCAL_PCT  local-prob: percent of attempts aimed at node-mates (0..100)
- *   GTC_SWEEP_FAR  local-sweep: off-node attempts between node sweeps (>= 1)
+ *   GTC_TARGET        random | rr | local-prob | local-sweep | laws
+ *   GTC_LOCAL_PCT     local-prob: percent of attempts aimed at node-mates (0..100)
+ *   GTC_SWEEP_FAR     local-sweep: off-node attempts between node sweeps (>= 1)
+ *   GTC_NEAR_PEEK     0|1: SAWS loads a node-mate's steal_val before claiming (any policy)
+ *   GTC_FAR_DIR       0|1: laws reads other nodes' bitmaps to pick off-node victims
+ *                     (0 = on-node bitmap only, blind random off-node probes)
+ *   GTC_FAR_DIR_TRIES laws: remote bitmaps read per step before a blind probe (>= 0)
+ *   GTC_LAWS_POLL     laws: owner checks whether to clear its set bit every N progress calls
+ *   GTC_LAWS_NEAR_PCT laws: percent of search steps that try my node's bitmap first (0..100);
+ *                     the rest go straight to remote bitmaps / a blind off-node probe
+ *   GTC_LAWS_EAGER    0|1: laws owner also clears its bit as soon as it runs dry
  * Unknown or out-of-range values abort, so a typo cannot silently run the default.
  */
 void gtc_ldbal_cfg_env(gtc_ldbal_cfg_t *cfg) {
   char *t   = getenv("GTC_TARGET");
   char *pct = getenv("GTC_LOCAL_PCT");
   char *far = getenv("GTC_SWEEP_FAR");
+  char *pk  = getenv("GTC_NEAR_PEEK");
+  char *fd  = getenv("GTC_FAR_DIR");
+  char *fdt = getenv("GTC_FAR_DIR_TRIES");
+  char *lp  = getenv("GTC_LAWS_POLL");
+  char *lnp = getenv("GTC_LAWS_NEAR_PCT");
+  char *le  = getenv("GTC_LAWS_EAGER");
 
   if (t) {
     if      (!strcmp(t, "random"))      cfg->target_selection = TARGET_RANDOM;
     else if (!strcmp(t, "rr"))          cfg->target_selection = TARGET_ROUND_ROBIN;
     else if (!strcmp(t, "local-prob"))  cfg->target_selection = TARGET_LOCAL_PROB;
     else if (!strcmp(t, "local-sweep")) cfg->target_selection = TARGET_LOCAL_SWEEP;
+    else if (!strcmp(t, "laws"))        cfg->target_selection = TARGET_LAWS;
     else {
-      fprintf(stderr, "GTC_TARGET=%s: expected random, rr, local-prob, or local-sweep\n", t);
+      fprintf(stderr, "GTC_TARGET=%s: expected random, rr, local-prob, local-sweep, or laws\n", t);
       abort();
     }
   }
@@ -299,6 +323,35 @@ void gtc_ldbal_cfg_env(gtc_ldbal_cfg_t *cfg) {
       abort();
     }
   }
+  if (pk)
+    cfg->near_peek = (atoi(pk) != 0);
+  if (fd)
+    cfg->far_dir = (atoi(fd) != 0);
+  if (fdt) {
+    cfg->far_dir_tries = atoi(fdt);
+    if (cfg->far_dir_tries < 0) {
+      fprintf(stderr, "GTC_FAR_DIR_TRIES=%s: expected >= 0\n", fdt);
+      abort();
+    }
+  }
+  if (lp) {
+    cfg->laws_poll = atoi(lp);
+    if (cfg->laws_poll < 1) {
+      fprintf(stderr, "GTC_LAWS_POLL=%s: expected >= 1\n", lp);
+      abort();
+    }
+  }
+  if (lnp) {
+    char *end;
+    long v = strtol(lnp, &end, 10);
+    if (end == lnp || *end != '\0' || v < 0 || v > 100) {
+      fprintf(stderr, "GTC_LAWS_NEAR_PCT=%s: expected 0..100\n", lnp);
+      abort();
+    }
+    cfg->laws_near_pct = (int)v;
+  }
+  if (le)
+    cfg->laws_eager = (atoi(le) != 0);
   if (far) {
     cfg->local_sweep_far = atoi(far);
     if (cfg->local_sweep_far < 1) {

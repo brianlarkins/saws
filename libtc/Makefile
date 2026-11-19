@@ -31,7 +31,8 @@ OBJS =  collection-sdc.o     \
 				clod.o							 \
 				tc-clod.o						 \
 				saws_shrb.o						 \
-				locality.o
+				locality.o						 \
+				laws.o
 			 	# line eater
 
 .PHONY: all

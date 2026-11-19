@@ -134,6 +134,12 @@ void gtc_progress_saws(gtc_t gtc) {
   // Attempt to reclaim space
   if ((rb->progresscc++ % rb->reclaimfreq) == 0)
     saws_shrb_reclaim_space(tc->shared_rb);
+
+  // LAWS: the owner's bit is set at release (an event, see saws_shrb_release) and cleared
+  // lazily once thieves have claimed everything.  A stale set bit only costs a thief a peek
+  // miss, so check every laws_poll calls; the per-task cost is a test of a local flag.
+  if (tc->bit_set && ((++rb->lawscc & tc->laws_poll_mask) == 0) && !saws_shrb_have_stealable(rb))
+    gtc_laws_set_bit(tc, 0);
   rb->nprogress++;
   TC_STOP_HTIMER(tc,progress);
   GTC_EXIT();
@@ -214,6 +220,16 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
     tc->ct.passive_count++;
 #endif
 
+    // LAWS: I am out of work but my bit may still advertise some (stale until the lazy poll).
+    // Count it (idle path, so the check is free), and with laws_eager clear it now.
+    if (tc->bit_set) {
+      tc->ct.laws_dry_bitset++;
+      if (saws_shrb_have_stealable((saws_shrb_t *)tc->shared_rb))
+        tc->ct.laws_dry_stealable++;
+      else
+        gtc_laws_eager_clear(tc);
+    }
+
     // Keep searching until we find work or detect termination
     while (!got_task && !tc->terminated) {
 
@@ -241,8 +257,10 @@ int gtc_get_buf_saws(gtc_t gtc, int priority, task_t *buf) {
         // Steal failed: Got the lock, no longer any work on remote node
       } else {
         tc->ct.failed_steals_unlocked++;
-        if (gtc_is_near(v))
+        if (gtc_is_near(v)) {
           tc->ct.failed_steals_unlocked_near++;
+          vs_state.near_miss |= 1ULL << _c->loc.node_rank_of[v];  // LAWS: skip it for the rest of this search
+        }
       }
 
       // Invoke the progress engine

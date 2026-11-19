@@ -129,8 +129,12 @@ void saws_shrb_reset(saws_shrb_t *rb) {
   rb->nmeta      = 0;
   rb->pushcc     = 0;
   rb->progresscc = 0;
+  rb->cl_itasks  = 0;
+  rb->cl_maxsteals = 0;
+  rb->lawscc     = 0;
   uint64_t sv = 3;
   rb->steal_val |= sv << 38;
+  rb->sv_shadow  = rb->steal_val;
   //rb->steal_val = sv;
 
   memset(rb->claimed, 0, sizeof(rb->claimed));
@@ -242,6 +246,43 @@ static inline int saws_max_steals(uint64_t itasks) {
 
 
 /*==================== STATE QUERIES ====================*/
+
+/** is there anything left to claim in this steal_val?  (used by peeking thieves) */
+int saws_shrb_claimable(uint64_t steal_val) {
+  uint64_t asteals, itasks;
+  int64_t  tail;
+  uint64_t valid = saws_get_stealval(steal_val, &asteals, &itasks, &tail);
+
+  if (valid >= SAWS_MAX_EPOCHS || itasks == 0)
+    return 0;
+  return asteals < (uint64_t)saws_max_steals(itasks);
+}
+
+
+/** owner: does my public portion still have unclaimed tasks?  Called on every
+ *  progress call under TARGET_LAWS, so it reads steal_val with one local load and
+ *  caches saws_max_steals() per itasks value.
+ *
+ *  The owner publishes steal_val with a non-blocking SHMEM atomic to itself, which
+ *  may not be visible to its own load for a few microseconds.  If memory does not
+ *  yet show the owner's last write (bits 0-39: epoch, itasks, tail differ), use the
+ *  shadow copy, whose claim count (bits 40-63) is zero. */
+int saws_shrb_have_stealable(saws_shrb_t *rb) {
+  uint64_t mem = __atomic_load_n(&rb->steal_val, __ATOMIC_RELAXED);
+  uint64_t steal_val = ((mem ^ rb->sv_shadow) & ((1ULL << 40) - 1)) ? rb->sv_shadow : mem;
+  uint64_t asteals, itasks;
+  int64_t  tail;
+  uint64_t valid = saws_get_stealval(steal_val, &asteals, &itasks, &tail);
+
+  if (valid >= SAWS_MAX_EPOCHS || itasks == 0)
+    return 0;
+  if (itasks != rb->cl_itasks) {
+    rb->cl_itasks = itasks;
+    rb->cl_maxsteals = saws_max_steals(itasks);
+  }
+  return asteals < (uint64_t)rb->cl_maxsteals;
+}
+
 
 
 int saws_shrb_head(saws_shrb_t *rb) {
@@ -398,7 +439,10 @@ void saws_shrb_release(saws_shrb_t *rb) {
     memset(&rb->completed[rb->cur].status, 0, sizeof(rb->completed[rb->cur].status));
 
     steal_val = saws_set_stealval(rb->cur, nshared, rb->tail);
+    rb->sv_shadow = steal_val;
     shmem_atomic_set(&rb->steal_val, steal_val, rb->procid);
+    if (rb->tc->ldbal_cfg.target_selection == TARGET_LAWS)
+      gtc_laws_set_bit(rb->tc, 1);   // LAWS: work just became stealable (event; cleared lazily)
     rb->nrelease++;
     TC_STOP_TIMER(rb->tc, release);
   }
@@ -415,7 +459,10 @@ void saws_shrb_release_all(saws_shrb_t *rb) {
   rb->split   = (rb->split + amount) % rb->max_size;
 
   steal_val = saws_set_stealval(rb->cur, amount, rb->tail);
+  rb->sv_shadow = steal_val;
   shmem_atomic_set(&rb->steal_val, steal_val, rb->procid);
+  if (amount > 0 && rb->tc->ldbal_cfg.target_selection == TARGET_LAWS)
+    gtc_laws_set_bit(rb->tc, 1);
   rb->nrelease++;
   GTC_EXIT();
 }
@@ -516,7 +563,13 @@ void saws_shrb_reacquire(saws_shrb_t *rb) {
     steal_val = saws_set_stealval(rb->cur, 0, rb->tail);
   }
 
+  rb->sv_shadow = steal_val;
   shmem_atomic_set(&rb->steal_val, steal_val, rb->procid);
+  // LAWS: if unclaimed tasks remain public after reacquiring, make sure the bit says so
+  if (rb->tc->ldbal_cfg.target_selection == TARGET_LAWS && ((steal_val >> 19) & 0x7FFFF) > 0)
+    gtc_laws_set_bit(rb->tc, 1);
+  else
+    gtc_laws_eager_clear(rb->tc);    // nothing public is left (no-op unless laws_eager and the bit is set)
   TC_STOP_TIMER(rb->tc, reacquire);
   GTC_EXIT();
 }
@@ -649,6 +702,20 @@ static inline int saws_shrb_pop_n_tail_impl(saws_shrb_t *myrb, int proc, int n, 
   void *rptr = NULL;
   increment = 1L << 40;
   myrb->ngets++;
+
+  // LAWS peek: look at a node-mate's steal_val with a load before paying for a NIC claim
+  if (myrb->tc->ldbal_cfg.near_peek && myrb->near_rb && gtc_is_near(proc)) {
+    saws_shrb_t *vrb = (saws_shrb_t *)myrb->near_rb[_c->loc.node_rank_of[proc]];
+    if (vrb) {
+      uint64_t sv = __atomic_load_n(&vrb->steal_val, __ATOMIC_ACQUIRE);
+      myrb->tc->ct.laws_peeks++;
+      if (!saws_shrb_claimable(sv)) {
+        myrb->tc->ct.laws_peek_miss++;
+        return 0;
+      }
+    }
+  }
+
   tc_timer_t gotwork;
   TC_INIT_ATIMER(gotwork);
   TC_START_ATIMER(gotwork);

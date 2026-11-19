@@ -75,6 +75,11 @@ struct saws_shrb_s {
   int               reclaimfreq;                        // reclaim dampening frequency
   int               pushcc;                             // push_head calls (ensure_space damping)
   int               progresscc;                         // progress calls (reclaim damping)
+  unsigned          lawscc;                             // LAWS: progress calls while my bit is set (lazy clear)
+  uint64_t          sv_shadow;                          // LAWS: last steal_val this owner wrote (its NIC
+                                                        //   loopback write may not be visible to a local load yet)
+  uint64_t          cl_itasks;                          // LAWS: itasks for which cl_maxsteals was computed
+  int               cl_maxsteals;                       // LAWS: cached saws_max_steals(cl_itasks)
   int               claimed[SAWS_MAX_STEALS_PER_EPOCH]; // # claimed task lookup table
   saws_completion_t completed[SAWS_MAX_EPOCHS];         // completion arrays
   int               cur;                                // index of current completion array
@@ -135,6 +140,8 @@ int         saws_shrb_full(saws_shrb_t *rb);
 int         saws_shrb_empty(saws_shrb_t *rb);
 
 void        saws_shrb_print(saws_shrb_t *rb);
+int         saws_shrb_claimable(uint64_t steal_val);   // anything left to claim in this steal_val?
+int         saws_shrb_have_stealable(saws_shrb_t *rb); // owner: cheap check of its own steal_val
 
 #define saws_shrb_elem_addr(MYRB, PROC, IDX) ((MYRB->q) + (IDX)*(MYRB)->elem_size)
 #define saws_shrb_buff_elem_addr(RB, E, IDX) ((u_int8_t*)(E) + (IDX)*(RB)->elem_size)

@@ -151,8 +151,10 @@ typedef unsigned long tc_counter_t;
 //                     local_search_factor percent, else a random off-node PE.
 // TARGET_LOCAL_SWEEP: visit every node-mate (random start, then in order) before
 //                     going off-node; after local_sweep_far off-node attempts, sweep again.
-enum target_select_e { TARGET_RANDOM, TARGET_ROUND_ROBIN, TARGET_LOCAL_PROB, TARGET_LOCAL_SWEEP };
-#define GTC_NUM_TARGET_METHODS 4
+// TARGET_LAWS:        node work bitmap: a random node-mate whose bit is set; if none, a node
+//                     whose bitmap (read remotely, far_dir) shows work; else a random off-node PE.
+enum target_select_e { TARGET_RANDOM, TARGET_ROUND_ROBIN, TARGET_LOCAL_PROB, TARGET_LOCAL_SWEEP, TARGET_LAWS };
+#define GTC_NUM_TARGET_METHODS 5
 enum steal_method_e  { STEAL_HALF, STEAL_ALL, STEAL_CHUNK };
 enum tc_states { STATE_WORKING = 0, STATE_SEARCHING, STATE_STEALING, STATE_INACTIVE, STATE_TERMINATED };
 
@@ -167,6 +169,15 @@ typedef struct {
   int chunk_size;                /* Size of a steal when using STEAL_CHUNK */
   int local_search_factor;       /* TARGET_LOCAL_PROB: percent of steal attempts (0-100) aimed at node-mates */
   int local_sweep_far;           /* TARGET_LOCAL_SWEEP: off-node attempts between node sweeps (>= 1) */
+  int near_peek;                 /* SAWS: load a node-mate's steal_val before claiming (needs shmem_ptr) */
+  int far_dir;                   /* TARGET_LAWS: read remote nodes' bitmaps to pick off-node victims */
+  int far_dir_tries;             /* TARGET_LAWS: remote bitmaps read per search step before a blind probe */
+  int laws_poll;                 /* TARGET_LAWS: owner checks whether its set bit can be cleared every
+                                    laws_poll progress calls (rounded up to a power of two) */
+  int laws_near_pct;             /* TARGET_LAWS: percent of search steps (0-100) that consult my node's
+                                    bitmap first; the rest go straight to the off-node step (E2c) */
+  int laws_eager;                /* TARGET_LAWS: also clear my bit as soon as I run dry (reacquire leaves
+                                    nothing public, or get_buf starts a search) (E2c) */
 } gtc_ldbal_cfg_t;
 
 
@@ -200,6 +211,7 @@ typedef struct {
   int sweep_pos;     // TARGET_LOCAL_SWEEP: current index into the node-mate list
   int sweep_left;    // node-mates left to visit in this sweep
   int far_left;      // off-node attempts left before the next sweep
+  uint64_t near_miss; // TARGET_LAWS: node-mates (by node rank) found empty during this search
 } gtc_vs_state_t;
 
 /** queue implementation type */
@@ -285,6 +297,20 @@ struct tc_counters_s {
   tc_counter_t         steal_ops_failed_near;
   tc_counter_t         tasks_stolen_near;         // tasks stolen from node-mates
   tc_counter_t         failed_steals_unlocked_near; // failed_steals_unlocked against node-mates
+  // LAWS (E2)
+  tc_counter_t         laws_bitmap_reads;         // reads of my node's bitmap
+  tc_counter_t         laws_bitmap_empty;         // ... that showed no other node-mate with work
+  tc_counter_t         laws_peeks;                // loads of a node-mate's steal_val before claiming
+  tc_counter_t         laws_peek_miss;            // ... that showed nothing to claim (no NIC op issued)
+  tc_counter_t         laws_fardir_reads;         // remote bitmap reads
+  tc_counter_t         laws_fardir_empty;         // ... that showed no work on that node
+  tc_counter_t         laws_blind_far;            // fallbacks to a random off-node PE
+  tc_counter_t         laws_bit_writes;           // owner updates of its own bit
+  tc_counter_t         laws_occ[11];              // node occupancy (tenths) seen at each bitmap read
+  tc_counter_t         laws_near_skip;            // search steps that skipped my node's bitmap (laws_near_pct)
+  tc_counter_t         laws_eager_clears;         // bit clears done eagerly (laws_eager)
+  tc_counter_t         laws_dry_bitset;           // searches started with my bit still set (any mode)
+  tc_counter_t         laws_dry_stealable;        // ... while my public portion still had unclaimed tasks
 };
 typedef struct tc_counters_s tc_counters_t;
 
@@ -330,6 +356,11 @@ struct tc_s {
   int                 chunk_size;                 // number of tasks we can steal at a time
   int                 max_body_size;
   int                 last_target;                // Global round robin -- remember our last target
+
+  uint64_t           *node_bits;                  // (symmetric) node work bitmap; node leader's copy is used
+  uint64_t           *my_node_bits;               // shmem_ptr to my node leader's bitmap, or NULL
+  int                 bit_set;                    // my bit's current value (owner-only writes)
+  unsigned            laws_poll_mask;             // laws_poll rounded up to a power of two, minus one
 
   gtc_ldbal_cfg_t     ldbal_cfg;                  // load balancer configuration
 
@@ -427,6 +458,13 @@ int     gtc_get_local_buf(gtc_t gtc, int priority, task_t *buf);
 int     gtc_steal_tail(gtc_t gtc, int target);
 int     gtc_try_steal_tail(gtc_t gtc, int target);
 int     gtc_select_target(gtc_t gtc, gtc_vs_state_t *state);
+
+// LAWS node work bitmap -- laws.c
+void    gtc_laws_create(tc_t *tc);                 // collective
+void    gtc_laws_destroy(tc_t *tc);                // collective
+int     gtc_laws_select(tc_t *tc, gtc_vs_state_t *state);
+void    gtc_laws_set_bit(tc_t *tc, int have_work); // owner only; writes only on change
+void    gtc_laws_eager_clear(tc_t *tc);            // owner, laws_eager: nothing of mine is public
 task_t *gtc_get(gtc_t gtc, int priority);
 void    gtc_set_external_work_avail(gtc_t gtc, int flag);
 task_t *gtc_task_inplace_create_and_add(gtc_t gtc, task_class_t tclass);

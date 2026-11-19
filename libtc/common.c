@@ -18,7 +18,7 @@ void gtc_print_my_stats(gtc_t gtc);
 
 enum target_types_e { FREE, LOCAL_SEARCH, RETRY };
 
-char *target_methods[GTC_NUM_TARGET_METHODS] = { "Random", "Round Robin", "Local-first (probabilistic)", "Local-first (sweep)" };
+char *target_methods[GTC_NUM_TARGET_METHODS] = { "Random", "Round Robin", "Local-first (probabilistic)", "Local-first (sweep)", "LAWS node bitmap" };
 char *steal_methods[3]  = { "Half", "Greedy", "Chunk" };
 
 static int gtc_is_seeded = 0;
@@ -131,6 +131,16 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
   gtc_ldbal_cfg_set(gtc, ldbal_cfg);
   gtc_ldbal_cfg_env(&tc->ldbal_cfg);   // GTC_TARGET etc. override the application's choice
 
+  // LAWS node work bitmap (collective; allocated for every queue type so creation stays symmetric)
+  gtc_laws_create(tc);
+  if (tc->ldbal_cfg.target_selection == TARGET_LAWS && (qtype != GtcQueueSAWS || !tc->my_node_bits)) {
+    if (_c->rank == 0)
+      printf("SCIOTO warning: TARGET_LAWS needs the SAWS queue and shmem_ptr to node-mates "
+             "(%d nodes, %d PEs/node, shmem_ptr %s); using random selection\n",
+             _c->loc.nnodes, _c->loc.node_size, _c->loc.ptr_ok ? "yes" : "no");
+    tc->ldbal_cfg.target_selection = TARGET_RANDOM;
+  }
+
   switch (tc->qtype) {
     case GtcQueueSDC:
       gtc_create_sdc(gtc, max_body_size, shrb_size, ldbal_cfg);
@@ -161,6 +171,7 @@ void gtc_destroy(gtc_t gtc) {
   tc_t *tc = gtc_lookup(gtc);
 
   tc->cb.destroy(gtc);
+  gtc_laws_destroy(tc);
 
   td_destroy(tc->td);
   clod_destroy(tc->clod);
@@ -211,6 +222,14 @@ void gtc_reset(gtc_t gtc) {
   tc->ct.aborted_targets        = 0;
   tc->ct.dispersion_attempts_unlocked = 0;
   tc->ct.dispersion_attempts_locked   = 0;
+  tc->ct.laws_bitmap_reads = tc->ct.laws_bitmap_empty = 0;
+  tc->ct.laws_peeks = tc->ct.laws_peek_miss = 0;
+  tc->ct.laws_fardir_reads = tc->ct.laws_fardir_empty = tc->ct.laws_blind_far = 0;
+  tc->ct.laws_bit_writes = 0;
+  tc->ct.laws_near_skip = tc->ct.laws_eager_clears = 0;
+  tc->ct.laws_dry_bitset = tc->ct.laws_dry_stealable = 0;
+  memset(tc->ct.laws_occ, 0, sizeof(tc->ct.laws_occ));
+  gtc_laws_set_bit(tc, 0);   // the queue is about to be emptied
 
   // Reset round-robin counter
   tc->last_target = (_c->rank + 1) % _c->size;
@@ -604,6 +623,11 @@ int gtc_select_target(gtc_t gtc, gtc_vs_state_t *state) {
         v = gtc_random_far_peer();
     }
 
+    // LAWS: node work bitmap first, then other nodes' bitmaps, then a blind probe
+    else if (tc->ldbal_cfg.target_selection == TARGET_LAWS) {
+      v = gtc_laws_select(tc, state);
+    }
+
     // Local-first, sweep: every node-mate once (random start, in order), then
     // local_sweep_far random off-node attempts, then sweep again.  The state lives
     // for one search (get_buf), so each search starts with a fresh sweep.
@@ -965,6 +989,9 @@ void gtc_print_stats(gtc_t gtc) {
       snprintf(pol, sizeof(pol), "local-prob/%d", tc->ldbal_cfg.local_search_factor);
     else if (tc->ldbal_cfg.target_selection == TARGET_LOCAL_SWEEP)
       snprintf(pol, sizeof(pol), "local-sweep/%d", tc->ldbal_cfg.local_sweep_far);
+    else if (tc->ldbal_cfg.target_selection == TARGET_LAWS)
+      snprintf(pol, sizeof(pol), "laws/dir%d/near%d%s", tc->ldbal_cfg.far_dir ? tc->ldbal_cfg.far_dir_tries : 0,
+               tc->ldbal_cfg.laws_near_pct, tc->ldbal_cfg.laws_eager ? "/eager" : "");
     else
       snprintf(pol, sizeof(pol), "%s", tc->ldbal_cfg.target_selection == TARGET_RANDOM ? "random" : "rr");
 
@@ -977,6 +1004,30 @@ void gtc_print_stats(gtc_t gtc) {
         flf, flf ? tflf/flf : 0.0,
         sumcounts[TasksStolen] - sumcounts[TasksStolenNear],
         sumcounts[ProbesFailed] - sumcounts[ProbesFailedNear], pol);
+  }
+
+  // LAWS: bitmap, peek, and far-directory activity (whole-run totals)
+  if (tc->ldbal_cfg.target_selection == TARGET_LAWS || tc->ldbal_cfg.near_peek) {
+    enum { NL = 23 };
+    uint64_t *lc = gtc_shmem_calloc(NL, sizeof(uint64_t)), *ls = gtc_shmem_calloc(NL, sizeof(uint64_t));
+    lc[0] = tc->ct.laws_bitmap_reads;  lc[1] = tc->ct.laws_bitmap_empty;
+    lc[2] = tc->ct.laws_peeks;         lc[3] = tc->ct.laws_peek_miss;
+    lc[4] = tc->ct.laws_fardir_reads;  lc[5] = tc->ct.laws_fardir_empty;
+    lc[6] = tc->ct.laws_blind_far;     lc[7] = tc->ct.laws_bit_writes;
+    for (int i = 0; i < 11; i++) lc[8+i] = tc->ct.laws_occ[i];
+    lc[19] = tc->ct.laws_near_skip;    lc[20] = tc->ct.laws_eager_clears;
+    lc[21] = tc->ct.laws_dry_bitset;   lc[22] = tc->ct.laws_dry_stealable;
+    shmem_barrier_all();
+    shmem_uint64_sum_reduce(SHMEM_TEAM_WORLD, ls, lc, NL);
+    // E2c fields go after the occ% buckets, so parsers written for the E2 line still match
+    eprintf("        : laws bitmap reads %lu empty %lu | peeks %lu miss %lu | fardir reads %lu empty %lu"
+            " | blind %lu | bit writes %lu | occ%% %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu"
+            " | near skip %lu | eager clears %lu | dry with bit %lu stealable %lu\n",
+        ls[0], ls[1], ls[2], ls[3], ls[4], ls[5], ls[6], ls[7],
+        ls[8], ls[9], ls[10], ls[11], ls[12], ls[13], ls[14], ls[15], ls[16], ls[17], ls[18],
+        ls[19], ls[20], ls[21], ls[22]);
+    shmem_free(lc);
+    shmem_free(ls);
   }
 
   tc->cb.print_gstats(gtc);
