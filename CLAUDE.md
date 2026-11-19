@@ -32,6 +32,9 @@ Thrust B there is the GPU counterpart of LAWS).
 - `init.c` — `gtc_init`. Rank 0 prints `SCIOTO build/shmem/onnode/nodes/timing` provenance
   lines (libtc rev, SOS install, libsma path, UCX version, shared-team size, shmem_ptr,
   node layout, timer mode). `gtc_ldbal_cfg_env` applies `GTC_TARGET` and related overrides.
+- `laws.c` (E2) — node work bitmap (owner-only bits), `gtc_laws_select` (bitmap, then remote bitmaps,
+  then a blind probe; E2c adds a far share, `laws_near_pct`), `gtc_laws_eager_clear` (E2c). SAWS peeks are in
+  `saws_shrb_pop_n_tail_impl`.
 - `locality.{c,h}` (E1) — node membership from host-name hashes (works for any placement and
   build; cross-checked against `SHMEM_TEAM_SHARED`), `_c->loc` (node id, node_pes, node_of[],
   ptr_ok, node team when placement is block), `gtc_is_near(pe)`, random near/far peers, and
@@ -188,7 +191,6 @@ Status log:
   `<input>.<variant>.<policy>.<queue>.<npes>.<rep>.out`.
 
 Results are in `lotus:~/laws/results/e1/` (parse with `runs/e0/parse.py`).
-The E1 code (locality, policies, scope stats, timers, test, gen/parse) is **not committed yet**.
 
 **E1 complete** (jobs 28502–28506, 200 runs, all exit 0; written up in design doc §7.4, draft v0.4):
 - **SDC ≈ SAWS on UTS with per-task timers off** (SDC is 2% faster on T1WL and within ±1% on T3XXL/T3WL).
@@ -202,8 +204,88 @@ The E1 code (locality, policies, scope stats, timers, test, gen/parse) is **not 
   (56.8 vs. 56.7 µs, BPC fine 1536). Even near steals cost 44–68 µs, 10–15× the uncontended 4.4 µs, because
   they queue at the victim's HCA. This motivates M1 peeks and M2 CPU-side near claims.
 
-Next: E2 (node work bitmap, L1 shmem_ptr peeks). Compare against both SAWS random and SAWS lp50.
-Optional: a calibrated busy-wait for sub-ms BPC tasks.
+## E2: node work bitmap, peeks, remote bitmaps (done; write-up pending E2c)
+PI decisions (2026-11-18): include E2b (far-side remote bitmap reads). If results disappoint and
+hot-spotting at node leaders is suspected, back off to the original M1 (on-node bitmap only:
+`GTC_FAR_DIR=0`). Bits are **owner-only** (as in earlier Scioto; no thief writes, no races).
+**SDC is left alone** (it can be added for ablation later).
+- `libtc/laws.c`: one symmetric 64-bit word per TC, 64-byte aligned. The node leader's copy is the
+  node's bitmap; bit i is node-mate i (`_c->loc.node_rank_of`). The owner sets or clears its own bit with CPU
+  atomics through `shmem_ptr`, only on change (`gtc_laws_set_bit`). Node-mates read it with loads.
+  Other nodes read it with `shmem_uint64_g`, a read rather than an atomic, so the word stays in the CPU domain.
+- **Owner bit: set at release, cleared lazily** (PI, 2026-11-19). `saws_shrb_release`, `release_all`, and
+  `reacquire` (when work stays public) set the bit as an event. `gtc_progress_saws` clears it lazily. The per-task
+  path is `if (tc->bit_set && (++rb->lawscc & laws_poll_mask) == 0 && !have_stealable) clear`, with
+  `GTC_LAWS_POLL` defaulting to 16 and rounded to a power of two. The first version checked on every progress call and cost 2.5% on
+  T3XXL at 1 node (first E2 attempt, job 28520). That attempt was cancelled and its results kept in
+  `results/e2-v1-owner-poll`. Check job 28525 (3 reps each): random 14.12 s, lp50+peek 14.13, laws poll-1
+  14.28 (+1.1%), laws poll-16 14.18 (+0.4%); bit writes 231K → 54K. This finding is written up in design doc §7.5.
+- `saws_shrb_have_stealable`: a local load of its own steal_val plus cached maxsteals. **Bug found and fixed:** the owner publishes steal_val with a
+  non-blocking SHMEM atomic to itself, so its own load lags the write. It now keeps `rb->sv_shadow` and trusts the
+  shadow when memory's low 40 bits differ.
+- `GTC_TARGET=laws` (`gtc_laws_select`): a random set bit on my node (skipping node-mates found empty this
+  search via `vs_state.near_miss`); otherwise up to `GTC_FAR_DIR_TRIES` (default 2) remote bitmaps; otherwise a
+  blind random far probe. `GTC_FAR_DIR=0` gives M1. Falls back to random (with a warning) without SAWS or
+  shmem_ptr.
+- `GTC_NEAR_PEEK=1` (any policy): load a node-mate's steal_val before the NIC claim; return 0 without a
+  NIC op if there is nothing to claim.
+- Stats line: `: laws bitmap reads .. empty .. | peeks .. miss .. | fardir reads .. empty .. | blind .. |
+  bit writes .. | occ% <11 buckets>`. `parse.py` parses it and reports failed probes per PE.
+- `tests/test-laws`: owner bits set after release (local and remote view), exactly-once execution
+  under laws+peeks, and bits clear afterwards. Passes 6/6 on 1–2 nodes (jobs 28518, 28519). Tree tests pass
+  under all E2 policies; SOS-main falls back with a warning.
+- Validation hints (2 nodes, short runs, not results): on BPC fine, 58% of peeks miss (an owner's bit stays
+  set until its next progress after thieves drain it) and about 80% of remote bitmap reads are empty.
+  On T3L, laws-M1 cut idle time from 34% to 18%.
+- E2 suite (`gen.sh e2`, **rerun as jobs 28527–28531** with the lazy-clear owner; 1/4/16/32/40 nodes, 2 reps,
+  XPMEM): the reference set × SAWS {random, lp50, lp50pk, lawsm1, laws, lawsnp}.
+- Run scripts now have a **start-up hang watchdog**: if no `SCIOTO build` line appears within `E0_HANG_SEC`
+  (90 s), the step is killed and retried once, and the file records `# start-up hang on try N`. Tested with a fake srun.
+  The SOS start-up hang is rare with block placement: one seen (job 28525, two-TC test), then 0/40 in job 28526.
+  The two-TC test passes 3/3 under laws.
+
+**E2 complete** (jobs 28527–28531, 240 runs, all exit 0, watchdog never fired; results in
+`lotus:~/laws/results/e2/`; written up in design doc §7.5, draft v0.6). Medians vs. lp50:
+- **BPC fine: laws wins big**, −31% at 1536 and 1920 PEs (1.55 vs. 2.26 s; 1.60 vs. 2.31 s for M1), −3% at 768.
+  The win is targeting, not locality: lp90 (79% near, no bitmap) *lost* on BPC fine in E1.
+- **Binomial UTS: laws loses big**, T3XXL +7% to +34% (192–1920 PEs) and T3WL +11% to +22%. Same signature as E1's sweep:
+  99% of steals near, 7× the near probes of lp90, near steals take about half as many tasks (T3WL 5.5 vs. 11.7 at 768),
+  passive time 3–4× higher. lp90 (89% near) was neutral, so the cause is **strict local-first** (going off-node only
+  when the node bitmap is empty), not the near share as such. Failed probes are cheap peeks (about 0.5 µs) and not the cost.
+- Controls: laws +0.5–1.0% on T1WL, +1.0–2.5% on BPC d500 (16–40 nodes). M1 ≈ E2b (no leader hot-spot sign).
+  Peeks help alone: lp50pk ≤ lp50 everywhere; laws without peeks is up to 8 points slower (T3XXL).
+
+## E2c: near share and eager bit clear (done)
+- `GTC_LAWS_NEAR_PCT` (`laws_near_pct`, default 100 = E2 behavior): a laws step consults the node bitmap first with this
+  probability; otherwise it goes straight to remote bitmaps, then a blind probe (`laws_near_skip` counter).
+- `GTC_LAWS_EAGER` (`laws_eager`, default 0): the owner also clears its bit as soon as it runs dry, in `reacquire`
+  (nothing left public) and when `gtc_get_buf_saws` starts a search. Both are events; the per-task path is unchanged.
+- Stats line gains `| near skip N | eager clears N | dry with bit N stealable M` after the occ% buckets. "Dry with bit"
+  counts searches that start with my own bit still set (any mode; checked on the idle path only), and "stealable"
+  counts those where my public portion still had unclaimed tasks (0 in every check run, so the shadow logic holds).
+  The scope line's target reads `laws/dir2/near50/eager`. `parse.py`: `near_skip`, `eager_clears`, `dry_bit`, `dry_stealable`.
+- `gen.sh e2c`: 4/16/32/40 nodes, 2 reps, the reference set × {lp50pk, laws, lawse, laws90, laws90e, laws50, laws50e}
+  (policy names `laws[NN][e]`).
+- Validation: job 28539 (2 nodes: test-laws in 4 configs, tree + two-TC tests at near 90/50/100 with and without eager,
+  bad `GTC_LAWS_NEAR_PCT` aborts) all pass. Job 28540 (2 nodes, T3XXL, 3 reps; short runs, not results): laws 7.56–8.35 s
+  (passive 5.5–12%), lawse 7.46–7.80, laws50 7.13–7.14 (1.1%), laws50e 7.12–7.13 (1.0%). Under the lazy clear, 0.54–1.17M
+  searches per run start with the searcher's own bit set (idle PEs advertising work). Eager clears happen in
+  `reacquire` (dry-with-bit becomes 0) and cut peek misses by about 60%.
+
+**E2c complete** (jobs 28541–28544: 4/16/32/40 nodes, 2 reps, 252 runs, all exit 0, watchdog never fired; results in
+`lotus:~/laws/results/e2c/`; written up in design doc §7.6, draft v0.6). Medians vs. lp50pk in the same allocations:
+- **A far share fixes UTS:** laws90/laws50 (lazy) are within ±0.5% on T3WL and 3–8% faster on T3XXL from 768 PEs (strict: +9–31%).
+- **Eager clearing adds as much again:** laws50e is −0.1/−7.6/−16.1/−22.3% on T3XXL (192/768/1536/1920 PEs), +0.2/−1.3/−2.4% on T3WL,
+  and −1.0/−14.4/−32.5/−36.4% on BPC fine. laws90e is similar (−19.9% T3XXL, −38.6% BPC fine at 1920). Failed probes fall 48–62% on
+  UTS. Bit writes rise 4–6× on UTS (CPU atomics, no measurable cost).
+- Near share 50 vs. 90 differs by ≤ 5 points: 50 is better on UTS and d500, 90 (and strict+eager) 4–9% better on BPC fine at 32–40 nodes.
+- Controls: every laws variant is +0.4–1.1% on T1WL (likely the per-task lazy poll; a sparser poll is untested). laws50e −0.9 to −0.1%
+  on d500; strict laws +1.0–2.7%.
+- Limit: lp50pk on BPC fine at 32–40 nodes was 9–12% slower in E2c than in E2 (allocation-sensitive), so compare within a suite.
+
+Next: the PI picks the E3 baseline (laws50e or laws90e; design doc question 6) and whether E4 shrinks to near-share tuning.
+Then M2/E3 (two-door queue): near steals still cost 40–55 µs at 1536–1920 PEs under laws50e. Small follow-ups: a sparser
+lazy poll with eager clearing (T1WL +0.5%), the bitmap over SDC as an ablation, and a calibrated busy-wait for sub-ms BPC tasks.
 
 ## Conventions
 - Add experimental results to the design doc
