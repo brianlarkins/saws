@@ -17,14 +17,14 @@
  * leader's copy of the symmetric word tc->node_bits.
  *
  *  - Owner-only writes: each PE sets and clears only its own bit, with CPU atomics
- *    through shmem_ptr, and only when its state changes.  Thieves never write bits.
+ *    through shmem_ptr, and only when its state changes.  Initiators never write bits.
  *    The bit is set at release (an event) and cleared lazily: every laws_poll progress
- *    calls the owner checks whether thieves have claimed everything.
+ *    calls the owner checks whether initiators have claimed everything.
  *  - Node-mates read the bitmap with plain loads (shmem_ptr).
- *  - Thieves on other nodes read it with an 8-byte shmem get, a read rather than an
+ *  - Initiators on other nodes read it with an 8-byte shmem get, a read rather than an
  *    atomic, so the word stays in the CPU atomicity domain ("one word, one domain").
  * Bits are hints: a set bit may stay set for up to laws_poll of the owner's progress
- * calls after thieves drain it; a thief that picks it pays only a peek miss (a load).
+ * calls after initiators drain it; an initiator that picks it pays only a peek miss (a load).
  */
 
 
@@ -102,7 +102,7 @@ void gtc_laws_eager_clear(tc_t *tc) {
 
 
 /**
- * TARGET_LAWS victim selection:
+ * TARGET_LAWS target selection:
  *   1. a random node-mate whose bit is set (skipping node-mates found empty during
  *      this search);
  *   2. otherwise, if far_dir: up to far_dir_tries random other nodes, reading each

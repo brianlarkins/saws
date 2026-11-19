@@ -1,6 +1,6 @@
 /*
  * locbench.c -- per-locality-level latency of SAWS steal primitives.
- * PE 0 is the thief; victims at: same CCX (PE 1), same socket other CCX (PE 3),
+ * PE 0 is the initiator; targets at: same CCX (PE 1), same socket other CCX (PE 3),
  * other socket (PE 24), other node (PE 48).  Expects 48 PEs/node, block layout.
  */
 #include <stdio.h>
@@ -61,13 +61,13 @@ int main(void) {
            node == SHMEM_TEAM_INVALID ? -1 : shmem_team_translate_pe(node, 5, SHMEM_TEAM_WORLD));
   shmem_barrier_all();
 
-  int victims[4]  = {1, 3, 24, 48};
+  int targets[4]  = {1, 3, 24, 48};
   const char *lvl[4] = {"same-CCX", "same-sock", "x-socket", "x-node"};
   int sizes[4] = {64, 512, 4096, 32768};
 
   if (me == 0) {
     for (int v = 0; v < 4; v++) {
-      int t = victims[v];
+      int t = targets[v];
       if (t >= np) continue;
       void *rp = shmem_ptr(&sv, t);
 

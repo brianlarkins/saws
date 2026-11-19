@@ -1,4 +1,4 @@
-/* locbench2.c -- cache-line ping-pong via shmem_ptr, and contention on one victim word.
+/* locbench2.c -- cache-line ping-pong via shmem_ptr, and contention on one target word.
  * Requires the XPMEM SOS build (shmem_ptr on-node).  48 PEs/node, 2 nodes. */
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,9 +34,9 @@ int main(void) {
     shmem_barrier_all();
   }
 
-  /* (b) contention: k thieves on node 0 (PEs 1..k) hammer PE0's word.
+  /* (b) contention: k initiators on node 0 (PEs 1..k) hammer PE0's word.
    *     NIC = shmem_atomic_fetch_add; CPU = __atomic via shmem_ptr.
-   *     Also: k off-node thieves (PEs 48..48+k-1) with NIC atomics. */
+   *     Also: k off-node initiators (PEs 48..48+k-1) with NIC atomics. */
   int ks[5] = {1, 4, 8, 24, 47};
   for (int mode = 0; mode < 3; mode++) {
     for (int ki = 0; ki < 5; ki++) {

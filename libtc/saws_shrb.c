@@ -225,7 +225,7 @@ static inline uint64_t saws_disable_steals(saws_shrb_t *rb) {
   return shmem_atomic_fetch_or(&rb->steal_val, val, rb->procid);
 }
 
-/* Completion status entries are written by thieves with remote atomics while the
+/* Completion status entries are written by initiators with remote atomics while the
  * owner polls them.  Load them atomically so the compiler cannot hoist the reads
  * out of a polling loop. */
 static inline int saws_status(saws_shrb_t *rb, int epoch, int i) {
@@ -247,7 +247,7 @@ static inline int saws_max_steals(uint64_t itasks) {
 
 /*==================== STATE QUERIES ====================*/
 
-/** is there anything left to claim in this steal_val?  (used by peeking thieves) */
+/** is there anything left to claim in this steal_val?  (used by peeking initiators) */
 int saws_shrb_claimable(uint64_t steal_val) {
   uint64_t asteals, itasks;
   int64_t  tail;

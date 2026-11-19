@@ -486,7 +486,7 @@ static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, vo
       assert(0);
   }
 
-  // Reserve N elements by advancing the victim's tail
+  // Reserve N elements by advancing the target's tail
   if (n > 0) {
     int  new_tail;
     // int  metadata;
@@ -520,7 +520,7 @@ static inline int sdc_shrb_pop_n_tail_impl(sdc_shrb_t *myrb, int proc, int n, vo
     }
 
 #ifndef SDC_NODC
-    // Accumulate itail_inc onto the victim's intermediate tail
+    // Accumulate itail_inc onto the target's intermediate tail
     {
       int itail_inc;
       //long int stride = 1;

@@ -285,7 +285,7 @@ void gtc_ldbal_cfg_init(gtc_ldbal_cfg_t *cfg) {
  *   GTC_LOCAL_PCT     local-prob: percent of attempts aimed at node-mates (0..100)
  *   GTC_SWEEP_FAR     local-sweep: off-node attempts between node sweeps (>= 1)
  *   GTC_NEAR_PEEK     0|1: SAWS loads a node-mate's steal_val before claiming (any policy)
- *   GTC_FAR_DIR       0|1: laws reads other nodes' bitmaps to pick off-node victims
+ *   GTC_FAR_DIR       0|1: laws reads other nodes' bitmaps to pick off-node targets
  *                     (0 = on-node bitmap only, blind random off-node probes)
  *   GTC_FAR_DIR_TRIES laws: remote bitmaps read per step before a blind probe (>= 0)
  *   GTC_LAWS_POLL     laws: owner checks whether to clear its set bit every N progress calls

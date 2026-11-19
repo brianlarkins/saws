@@ -170,7 +170,7 @@ typedef struct {
   int local_search_factor;       /* TARGET_LOCAL_PROB: percent of steal attempts (0-100) aimed at node-mates */
   int local_sweep_far;           /* TARGET_LOCAL_SWEEP: off-node attempts between node sweeps (>= 1) */
   int near_peek;                 /* SAWS: load a node-mate's steal_val before claiming (needs shmem_ptr) */
-  int far_dir;                   /* TARGET_LAWS: read remote nodes' bitmaps to pick off-node victims */
+  int far_dir;                   /* TARGET_LAWS: read remote nodes' bitmaps to pick off-node targets */
   int far_dir_tries;             /* TARGET_LAWS: remote bitmaps read per search step before a blind probe */
   int laws_poll;                 /* TARGET_LAWS: owner checks whether its set bit can be cleared every
                                     laws_poll progress calls (rounded up to a power of two) */

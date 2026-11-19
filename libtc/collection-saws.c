@@ -136,7 +136,7 @@ void gtc_progress_saws(gtc_t gtc) {
     saws_shrb_reclaim_space(tc->shared_rb);
 
   // LAWS: the owner's bit is set at release (an event, see saws_shrb_release) and cleared
-  // lazily once thieves have claimed everything.  A stale set bit only costs a thief a peek
+  // lazily once initiators have claimed everything.  A stale set bit only costs an initiator a peek
   // miss, so check every laws_poll calls; the per-task cost is a test of a local flag.
   if (tc->bit_set && ((++rb->lawscc & tc->laws_poll_mask) == 0) && !saws_shrb_have_stealable(rb))
     gtc_laws_set_bit(tc, 0);

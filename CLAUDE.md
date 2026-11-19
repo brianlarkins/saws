@@ -21,7 +21,7 @@ Thrust B there is the GPU counterpart of LAWS).
 ## Branches
 - `laws` — active work, pushed to `origin/laws`.
 - `locality_alt`, `origin/locality` — 2024 student prototype (SDC-based, node-root
-  byte flags, first-fit victim). Reference only; see table 1 of the design PDF.
+  byte flags, first-fit target). Reference only; see table 1 of the design PDF.
 - `gpu_saws`, `old-collectives` — unrelated or older.
 
 ## Code map (libtc)
@@ -205,12 +205,12 @@ Results are in `lotus:~/laws/results/e1/` (parse with `runs/e0/parse.py`).
   number of probes triples. lp90 and sweep only help BPC fine at 32–40 nodes, so no fixed bias wins everywhere (E4).
 - **Distance does not set steal cost at scale; contention does.** Under random selection, near ok = far ok
   (56.8 vs. 56.7 µs, BPC fine 1536). Even near steals cost 44–68 µs, 10–15× the uncontended 4.4 µs, because
-  they queue at the victim's HCA. This motivates M1 peeks and M2 CPU-side near claims.
+  they queue at the target's HCA. This motivates M1 peeks and M2 CPU-side near claims.
 
 ## E2: node work bitmap, peeks, remote bitmaps (done; write-up pending E2c)
 PI decisions (2026-11-18): include E2b (far-side remote bitmap reads). If results disappoint and
 hot-spotting at node leaders is suspected, back off to the original M1 (on-node bitmap only:
-`GTC_FAR_DIR=0`). Bits are **owner-only** (as in earlier Scioto; no thief writes, no races).
+`GTC_FAR_DIR=0`). Bits are **owner-only** (as in earlier Scioto; no initiator writes, no races).
 **SDC is left alone** (it can be added for ablation later).
 - `libtc/laws.c`: one symmetric 64-bit word per TC, 64-byte aligned. The node leader's copy is the
   node's bitmap; bit i is node-mate i (`_c->loc.node_rank_of`). The owner sets or clears its own bit with CPU
@@ -238,7 +238,7 @@ hot-spotting at node leaders is suspected, back off to the original M1 (on-node 
   under laws+peeks, and bits clear afterwards. Passes 6/6 on 1–2 nodes (jobs 28518, 28519). Tree tests pass
   under all E2 policies; SOS-main falls back with a warning.
 - Validation hints (2 nodes, short runs, not results): on BPC fine, 58% of peeks miss (an owner's bit stays
-  set until its next progress after thieves drain it) and about 80% of remote bitmap reads are empty.
+  set until its next progress after initiators drain it) and about 80% of remote bitmap reads are empty.
   On T3L, laws-M1 cut idle time from 34% to 18%.
 - E2 suite (`gen.sh e2`, **rerun as jobs 28527–28531** with the lazy-clear owner; 1/4/16/32/40 nodes, 2 reps,
   XPMEM): the reference set × SAWS {random, lp50, lp50pk, lawsm1, laws, lawsnp}.
@@ -305,6 +305,8 @@ sub-ms BPC tasks.
 - Don't commit or push unless asked. Commits and PRs carry **no Claude attribution** (no
   co-author or session trailers). This is set in `.claude/settings.json` here and globally.
   Don't touch `locality_alt` or lotus `~/saws`.
+- Terminology (PI, 2026-11-19): **initiator** and **target**, not thief and victim, in code comments,
+  notes, and docs, to match one-sided communication. "Steal" stays. See Def. 2 of the design doc.
 - When quoting measurements, give their source (probe, job, or results file) and limits.
 - `-Werror` is on (`tc.mk`). Build on lotus; the Mac has no OpenSHMEM, so the
   clangd diagnostics about a missing `shmem.h` are expected.
