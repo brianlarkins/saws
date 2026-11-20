@@ -164,7 +164,7 @@ void process_args(int argc, char **argv) {
   int   arg;
   char *endptr;
 
-  while ((arg = getopt(argc, argv, "d:n:r:p:c:i:bvhBH")) != -1) {
+  while ((arg = getopt(argc, argv, "d:n:r:p:c:i:bvhBHL")) != -1) {
     switch (arg) {
     case 'd':
       maxdepth = strtol(optarg, &endptr, 10);
@@ -219,6 +219,9 @@ void process_args(int argc, char **argv) {
       break;
     case 'H':
       qtype = GtcQueueSAWS;
+      break;
+    case 'L':
+      qtype = GtcQueueLAWS;   // two-door SAWS queue (LAWS M2)
       break;
 
     case 'h':

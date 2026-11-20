@@ -42,8 +42,17 @@ Thrust B there is the GPU counterpart of LAWS).
   build; cross-checked against `SHMEM_TEAM_SHARED`), `_c->loc` (node id, node_pes, node_of[],
   ptr_ok, node team when placement is block), `gtc_is_near(pe)`, random near/far peers, and
   `gtc_near_ptr_table(symaddr)`. `GTC_DEBUG_LOCALITY=1` prints per-rank start-up stages.
-- Apps: `examples/uts` (`-Q B|H`), `examples/bpc` (`-B|-H`), `examples/madness`
-  (`-B|-H`); tests `tests/test-tasktree{,-twotc}` (`-B|-H`). B = SDC, H = SAWS.
+- `laws_shrb.{c,h}` + `collection-laws.c` (E3, M2) — the **two-door queue** `GtcQueueLAWS` (design doc §4.3, notes §4.3.7).
+  Far door = SAWS's `steal_val`/completion arrays (SHMEM domain); near door = `near_sv` + `ncompleted[2]` (CPU domain,
+  node-mates via `shmem_ptr`), each on its own cache lines. Ring `tail ≤ fsplit ≤ split`. Owner ops: release (far share
+  max(1,⌈ρr⌉)), near reacquire (CPU only), collapse + SAWS far reacquire, refill, re-split, maintenance check (every
+  `GTC_LAWS_POLL` progress calls while a door is live). Ring is 2× the request when ρ < 1. ρ = 1 never touches the near door.
+  `GTC_LAWS_CHECK=1` verifies invariants at every owner op (tests only). Door-aware selection: `gtc_laws_select_doors` in
+  `laws.c`; bitmaps word [0] = B_far (= SAWS's bit, the word other nodes read), word [1] = B_near.
+- Apps: `examples/uts` (`-Q B|H|L`), `examples/bpc` (`-B|-H|-L`), `examples/madness`
+  (`-B|-H|-L`); tests `tests/test-tasktree{,-twotc}` (`-B|-H|-L`). B = SDC, H = SAWS, L = two-door.
+  Tests: `test-laws [-L]`, `test-laws-shrb` (E3.0/E3.1: scripted unit test + randomized exactly-once stress, `-c k` = only every
+  k-th PE creates tasks). `runs/e3/validate.sh` runs the E3.1 matrix.
 
 ## Lotus (cluster)
 - `ssh lotus`. Compute nodes: 2 × EPYC 7352 (48 cores, 2 NUMA, 16 CCX of 3), EDR IB, 44 nodes
@@ -286,17 +295,81 @@ hot-spotting at node leaders is suspected, back off to the original M1 (on-node 
   on d500; strict laws +1.0–2.7%.
 - Limit: lp50pk on BPC fine at 32–40 nodes was 9–12% slower in E2c than in E2 (allocation-sensitive), so compare within a suite.
 
-**Paused 2026-11-19 for PI review of the E2/E2c data** (design doc §7.5–7.6; CSVs come from `parse.py --csv` on
-`lotus:~/laws/results/{e2,e2c}/`). Two decisions are **open, and the PI makes them only after that review**. Do not
-pick either one or start E3/E4 work before then:
-1. **E3 baseline:** laws50e (best on UTS and the controls) or laws90e (best on BPC fine at 32–40 nodes). They are within
-   5 points of each other everywhere (design doc table 12, question 6).
-2. **E4 scope:** a fixed policy now matches or beats lp50pk everywhere, and near shares differ by ≤ 5 points. Should E4 shrink to
-   near-share tuning, or come off the critical path in favor of E3?
+**PI decisions after the E2/E2c review (2026-11-20):**
+1. **E3 baselines: both laws50e and laws90e.** The PI is fine with a performance story that offers different strategies for
+   different problem types (laws50e for UTS-like trees, laws90e for BPC-like producer/consumer).
+2. **E4 is deferred.** No E4 work until the PI revisits it.
+3. **M2 layout: one queue with two adjacent doors** (far door older, near door newer), not two independent rings. Revisit
+   two rings only if thrashing under re-splits is suspected.
+4. **Write the M2 design first, for PI review, before any E3 code.** The PI agreed to one bit per door (two bitmaps) with the
+   variants as runtime switches over one implementation.
 
-After those: M2/E3 (two-door queue), since near steals still cost 40–55 µs at 1536–1920 PEs under laws50e. Small follow-ups:
-a sparser lazy poll with eager clearing (T1WL +0.5%), the bitmap over SDC as an ablation, and a calibrated busy-wait for
-sub-ms BPC tasks.
+**M2 design approved by the PI as written (2026-11-20; design doc v0.9, §4.3, question 7):** refill and re-split in v1 and on by
+default (overhead to be judged from E3 data); far share max(1,⌈ρr⌉); E3.4 matrix stands; new queue type with its own flag.
+In brief: one ring, `tail ≤ fsplit ≤ split ≤ head`; far region (SAWS `steal_val`, SHMEM domain) older than the near region
+(`near_sv`, CPU domain); each door has its own 2 epochs and completion arrays on separate cache lines. Owner ops: release
+(SAWS rule, split by ρ: far gets max(1, ⌈ρr⌉)), near reacquire (CPU only), collapse then SAWS far reacquire, **near refill**
+(near exhausted, far still has work), **re-split** (far exhausted, near has work → near block back to private). Two bitmaps
+B_near/B_far (one cache line). Door policies `GTC_LAWS_DOORS` = near-first | near-only | any (any = single-bit emulation).
+Switches `GTC_LAWS_RHO` (0.5), `GTC_LAWS_REFILL`/`_RESPLIT` (1). New qtype `GtcQueueLAWS` (`laws_shrb.{c,h}`, `-Q L`/`-L`);
+SAWS code untouched. Test plan E3.0–E3.4 in §4.3.7. Open review points: question 7 of the design doc.
+
+**e2p suite (sparser lazy poll), jobs 28552 (16 nodes) and 28553 (32 nodes), submitted 2026-11-20.** No code change: the
+reference set × {lp50pk, laws50e at `GTC_LAWS_POLL` 16/256/4096/65536, laws90e at 16/4096}, 3 reps. Policy names
+`laws[NN][e][pMM]` (gen.sh). Purpose: remove the +0.5% T1WL cost before E3 and set k for the M2 maintenance check.
+Results go to `lotus:~/laws/results/e2p/`.
+
+**E3 implementation (2026-11-20, uncommitted).** New: `libtc/laws_shrb.{c,h}`, `libtc/collection-laws.c`, `tests/test_laws_shrb.c`,
+`runs/e3/validate.sh`. Changed: `tc.h` (GtcQueueLAWS, cfg `laws_rho_pm/laws_doors/laws_refill/laws_resplit`, `bit_set_near`,
+`laws_door`, `near_miss_far`), `init.c` (`GTC_LAWS_RHO/_DOORS/_REFILL/_RESPLIT`), `common.c` (dispatch, config print), `laws.c`
+(B_near, door-aware selection; SAWS path unchanged), apps/tests (`-L`), `gen.sh` (suites e3a/e3p/e3s; policy options
+`-nf|-no|-any`, `-rNN`, `-norf`, `-nors`; job scripts export `E0_BUILD_SUFFIX`), `env.sh` (`E0_BUILD_SUFFIX`), `parse.py`
+(queue L, the `laws2` line), `build.sh` (test-laws-shrb).
+- Side build while e2p used the main one: sources in `lotus:~/laws/src-e3`, build `~/laws/build-xpmem-e3`
+  (`E0_BUILD_SUFFIX=-e3 bash runs/e0/build.sh xpmem ~/laws/src-e3`). Its rev reads `4a0f06665c-dirty` (uncommitted).
+- Validation job 28556 (1 node, 48 PEs, GTC_LAWS_CHECK=1): **84/84 pass** — stress under ρ {0.25,0.5,0.75} × refill/re-split
+  {11,00,10,01} × {random, laws50e × 3 door policies}, ρ = 1, tree/two-TC tests -L under random/lp50pk/laws50e × ρ {0.25..1},
+  test-laws -L, SAWS tests. Job 28562 repeats it with the improved stress test (progress every iteration, `-c 12` contention).
+- E3a (1 node, E3.0 parity + E3.3) is job 28563 (after 28562). Then e3p (16 nodes) and e3s (16/32) once nodes free up.
+- Validation job 28562 (improved stress: progress every iteration, `-c 12` contention): **133/133 pass**.
+- **e2p complete** (jobs 28552/28553, 16/32 nodes, 3 reps, all exit 0; design doc §7.7, table 17): the lazy check was the T1WL
+  cost — laws50e/laws90e +0.4–0.5% vs lp50pk at k=16, +0.0–0.1% at k ≥ 256; steal-bound inputs move ≤1.4 pts (T3XXL), ≤0.4 (T3WL),
+  ≤4 (BPC fine, noisy) in no consistent direction. **k = 256 from here on** for the bit check (policy names `laws50ep256`; names
+  without pMM still mean k=16 in gen.sh and the library default is still 16). On the two-door queue the same check drives refill
+  and re-split (k=256 ≈ 25–130 ms on BPC fine), so E3 compares k=16 and 256 there (e3a has laws50ep256-nf-r50).
+
+- **E3 first results (design doc §7.8):**
+  - E3.0 parity (e3a job 28563, 1 node; e3p job 28565, 16 nodes; 3 reps): L at ρ=1 is never slower than SAWS and 0.4–2.5% faster on
+    UTS (T1WL too, so per-task path; cause not isolated: cache-line separation / aligned ring). Compare the near door against L ρ=1.
+  - E3.2 (`tests/bench-claim.c`, job 28564): H1 holds — near claim 0.65 µs alone, ≤1.4 µs with 47 initiators (T=64), vs SAWS 4–41 µs;
+    peeks matter for the near door too (no peeks: 11 µs at N=47). In-app near-door claims 0.6–1.0 µs vs SAWS on-node 5.4–8 µs.
+    **SAWS publish lag:** without a SHMEM call after release, the owner's loopback atomic_set took ~3.9 ms to land (510 rounds/2 s
+    at every N, T); with shmem_quiet after release 72–170 µs rounds. Experiment switch `GTC_LAWS_FAR_SYNC=1` (policy option `-fs`).
+  - E3.3 one node (e3a): near door −0.8..+1.2% on T3XXL (not steal-bound at 1 node); **BPC fine +0.3..+10.8%** depending on door
+    policy (any/random small, nf +6.4, no +10.8; norf-nors +3.2). Cause: BPC's bouncing producer is created first → oldest → behind the
+    far door; near-first/near-only reach it last. Node-mates never use far doors on T3XXL under nf.
+- Builds: `build-xpmem-e3` (validated, used by e3a/e3p); `build-xpmem-e3b` (+ bench-claim, + far-sync switch, default off; used by
+  e3f and e3s). Sources: `~/laws/src-e3`, `~/laws/src-e3b`. Don't rebuild a build dir while a job uses it. The code was committed on
+  `laws` after these builds, so they report `4a0f06665c-dirty`: `build-xpmem-e3b` matches the commit "Two-door queue (LAWS M2, E3)";
+  `build-xpmem-e3` predates the far-sync switch (default off) and the stress/bench test changes, with the queue otherwise identical.
+  The main `~/laws/src` and `~/laws/build-xpmem` still hold the E2p state; rebuild them from the commit before new suites use them.
+
+**State when paused (2026-11-20 ~15:30):** e3f (job 28568, 1 node: far-sync A/B, 35/42 runs done) and e3s (jobs 28569 running on
+16 nodes, 19 files; 28570 pending on 32 nodes) were still running. To resume:
+```
+ssh lotus 'squeue -u brian; sacct -u brian -j 28568,28569,28570 -X -o JobID,JobName,State,Elapsed'
+rsync -a lotus:laws/results/e3f/ /tmp/e3f/ && python3 runs/e0/parse.py /tmp/e3f --csv /tmp/e3f.csv
+rsync -a lotus:laws/results/e3s/ /tmp/e3s/ && python3 runs/e0/parse.py /tmp/e3s --csv /tmp/e3s.csv
+```
+e3f question: does `-fs` (GTC_LAWS_FAR_SYNC=1) change runtime at ρ=1 or 0.5 on T3XXL/BPC fine? e3s question (E3.4): at 16/32 nodes,
+does the near door beat laws50ep256/laws90ep256 on SAWS (and L at ρ=1 by proxy, see parity), which door policy wins, and does BPC
+fine still lose (producer behind the far door)? The `laws2` line in each result file has the two-door counters (parse.py columns
+rho..ring). Write both into design doc §7.8 (replace its "Pending" paragraph).
+
+Next: e3f and e3s results → §7.8; then discuss with the PI: BPC/producer placement and door policy (e.g. near-first trying the same
+target's far door after a near miss), the publish lag (make the far publish blocking?), which variants go into the ρ sweep, and the
+maintenance-check interval (k=16 vs 256 for refill/re-split).
+Small follow-ups: the bitmap over SDC as an ablation, and a calibrated busy-wait for sub-ms BPC tasks.
 
 ## Conventions
 - Add experimental results to the design doc

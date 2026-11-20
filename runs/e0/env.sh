@@ -28,4 +28,4 @@ if ! module -t list 2>&1 | grep -q "openshmem/SOS-$e0_variant"; then
 fi
 
 export E0_ROOT=${E0_ROOT:-$HOME/laws}
-export E0_BUILD=$E0_ROOT/build-$e0_variant
+export E0_BUILD=$E0_ROOT/build-$e0_variant${E0_BUILD_SUFFIX:-}   # suffix: a side build (e.g. -e3) while jobs use the main one

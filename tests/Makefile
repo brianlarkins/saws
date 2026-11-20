@@ -17,6 +17,8 @@ TARGETS=test-hello          \
 				test-saws-shrb		  \
 				test-locality       \
 				test-laws           \
+				test-laws-shrb      \
+				bench-claim         \
 				threadtest          \
 				shmem_latency	    \
 				# line eater
@@ -58,6 +60,12 @@ test-locality: tclibs test-locality.o
 
 test-laws: tclibs test-laws.o
 	$(CC) $(CFLAGS) -o $@ test-laws.o $(TC_LIBS)
+
+test-laws-shrb: tclibs test_laws_shrb.o
+	$(CC) $(CFLAGS) -o $@ test_laws_shrb.o $(TC_LIBS)
+
+bench-claim: tclibs bench-claim.o
+	$(CC) $(CFLAGS) -o $@ bench-claim.o $(TC_LIBS)
 
 test-termination: tclibs test-termination.o
 	$(CC) $(CFLAGS) -o $@ test-termination.o $(TC_LIBS)

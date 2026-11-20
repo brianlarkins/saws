@@ -103,6 +103,7 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
   switch (qtype) {
     case GtcQueueSDC:
     case GtcQueueSAWS:
+    case GtcQueueLAWS:
       break;
     default:
       gtc_eprintf(DBGERR, "gtc_create: unsupported queue type\n");
@@ -133,9 +134,11 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
 
   // LAWS node work bitmap (collective; allocated for every queue type so creation stays symmetric)
   gtc_laws_create(tc);
-  if (tc->ldbal_cfg.target_selection == TARGET_LAWS && (qtype != GtcQueueSAWS || !tc->my_node_bits)) {
+  tc->laws_door = LAWS_DOOR_BOTH;
+  if (tc->ldbal_cfg.target_selection == TARGET_LAWS
+      && ((qtype != GtcQueueSAWS && qtype != GtcQueueLAWS) || !tc->my_node_bits)) {
     if (_c->rank == 0)
-      printf("SCIOTO warning: TARGET_LAWS needs the SAWS queue and shmem_ptr to node-mates "
+      printf("SCIOTO warning: TARGET_LAWS needs the SAWS or two-door queue and shmem_ptr to node-mates "
              "(%d nodes, %d PEs/node, shmem_ptr %s); using random selection\n",
              _c->loc.nnodes, _c->loc.node_size, _c->loc.ptr_ok ? "yes" : "no");
     tc->ldbal_cfg.target_selection = TARGET_RANDOM;
@@ -147,6 +150,9 @@ gtc_t gtc_create(int max_body_size, int chunk_size, int shrb_size, gtc_ldbal_cfg
       break;
     case GtcQueueSAWS:
       gtc_create_saws(gtc, max_body_size, shrb_size, ldbal_cfg);
+      break;
+    case GtcQueueLAWS:
+      gtc_create_laws(gtc, max_body_size, shrb_size, ldbal_cfg);
       break;
     default:
       gtc_eprintf(DBGERR, "gtc_create: unsupported queue type\n");
@@ -230,6 +236,7 @@ void gtc_reset(gtc_t gtc) {
   tc->ct.laws_dry_bitset = tc->ct.laws_dry_stealable = 0;
   memset(tc->ct.laws_occ, 0, sizeof(tc->ct.laws_occ));
   gtc_laws_set_bit(tc, 0);   // the queue is about to be emptied
+  gtc_laws_set_near_bit(tc, 0);
 
   // Reset round-robin counter
   tc->last_target = (_c->rank + 1) % _c->size;
@@ -283,6 +290,13 @@ void gtc_print_config(gtc_t gtc) {
       idx += snprintf(msg+idx, size-idx, ", Steal method: %s (%d)", steal_methods[tc->ldbal_cfg.steal_method], tc->ldbal_cfg.chunk_size);
     else
       idx += snprintf(msg+idx, size-idx, ", Steal method: %s", steal_methods[tc->ldbal_cfg.steal_method]);
+
+    if (tc->qtype == GtcQueueLAWS)
+      idx += snprintf(msg+idx, size-idx, ", rho %.3f, doors %s, refill %d, re-split %d",
+                      tc->ldbal_cfg.laws_rho_pm / 1000.0,
+                      tc->ldbal_cfg.laws_doors == LAWS_DOORS_ANY ? "any" :
+                      tc->ldbal_cfg.laws_doors == LAWS_DOORS_NEAR_ONLY ? "near-only" : "near-first",
+                      tc->ldbal_cfg.laws_refill, tc->ldbal_cfg.laws_resplit);
 
     if (tc->ldbal_cfg.target_selection == TARGET_LOCAL_PROB)
       idx += snprintf(msg+idx, size-idx, " (%d%% node-mates)", tc->ldbal_cfg.local_search_factor);

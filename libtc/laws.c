@@ -25,6 +25,10 @@
  *    atomic, so the word stays in the CPU atomicity domain ("one word, one domain").
  * Bits are hints: a set bit may stay set for up to laws_poll of the owner's progress
  * calls after initiators drain it; an initiator that picks it pays only a peek miss (a load).
+ *
+ * Two-door queue (GtcQueueLAWS): word [0] is B_far (the far door; the only word other nodes
+ * read, and the SAWS queue's single bit) and word [1], in the same cache line, is B_near
+ * (the near door).  The SAWS queue never touches word [1].
  */
 
 
@@ -36,8 +40,10 @@ void gtc_laws_create(tc_t *tc) {
   // its own cache line, so bitmap traffic does not falsely share with other data
   tc->node_bits = shmem_align(64, 64);
   assert(tc->node_bits);
-  *tc->node_bits = 0;
+  tc->node_bits[0] = 0;
+  tc->node_bits[1] = 0;
   tc->bit_set = 0;
+  tc->bit_set_near = 0;
   tc->my_node_bits = NULL;
   {
     unsigned p = 1;
@@ -80,6 +86,24 @@ void gtc_laws_set_bit(tc_t *tc, int have_work) {
 
 
 
+/** owner only, two-door queue: publish whether my near door has work (writes only on change) */
+void gtc_laws_set_near_bit(tc_t *tc, int have_work) {
+  uint64_t mask;
+
+  have_work = (have_work != 0);
+  if (have_work == tc->bit_set_near || !tc->my_node_bits)
+    return;
+  mask = 1ULL << _c->loc.node_rank;
+  if (have_work)
+    __atomic_fetch_or(tc->my_node_bits + 1, mask, __ATOMIC_RELEASE);
+  else
+    __atomic_fetch_and(tc->my_node_bits + 1, ~mask, __ATOMIC_RELEASE);
+  tc->bit_set_near = have_work;
+  tc->ct.laws_bit_writes++;
+}
+
+
+
 /** a uniformly random set bit of a nonzero word */
 static int random_set_bit(uint64_t bits) {
   int k = rand() % __builtin_popcountll(bits);
@@ -112,9 +136,14 @@ void gtc_laws_eager_clear(tc_t *tc) {
  * so some probes leave the node even while node-mates have work (E2c: strict
  * local-first recirculates work inside a node on binomial UTS, as sweep did in E1).
  */
+static int gtc_laws_select_doors(tc_t *tc, gtc_vs_state_t *state);
+
 int gtc_laws_select(tc_t *tc, gtc_vs_state_t *state) {
   gtc_locality_t *L = &_c->loc;
   uint64_t bits;
+
+  if (tc->qtype == GtcQueueLAWS)
+    return gtc_laws_select_doors(tc, state);
 
   if (L->far_count > 0 && tc->ldbal_cfg.laws_near_pct < 100
       && rand() % 100 >= tc->ldbal_cfg.laws_near_pct) {
@@ -140,6 +169,87 @@ int gtc_laws_select(tc_t *tc, gtc_vs_state_t *state) {
 
 far:
   // 2. other nodes' bitmaps (E2b)
+  if (tc->ldbal_cfg.far_dir) {
+    for (int t = 0; t < tc->ldbal_cfg.far_dir_tries; t++) {
+      int n = gtc_random_other_node();
+      uint64_t w = shmem_uint64_g(tc->node_bits, gtc_node_leader(n));
+      tc->ct.laws_fardir_reads++;
+      if (w)
+        return gtc_node_member(n, random_set_bit(w));
+      tc->ct.laws_fardir_empty++;
+    }
+  }
+
+  // 3. blind off-node probe
+  tc->ct.laws_blind_far++;
+  return gtc_random_far_peer();
+}
+
+
+
+/**
+ * TARGET_LAWS on the two-door queue: as above, with one bitmap per door (B_near, B_far) and a
+ * door policy (design doc Def. door policies).  A node step:
+ *   near-first: a node-mate whose near bit is set (its near door); else one whose far bit is set
+ *               (its far door, a NIC claim); else off-node
+ *   near-only:  a node-mate whose near bit is set; else off-node
+ *   any:        a node-mate with either bit set, near door then far door (the single-bit design)
+ * Off-node steps read other nodes' B_far (word 0) and claim far doors.  Sets tc->laws_door.
+ */
+static int gtc_laws_select_doors(tc_t *tc, gtc_vs_state_t *state) {
+  gtc_locality_t *L = &_c->loc;
+  uint64_t bn, bf, me = 1ULL << L->node_rank;
+
+  if (L->far_count > 0 && tc->ldbal_cfg.laws_near_pct < 100
+      && rand() % 100 >= tc->ldbal_cfg.laws_near_pct) {
+    tc->ct.laws_near_skip++;
+    goto far;
+  }
+
+  // 1. my node: both words share one cache line
+  bf = __atomic_load_n(tc->my_node_bits,     __ATOMIC_ACQUIRE);
+  bn = __atomic_load_n(tc->my_node_bits + 1, __ATOMIC_ACQUIRE);
+  tc->ct.laws_bitmap_reads++;
+  tc->ct.laws_occ[(__builtin_popcountll(bn | bf) * 10) / L->node_size]++;
+  bn &= ~(me | state->near_miss);
+  bf &= ~(me | state->near_miss_far);
+
+  switch (tc->ldbal_cfg.laws_doors) {
+    case LAWS_DOORS_ANY:
+      if (bn | bf) {
+        tc->laws_door = LAWS_DOOR_BOTH;
+        return L->node_pes[random_set_bit(bn | bf)];
+      }
+      break;
+    case LAWS_DOORS_NEAR_ONLY:
+      if (bn) {
+        tc->laws_door = LAWS_DOOR_NEAR;
+        return L->node_pes[random_set_bit(bn)];
+      }
+      break;
+    default: // LAWS_DOORS_NEAR_FIRST
+      if (bn) {
+        tc->laws_door = LAWS_DOOR_NEAR;
+        return L->node_pes[random_set_bit(bn)];
+      }
+      if (bf) {
+        tc->laws_door = LAWS_DOOR_FAR;
+        return L->node_pes[random_set_bit(bf)];
+      }
+      break;
+  }
+  tc->ct.laws_bitmap_empty++;
+
+  // single node: nothing off-node; keep probing node-mates (both doors) so termination proceeds
+  if (L->far_count == 0) {
+    state->near_miss = state->near_miss_far = 0;
+    tc->laws_door = LAWS_DOOR_BOTH;
+    return gtc_random_near_peer();
+  }
+
+far:
+  tc->laws_door = LAWS_DOOR_FAR;
+  // 2. other nodes' far-door bitmaps
   if (tc->ldbal_cfg.far_dir) {
     for (int t = 0; t < tc->ldbal_cfg.far_dir_tries; t++) {
       int n = gtc_random_other_node();

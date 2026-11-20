@@ -239,6 +239,8 @@ void gtc_ldbal_cfg_set(gtc_t gtc, gtc_ldbal_cfg_t *cfg) {
   assert(cfg->far_dir_tries >= 0);
   assert(cfg->laws_poll >= 1);
   assert(cfg->laws_near_pct >= 0 && cfg->laws_near_pct <= 100);
+  assert(cfg->laws_rho_pm >= 1 && cfg->laws_rho_pm <= 1000);
+  assert(cfg->laws_doors >= LAWS_DOORS_NEAR_FIRST && cfg->laws_doors <= LAWS_DOORS_ANY);
 
   tc->ldbal_cfg = *cfg;
 }
@@ -274,6 +276,10 @@ void gtc_ldbal_cfg_init(gtc_ldbal_cfg_t *cfg) {
   cfg->laws_poll           = 16;
   cfg->laws_near_pct       = 100;
   cfg->laws_eager          = 0;
+  cfg->laws_rho_pm         = 500;
+  cfg->laws_doors          = LAWS_DOORS_NEAR_FIRST;
+  cfg->laws_refill         = 1;
+  cfg->laws_resplit        = 1;
 }
 
 
@@ -292,6 +298,11 @@ void gtc_ldbal_cfg_init(gtc_ldbal_cfg_t *cfg) {
  *   GTC_LAWS_NEAR_PCT laws: percent of search steps that try my node's bitmap first (0..100);
  *                     the rest go straight to remote bitmaps / a blind off-node probe
  *   GTC_LAWS_EAGER    0|1: laws owner also clears its bit as soon as it runs dry
+ * Two-door queue (GtcQueueLAWS, design doc section 4.3):
+ *   GTC_LAWS_RHO      export fraction rho, 0 < rho <= 1 (1 = SAWS); kept in thousandths
+ *   GTC_LAWS_DOORS    near-first | near-only | any: which doors a laws node step may use
+ *   GTC_LAWS_REFILL   0|1: near refill
+ *   GTC_LAWS_RESPLIT  0|1: re-split
  * Unknown or out-of-range values abort, so a typo cannot silently run the default.
  */
 void gtc_ldbal_cfg_env(gtc_ldbal_cfg_t *cfg) {
@@ -304,6 +315,10 @@ void gtc_ldbal_cfg_env(gtc_ldbal_cfg_t *cfg) {
   char *lp  = getenv("GTC_LAWS_POLL");
   char *lnp = getenv("GTC_LAWS_NEAR_PCT");
   char *le  = getenv("GTC_LAWS_EAGER");
+  char *rho = getenv("GTC_LAWS_RHO");
+  char *ld  = getenv("GTC_LAWS_DOORS");
+  char *lrf = getenv("GTC_LAWS_REFILL");
+  char *lrs = getenv("GTC_LAWS_RESPLIT");
 
   if (t) {
     if      (!strcmp(t, "random"))      cfg->target_selection = TARGET_RANDOM;
@@ -352,6 +367,29 @@ void gtc_ldbal_cfg_env(gtc_ldbal_cfg_t *cfg) {
   }
   if (le)
     cfg->laws_eager = (atoi(le) != 0);
+  if (rho) {
+    char *end;
+    double v = strtod(rho, &end);
+    long pm = (long)(v * 1000.0 + 0.5);
+    if (end == rho || *end != '\0' || !(v > 0.0) || v > 1.0 || pm < 1) {
+      fprintf(stderr, "GTC_LAWS_RHO=%s: expected 0 < rho <= 1 (at least 0.001)\n", rho);
+      abort();
+    }
+    cfg->laws_rho_pm = (int)pm;
+  }
+  if (ld) {
+    if      (!strcmp(ld, "near-first")) cfg->laws_doors = LAWS_DOORS_NEAR_FIRST;
+    else if (!strcmp(ld, "near-only"))  cfg->laws_doors = LAWS_DOORS_NEAR_ONLY;
+    else if (!strcmp(ld, "any"))        cfg->laws_doors = LAWS_DOORS_ANY;
+    else {
+      fprintf(stderr, "GTC_LAWS_DOORS=%s: expected near-first, near-only, or any\n", ld);
+      abort();
+    }
+  }
+  if (lrf)
+    cfg->laws_refill = (atoi(lrf) != 0);
+  if (lrs)
+    cfg->laws_resplit = (atoi(lrs) != 0);
   if (far) {
     cfg->local_sweep_far = atoi(far);
     if (cfg->local_sweep_far < 1) {

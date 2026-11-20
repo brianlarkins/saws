@@ -28,6 +28,12 @@ PATTERNS = {
                     r" \| blind (\d+) \| bit writes (\d+) \| occ% ((?:\d+ ?){11})"),
     "laws_e2c":    r"\| near skip (\d+) \| eager clears (\d+)",          # E2c and later
     "laws_dry":    r"\| dry with bit (\d+) stealable (\d+)",
+    # two-door queue (E3)
+    "laws2":       (r": laws2 rho ([\d.]+) doors (\S+) refill (\d) resplit (\d) near (\w+) \| release (\d+) far (\d+) near (\d+)"
+                    r" \| refill (\d+) tasks (\d+) skip space (\d+) epoch (\d+) \| resplit (\d+) tasks (\d+) \| collapse (\d+)"
+                    r" \| reacq near (\d+) tasks (\d+) far (\d+) tasks (\d+) \| maint (\d+) waited (\d+)"
+                    r" \| near ok (\d+) tasks (\d+) fail (\d+) peekmiss (\d+) avg ([\d.]+) us \| farmate ok (\d+) tasks (\d+) fail (\d+)"
+                    r" \| farrem ok (\d+) tasks (\d+) fail (\d+) \| hwm (\d+) of (\d+)"),
     # queue gstats (both queues print these lines)
     "release":     r": release +([\d.]+)/ *\d+/ *\d+ time .*? per +([\d.]+)us",
     "reacquire":   r": reacquire +([\d.]+)/ *\d+/ *\d+ time .*? per +([\d.]+)ms",
@@ -51,6 +57,11 @@ FIELDS = ["file", "suite", "input", "variant", "policy", "queue", "npes", "nodes
           "near_ok", "near_ok_us", "near_fail", "near_fail_us", "near_tasks", "near_probes",
           "far_ok", "far_ok_us", "far_fail", "far_fail_us", "far_tasks", "far_probes", "target",
           "bm_reads", "bm_empty", "peeks", "peek_miss", "fd_reads", "fd_empty", "blind", "bit_writes", "occ", "near_skip", "eager_clears", "dry_bit", "dry_stealable",
+          "rho", "doors", "refill_on", "resplit_on", "near_door", "releases", "rel_far", "rel_near",
+          "refills", "refill_tasks", "refill_skip_space", "refill_skip_epoch", "resplits", "resplit_tasks", "collapses",
+          "reacq_near", "reacq_near_tasks", "reacq_far", "reacq_far_tasks", "maint", "waited",
+          "nd_ok", "nd_tasks", "nd_fail", "nd_peekmiss", "nd_us", "fm_ok", "fm_tasks", "fm_fail", "fr_ok", "fr_tasks", "fr_fail",
+          "hwm", "ring",
           "libtc_rev", "shmem_prefix", "shared_team", "shmem_ptr",
           "check"]
 
@@ -93,6 +104,13 @@ def parse_file(path):
         row["near_skip"], row["eager_clears"] = g["laws_e2c"].groups()
     if g["laws_dry"]:
         row["dry_bit"], row["dry_stealable"] = g["laws_dry"].groups()
+    if g["laws2"]:
+        (row["rho"], row["doors"], row["refill_on"], row["resplit_on"], row["near_door"], row["releases"], row["rel_far"],
+         row["rel_near"], row["refills"], row["refill_tasks"], row["refill_skip_space"], row["refill_skip_epoch"],
+         row["resplits"], row["resplit_tasks"], row["collapses"], row["reacq_near"], row["reacq_near_tasks"],
+         row["reacq_far"], row["reacq_far_tasks"], row["maint"], row["waited"], row["nd_ok"], row["nd_tasks"],
+         row["nd_fail"], row["nd_peekmiss"], row["nd_us"], row["fm_ok"], row["fm_tasks"], row["fm_fail"],
+         row["fr_ok"], row["fr_tasks"], row["fr_fail"], row["hwm"], row["ring"]) = g["laws2"].groups()
     row.setdefault("policy", "random")   # runs before E1 had no policy dimension
     if g["fails_un"]:
         row["fails_un"] = g["fails_un"].group(1)
@@ -149,7 +167,8 @@ def main():
     cols = [("process_s", "proc s"), ("passive_pct", "pass%"), ("near_pct", "near%"),
             ("near_ok_us", "nok us"), ("far_ok_us", "fok us"), ("steal_fail_us", "fail us"),
             ("fail_per_pe", "fails/PE"), ("td_attempts", "td")]
-    hdr = (f"{'input':<12} {'npes':>5} {'var':<5} {'policy':<7} {'q':<4} {'n':>2} "
+    pw = max(7, max(len(k[3]) for k in groups))
+    hdr = (f"{'input':<12} {'npes':>5} {'var':<5} {'policy':<{pw}} {'q':<4} {'n':>2} "
            + " ".join(f"{c[1]:>9}" for c in cols))
     print(hdr)
     print("-" * len(hdr))
@@ -159,8 +178,8 @@ def main():
         for c, _ in cols:
             vals = [v for r in rs if (v := num(r.get(c))) is not None]
             meds.append(f"{statistics.median(vals):9.3f}" if vals else f"{'-':>9}")
-        q = "SDC" if key[4] == "B" else "SAWS"
-        print(f"{key[0]:<12} {key[1]:>5} {key[2]:<5} {key[3]:<7} {q:<4} {len(rs):>2} " + " ".join(meds))
+        q = {"B": "SDC", "H": "SAWS", "L": "LAWS"}.get(key[4], key[4])
+        print(f"{key[0]:<12} {key[1]:>5} {key[2]:<5} {key[3]:<{pw}} {q:<4} {len(rs):>2} " + " ".join(meds))
     if bad:
         print("\nincomplete or failed runs:", *bad, sep="\n  ")
 

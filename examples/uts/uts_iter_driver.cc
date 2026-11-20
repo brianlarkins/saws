@@ -49,8 +49,12 @@ int  impl_parseParam(char *param, char *value) {
         qtype = GtcQueueSAWS;
         ret = 0;
         break;
+      case 'L':
+        qtype = GtcQueueLAWS;   // two-door SAWS queue (LAWS M2)
+        ret = 0;
+        break;
       default:
-        printf("-Q: unknown queue type must be one of 'B' 'N' or 'H'\n");
+        printf("-Q: unknown queue type must be one of 'B', 'H', or 'L'\n");
         break;
     }
   }

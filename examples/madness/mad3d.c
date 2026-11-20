@@ -425,7 +425,7 @@ void process_args(int argc, char **argv) {
   char *endptr;
   int pernode = 0;
 
-  while ((arg = getopt(argc, argv, "t:i:f:lvhBHp")) != -1) {
+  while ((arg = getopt(argc, argv, "t:i:f:lvhBHLp")) != -1) {
     switch (arg) {
       case 't':
         threshold = strtod(optarg, &endptr);
@@ -486,6 +486,9 @@ void process_args(int argc, char **argv) {
         break;
       case 'H':
         qtype = GtcQueueSAWS;
+        break;
+      case 'L':
+        qtype = GtcQueueLAWS;   // two-door SAWS queue (LAWS M2)
         break;
       case 'p':
         pernode = 1;

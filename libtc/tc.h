@@ -178,7 +178,18 @@ typedef struct {
                                     bitmap first; the rest go straight to the off-node step (E2c) */
   int laws_eager;                /* TARGET_LAWS: also clear my bit as soon as I run dry (reacquire leaves
                                     nothing public, or get_buf starts a search) (E2c) */
+  int laws_rho_pm;               /* two-door queue: export fraction rho in thousandths (1..1000; 1000 = SAWS) */
+  int laws_doors;                /* two-door queue, TARGET_LAWS: door policy (laws_doors_e) */
+  int laws_refill;               /* two-door queue: near refill on/off */
+  int laws_resplit;              /* two-door queue: re-split on/off */
 } gtc_ldbal_cfg_t;
+
+/* door policies of the two-door queue (design doc Def. door policies) */
+enum laws_doors_e { LAWS_DOORS_NEAR_FIRST = 0, LAWS_DOORS_NEAR_ONLY, LAWS_DOORS_ANY };
+/* doors a claim on the two-door queue may use (tc->laws_door) */
+#define LAWS_DOOR_NEAR 1
+#define LAWS_DOOR_FAR  2
+#define LAWS_DOOR_BOTH 3
 
 
 /* Contains information about task descriptors
@@ -212,12 +223,15 @@ typedef struct {
   int sweep_left;    // node-mates left to visit in this sweep
   int far_left;      // off-node attempts left before the next sweep
   uint64_t near_miss; // TARGET_LAWS: node-mates (by node rank) found empty during this search
+                      //   (two-door queue: their near doors)
+  uint64_t near_miss_far; // two-door queue: node-mates whose far doors were found empty
 } gtc_vs_state_t;
 
 /** queue implementation type */
 enum gtc_qtype_e {
   GtcQueueSDC,
-  GtcQueueSAWS
+  GtcQueueSAWS,
+  GtcQueueLAWS     // two-door SAWS queue (LAWS M2, laws_shrb.c)
 };
 typedef enum gtc_qtype_e gtc_qtype_t;
 
@@ -357,9 +371,12 @@ struct tc_s {
   int                 max_body_size;
   int                 last_target;                // Global round robin -- remember our last target
 
-  uint64_t           *node_bits;                  // (symmetric) node work bitmap; node leader's copy is used
-  uint64_t           *my_node_bits;               // shmem_ptr to my node leader's bitmap, or NULL
+  uint64_t           *node_bits;                  // (symmetric) node work bitmaps; node leader's copy is used:
+                                                  //   [0] the far door / SAWS bit, [1] the near door (two-door queue)
+  uint64_t           *my_node_bits;               // shmem_ptr to my node leader's bitmaps, or NULL
   int                 bit_set;                    // my bit's current value (owner-only writes)
+  int                 bit_set_near;               // two-door queue: my near-door bit
+  int                 laws_door;                  // two-door queue: doors the next claim may use (LAWS_DOOR_*)
   unsigned            laws_poll_mask;             // laws_poll rounded up to a power of two, minus one
 
   gtc_ldbal_cfg_t     ldbal_cfg;                  // load balancer configuration
@@ -465,6 +482,7 @@ void    gtc_laws_destroy(tc_t *tc);                // collective
 int     gtc_laws_select(tc_t *tc, gtc_vs_state_t *state);
 void    gtc_laws_set_bit(tc_t *tc, int have_work); // owner only; writes only on change
 void    gtc_laws_eager_clear(tc_t *tc);            // owner, laws_eager: nothing of mine is public
+void    gtc_laws_set_near_bit(tc_t *tc, int have_work); // two-door queue: my near-door bit
 task_t *gtc_get(gtc_t gtc, int priority);
 void    gtc_set_external_work_avail(gtc_t gtc, int flag);
 task_t *gtc_task_inplace_create_and_add(gtc_t gtc, task_class_t tclass);
@@ -533,6 +551,20 @@ void    gtc_task_inplace_create_and_add_finish_saws(gtc_t gtc, task_t *);
 void    gtc_print_stats_saws(gtc_t gtc);
 void    gtc_print_gstats_saws(gtc_t gtc);
 void    gtc_queue_reset_saws(gtc_t gtc);
+
+// collection-laws.c (two-door queue)
+gtc_t   gtc_create_laws(gtc_t gtc, int max_body_size, int shrb_size, gtc_ldbal_cfg_t *cfg);
+void    gtc_destroy_laws(gtc_t gtc);
+void    gtc_reset_laws(gtc_t gtc);
+char   *gtc_queue_name_laws(void);
+void    gtc_progress_laws(gtc_t gtc);
+int     gtc_tasks_avail_laws(gtc_t gtc);
+int     gtc_get_buf_laws(gtc_t gtc, int priority, task_t *buf);
+int     gtc_add_laws(gtc_t gtc, task_t *task, int proc);
+task_t *gtc_task_inplace_create_and_add_laws(gtc_t gtc, task_class_t tclass);
+void    gtc_task_inplace_create_and_add_finish_laws(gtc_t gtc, task_t *);
+void    gtc_print_stats_laws(gtc_t gtc);
+void    gtc_print_gstats_laws(gtc_t gtc);
 
 
 // tc-clod.c - common local object routines
