@@ -354,21 +354,33 @@ Results go to `lotus:~/laws/results/e2p/`.
   `build-xpmem-e3` predates the far-sync switch (default off) and the stress/bench test changes, with the queue otherwise identical.
   The main `~/laws/src` and `~/laws/build-xpmem` still hold the E2p state; rebuild them from the commit before new suites use them.
 
-**State when paused (2026-11-20 ~15:30):** e3f (job 28568, 1 node: far-sync A/B, 35/42 runs done) and e3s (jobs 28569 running on
-16 nodes, 19 files; 28570 pending on 32 nodes) were still running. To resume:
-```
-ssh lotus 'squeue -u brian; sacct -u brian -j 28568,28569,28570 -X -o JobID,JobName,State,Elapsed'
-rsync -a lotus:laws/results/e3f/ /tmp/e3f/ && python3 runs/e0/parse.py /tmp/e3f --csv /tmp/e3f.csv
-rsync -a lotus:laws/results/e3s/ /tmp/e3s/ && python3 runs/e0/parse.py /tmp/e3s --csv /tmp/e3s.csv
-```
-e3f question: does `-fs` (GTC_LAWS_FAR_SYNC=1) change runtime at ρ=1 or 0.5 on T3XXL/BPC fine? e3s question (E3.4): at 16/32 nodes,
-does the near door beat laws50ep256/laws90ep256 on SAWS (and L at ρ=1 by proxy, see parity), which door policy wins, and does BPC
-fine still lose (producer behind the far door)? The `laws2` line in each result file has the two-door counters (parse.py columns
-rho..ring). Write both into design doc §7.8 (replace its "Pending" paragraph).
+**e3f complete** (job 28568, 1 node, 3 reps, 42 runs, all exit 0; design doc §7.8, table 21): `-fs` (shmem_quiet after each far
+publish) is +0.0..+0.4% everywhere (T3XXL reps don't overlap). The publish lag costs apps nothing; far publish stays non-blocking,
+`GTC_LAWS_FAR_SYNC` stays off. Repeats E3.0 (L ρ=1 −1.8% vs SAWS on T3XXL) and E3.3 (BPC fine nf-r50 +7.6%).
 
-Next: e3f and e3s results → §7.8; then discuss with the PI: BPC/producer placement and door policy (e.g. near-first trying the same
-target's far door after a near miss), the publish lag (make the far publish blocking?), which variants go into the ρ sweep, and the
-maintenance-check interval (k=16 vs 256 for refill/re-split).
+**e3s = E3.4 screening complete** (jobs 28569/28570, 16/32 nodes, 2 reps, 96 runs, all exit 0 and checks pass; design doc §7.8,
+tables 22–23, fig. 13). Reference set × {laws50ep256, laws90ep256} on SAWS and on L at ρ=0.5 × {any, nf, no}. % vs SAWS same policy:
+- **UTS: near door wins under every door policy.** nf/no: T3XXL −4.4..−6.8% (768), −6.3..−13.3% (1536); T3WL −2.2..−4.4%. Best vs
+  best: T3XXL −5.3/−10.2%, T3WL −2.6/−4.1% (L laws90 nf/no vs SAWS laws50). T3XXL gain is idle time (−3.7..−15.2 pts; active ±2%);
+  T3WL gain is mostly per-task path (active −1.1..−2.1% under every door policy = E3.0 parity), idle −0.0..−3.3 pts. No L ρ=1 in e3s.
+- **H1 at scale:** near-door claims 0.44–1.19 µs vs SAWS near steals 18.7–43.5 µs (18–95×). 1.6–1.8× more near claims of fewer
+  tasks. Far claims unchanged (27–58 µs).
+- **Door policy on UTS:** nf ≈ no (≤0.3 pts apart except one cell; node-mates take 8–197 far-door claims/PE under nf). any is weaker
+  (T3XXL −1.4..−6.3%): node-mates take 373–5,082 NIC far-door claims/PE.
+- **BPC fine:** laws90 + L always loses (+5.2..+18.5%). laws50: any −0.9/−9.9%, no +4.7/−6.0%, nf +2.0/+16.7%. All idle time. Best L
+  (laws50-any) vs best SAWS: −0.9% (768), +4.2% (1536, laws90 SAWS 1.455 s). No refills/re-splits on BPC, near claims cheap → not churn,
+  not claim cost. Likely cause (not isolated): producer behind far door + stale B_near bits (e3f 1 node nf-r50: 191K near peek misses
+  per PE = 96% of near attempts vs 392 on T3XXL; maintenance check ran 141×/PE in 25 s). BPC baseline noisy: SAWS laws50ep256 @1536 was
+  1.685 s here vs 1.513 in e2p; laws50-any reps differ 7%.
+- **No churn:** UTS 0.12–0.26 refills, 0.010–0.045 re-splits, 0.05–0.10 collapses per release; no space skips; ring hwm ≤ 25%; waited
+  ≤ 1.2% of releases. Realized far share 0.42–0.51 (laws50), 0.31–0.42 (laws90). Owner overhead ≤ +2.0% active time. Two rings not needed.
+- Raw: `lotus:~/laws/results/{e3f,e3s}/`. Parse: `rsync -a lotus:laws/results/e3s/ <dir>/ && python3 runs/e0/parse.py <dir> --csv <csv>`.
+
+**Paused for the PI (2026-11-20), design doc question 8:** (a) ρ-sweep variants — proposed laws90ep256-nf (UTS) and laws50ep256-any
+(BPC), each with L ρ=1 and SAWS in the same allocation, plus controls and one refill/re-split ablation (E3.4 step 2); (b) try first a
+near-first variant that tries the same target's far door after a near miss (could serve both); (c) keep k=256; (d) far publish stays
+non-blocking. No ρ-sweep suite exists in `gen.sh` yet. Before new suites: rebuild `~/laws/src` + `~/laws/build-xpmem` from the
+committed `laws` branch (they still hold E2p state), or keep using `build-xpmem-e3b` (= the E3 commit).
 Small follow-ups: the bitmap over SDC as an ablation, and a calibrated busy-wait for sub-ms BPC tasks.
 
 ## Conventions
